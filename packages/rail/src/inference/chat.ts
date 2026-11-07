@@ -1,6 +1,6 @@
 import { silentLogger, type Logger } from "../log.ts";
 import { VeniceInsufficientBalance, type VeniceClient } from "../venice/client.ts";
-import { attest, decryptStream, e2eeRequest, newSession, type AttestationReport } from "../venice/e2ee.ts";
+import { attest, decryptStream, e2eeRequest, newSession, type AttestationReport, type StreamUsage } from "../venice/e2ee.ts";
 import { costUsd, parseVenicePrices, resolveModel, type LivePrices, type ModelDef, type PrivacyMode } from "./models.ts";
 
 export interface ChatMessage {
@@ -22,7 +22,7 @@ export interface ChatRequest {
   json?: { name: string; schema: Record<string, unknown> };
 }
 
-export type ChatDelta = { type: "text" | "reasoning"; text: string };
+export type ChatDelta = { type: "text" | "reasoning"; text: string } | { type: "usage"; usage: StreamUsage; costUsd?: number };
 
 export interface ChatMeta {
   model: ModelDef;
@@ -97,6 +97,7 @@ export class VeniceChat {
       ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
       ...(req.reasoningEffort ? { reasoning_effort: req.reasoningEffort } : {}),
       venice_parameters: { include_venice_system_prompt: false, ...(req.noThinking ? { disable_thinking: true } : {}) },
+      stream_options: { include_usage: true },
     };
     if (req.json && model.structuredOutputs) {
       body.response_format = { type: "json_schema", json_schema: { ...req.json, strict: true } };
@@ -105,7 +106,7 @@ export class VeniceChat {
     if (!model.e2ee) {
       const res = await this.withRefill(() => this.o.venice.chatStream(body));
       const meta: ChatMeta = { model, mode: req.mode, e2ee: false, plaintextChunks: 0 };
-      return { meta, deltas: plainDeltas(res) };
+      return { meta, deltas: withCost(plainDeltas(res), model, await this.livePrices()) };
     }
 
     const report = await this.attestation(model);
@@ -117,6 +118,10 @@ export class VeniceChat {
     const deltas = (async function* () {
       try {
         for await (const d of decryptStream(res, session)) {
+          if (d.field === "usage") {
+            yield { type: "usage", usage: d.usage } as ChatDelta;
+            continue;
+          }
           if (!d.encrypted) meta.plaintextChunks++;
           yield { type: d.field === "reasoning" ? "reasoning" : "text", text: d.text } as ChatDelta;
         }
@@ -124,7 +129,7 @@ export class VeniceChat {
         session.clientPriv.fill(0);
       }
     })();
-    return { meta, deltas };
+    return { meta, deltas: withCost(deltas, model, await this.livePrices()) };
   }
 
   /** Non-streaming convenience: collect the whole reply. */
@@ -132,8 +137,13 @@ export class VeniceChat {
     const { meta, deltas } = await this.stream(req);
     let text = "";
     let reasoning = "";
-    for await (const d of deltas) d.type === "text" ? (text += d.text) : (reasoning += d.text);
-    return { ...meta, text, reasoning };
+    let cost: number | undefined;
+    for await (const d of deltas) {
+      if (d.type === "text") text += d.text;
+      else if (d.type === "reasoning") reasoning += d.text;
+      else if (d.type === "usage") cost = d.costUsd;
+    }
+    return { ...meta, text, reasoning, costUsd: cost };
   }
 
   private withJsonInstructions(req: ChatRequest, model: ModelDef): ChatMessage[] {
@@ -171,12 +181,21 @@ async function* plainDeltas(res: Response): AsyncGenerator<ChatDelta> {
       const data = line.slice(5).trim();
       if (data === "[DONE]") return;
       try {
-        const delta = (JSON.parse(data) as { choices?: Array<{ delta?: { content?: string; reasoning_content?: string } }> })
-          .choices?.[0]?.delta;
+        const chunk = JSON.parse(data) as { choices?: Array<{ delta?: { content?: string; reasoning_content?: string } }>; usage?: StreamUsage };
+        if (chunk.usage) yield { type: "usage", usage: chunk.usage };
+        const delta = chunk.choices?.[0]?.delta;
         if (delta?.reasoning_content) yield { type: "reasoning", text: delta.reasoning_content };
         if (delta?.content) yield { type: "text", text: delta.content };
       } catch {}
     }
+  }
+}
+
+/** Attach a USD cost (usage x live price) to the usage delta. */
+async function* withCost(src: AsyncGenerator<ChatDelta>, model: ModelDef, live: LivePrices): AsyncGenerator<ChatDelta> {
+  for await (const d of src) {
+    if (d.type === "usage") yield { ...d, costUsd: costUsd(model, d.usage, live) };
+    else yield d;
   }
 }
 

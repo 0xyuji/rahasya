@@ -217,6 +217,12 @@ export function evaluateAttestation(a: Attestation, model: string, sentNonce: st
 
 // ---------- E2EE chat ----------
 
+export interface StreamUsage {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+}
+
 export interface E2EESession {
   clientPriv: Uint8Array;
   clientPubHex: string;
@@ -257,7 +263,10 @@ export function e2eeRequest(
 export async function* decryptStream(
   res: Response,
   s: E2EESession,
-): AsyncGenerator<{ text: string; encrypted: boolean; field: "content" | "reasoning" }> {
+): AsyncGenerator<
+  | { text: string; encrypted: boolean; field: "content" | "reasoning" }
+  | { field: "usage"; usage: StreamUsage; text: ""; encrypted: false }
+> {
   const reader = res.body!.getReader();
   const dec = new TextDecoder();
   let buf = "";
@@ -272,12 +281,13 @@ export async function* decryptStream(
       if (!line.startsWith("data:")) continue;
       const data = line.slice(5).trim();
       if (data === "[DONE]") return;
-      let chunk: { choices?: Array<{ delta?: { content?: string; reasoning_content?: string } }> };
+      let chunk: { choices?: Array<{ delta?: { content?: string; reasoning_content?: string } }>; usage?: StreamUsage };
       try {
         chunk = JSON.parse(data);
       } catch {
         continue;
       }
+      if (chunk.usage) yield { field: "usage", usage: chunk.usage, text: "", encrypted: false };
       const delta = chunk.choices?.[0]?.delta ?? {};
       for (const [field, v] of [["content", delta.content], ["reasoning", delta.reasoning_content]] as const) {
         if (!v) continue;
