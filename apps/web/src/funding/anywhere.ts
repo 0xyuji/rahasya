@@ -53,8 +53,8 @@ export function refundAddressProblem(bc: string, addr: string): string | null {
   return null;
 }
 
-export type AnywhereState = "AWAITING_DEPOSIT" | "INCOMPLETE" | "RECEIVED" | "SWAPPED" | "TOPPING_UP" | "DONE" | "IDLE" | "REFUNDED" | "FAILED" | "EXPIRED";
-export const ANYWHERE_FINAL: ReadonlySet<AnywhereState> = new Set(["DONE", "IDLE", "REFUNDED", "FAILED", "EXPIRED"]);
+export type AnywhereState = "AWAITING_DEPOSIT" | "INCOMPLETE" | "RECEIVED" | "SWAPPED" | "TOPPING_UP" | "DONE" | "IDLE" | "REFUNDED" | "FAILED" | "EXPIRED" | "CANCELLED";
+export const ANYWHERE_FINAL: ReadonlySet<AnywhereState> = new Set(["DONE", "IDLE", "REFUNDED", "FAILED", "EXPIRED", "CANCELLED"]);
 
 export interface AnywhereAction {
   id: string;
@@ -199,6 +199,17 @@ export async function runAnywhere(
     delay = Math.min(delay * 1.3, 15_000);
   }
   return a;
+}
+
+/**
+ * Stop watching a deposit address the user abandoned. Only allowed before
+ * anything arrived; if funds show up later anyway, 1Click still swaps or
+ * refunds them by its own rules (we just stop showing it).
+ */
+export function cancelAnywhere(id: string): AnywhereAction | undefined {
+  const a = anywhereActions.get(id);
+  if (!a || a.state !== "AWAITING_DEPOSIT") return a;
+  return move(a, "CANCELLED");
 }
 
 /** Turn USDC already sitting on the inference wallet into credit (≥ $5, rounded down to cents). */

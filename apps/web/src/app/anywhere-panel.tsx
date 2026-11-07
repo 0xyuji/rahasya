@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   ANYWHERE_FINAL,
   anywhereActions,
+  cancelAnywhere,
   chainName,
   quoteAnywhere,
   refundAddressProblem,
@@ -214,8 +215,8 @@ export function AnywherePanel({ onCredited }: { onCredited: () => void }) {
           </button>
         )}
         {live && action.state === "AWAITING_DEPOSIT" && (
-          <button className={s.secondary} onClick={() => setAction(null)}>
-            Use a different token
+          <button className={s.secondary} onClick={() => (cancelAnywhere(action.id), setAction(null))}>
+            Cancel and use a different token
           </button>
         )}
       </>
