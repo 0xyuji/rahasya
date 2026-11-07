@@ -1,4 +1,6 @@
 .top {
+  position: relative;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -60,6 +62,8 @@
 }
 
 .center {
+  position: relative;
+  z-index: 1;
   width: min(760px, 100%);
   text-align: center;
 }
@@ -194,6 +198,8 @@
 }
 
 .foot {
+  position: relative;
+  z-index: 1;
   text-align: center;
   padding: 24px 20px 32px;
   font-size: 12.5px;

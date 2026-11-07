@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { CipherField } from "../app/cipher-field";
 import { Prompt } from "../app/prompt";
 import page from "../app/page.module.css";
 import { notifyCreditChanged } from "../wallet/use-credit";
@@ -21,6 +22,7 @@ export function ChatApp() {
   if (!messages.length) {
     return (
       <main className={page.main}>
+        <CipherField />
         <div className={page.center}>
           <h1 className={page.headline}>
             Talk without <em>limits.</em>
