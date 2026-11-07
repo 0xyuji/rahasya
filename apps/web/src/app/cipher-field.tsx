@@ -5,7 +5,7 @@ import { useEffect, useRef } from "react";
 /**
  * Landing backdrop, symbols only.
  *  - A faint field of flickering light symbols.
- *  - A hooded figure wearing a blank mask (traditional Venetian "volto" form,
+ *  - A hooded figure wearing a blank mask, centered and very faint behind the headline (traditional Venetian "volto" form,
  *    procedurally modelled here as a height field: original artwork). Its
  *    shading is recomputed every frame with the light at the pointer, so moving
  *    the mouse relights the face. Eye slits and mouth are true voids.
@@ -81,11 +81,10 @@ export function CipherField() {
       figMap = new Map();
       const w = window.innerWidth;
       const h = window.innerHeight;
-      if (w < 900) return;
-      const maskH = h * 0.34; // half-height of the mask in px
-      fx = w * 0.8;
-      fy = h * 0.5;
-      const unit = maskH;
+      // Centered behind the headline; scales to fit narrow screens.
+      const unit = Math.min(h * 0.3, w * 0.38); // half-height of the mask in px
+      fx = w / 2;
+      fy = h * 0.43;
       const c0 = Math.floor((fx - unit * 1.6) / CELL_W);
       const c1 = Math.ceil((fx + unit * 1.6) / CELL_W);
       const r0 = Math.floor((fy - unit * 1.5) / CELL_H);
@@ -161,7 +160,7 @@ export function CipherField() {
           if (figMap.has(r * cols + c)) continue;
           const x = c * CELL_W;
           const y = r * CELL_H;
-          const calm = Math.min(1, Math.max(0, Math.hypot((x - cx) / (w * 0.32), (y - cy) / (h * 0.3)) - 0.55));
+          const calm = Math.min(1, Math.max(0, Math.hypot((x - cx) / (w * 0.36), (y - cy) / (h * 0.36)) - 0.7));
           if (calm <= 0) continue;
           const near = Math.max(0, 1 - Math.hypot(x - light.x, y - light.y) / 160);
           ctx.fillStyle = near > 0.05 ? `rgba(200,164,106,${(0.05 + 0.25 * near * near) * calm})` : `rgba(236,231,222,${0.045 * calm})`;
@@ -171,9 +170,10 @@ export function CipherField() {
       if (!fig.length) return;
 
       // Light direction from the figure toward the pointer, a bit in front of the face.
-      let lx = light.x - fx;
-      let ly = light.y - fy;
-      let lz = Math.max(w, h) * 0.7;
+      // Mostly frontal light; the pointer only nudges it, so the face stays calm.
+      let lx = (light.x - fx) * 0.35 - w * 0.04;
+      let ly = (light.y - fy) * 0.35 - h * 0.12;
+      let lz = Math.max(w, h) * 0.9;
       const ln = Math.hypot(lx, ly, lz);
       lx /= ln;
       ly /= ln;
@@ -197,13 +197,14 @@ export function CipherField() {
         const tear = tears.get(f.r);
         const x = (f.c + (tear?.dx ?? 0)) * CELL_W;
         const y = f.r * CELL_H;
-        const a = f.kind === "mask" ? 0.1 + 0.72 * s : 0.06 + 0.5 * s;
+        // Very faint: the headline and prompt sit on top of it.
+        const a = f.kind === "mask" ? 0.03 + 0.2 * s : 0.02 + 0.12 * s;
         ctx.fillStyle = s > 0.85 ? `rgba(236,224,200,${a})` : `rgba(236,231,222,${a})`;
         ctx.fillText(ch, x, y);
       }
 
       for (const st of streaks) {
-        ctx.fillStyle = `rgba(236,231,222,${0.12 * Math.min(1, st.life / 10)})`;
+        ctx.fillStyle = `rgba(236,231,222,${0.07 * Math.min(1, st.life / 10)})`;
         ctx.fillText(st.ch.repeat(st.len), st.x, st.y);
       }
     }
@@ -222,15 +223,15 @@ export function CipherField() {
 
       // Glitch: short-lived row tears on the figure and drifting dash streaks.
       for (const [r, tr] of tears) if (--tr.life <= 0) tears.delete(r);
-      if (fig.length && Math.random() < 0.06) {
+      if (fig.length && Math.random() < 0.015) {
         const r = fig[(Math.random() * fig.length) | 0]!.r;
         const dx = (Math.random() < 0.5 ? -1 : 1) * (1 + ((Math.random() * 4) | 0));
         for (let k = 0; k < 1 + ((Math.random() * 3) | 0); k++) tears.set(r + k, { dx, life: 2 + ((Math.random() * 5) | 0) });
       }
-      if (fig.length && streaks.length < 14 && Math.random() < 0.25) {
+      if (fig.length && streaks.length < 5 && Math.random() < 0.08) {
         streaks.push({
-          x: fx + (Math.random() - 0.5) * h * 0.9,
-          y: fy + (Math.random() - 0.5) * h * 0.95,
+          x: fx + (Math.random() - 0.5) * w * 0.7,
+          y: fy + (Math.random() - 0.5) * h * 0.8,
           len: 1 + ((Math.random() * 5) | 0),
           vx: (Math.random() - 0.5) * 6,
           life: 20 + ((Math.random() * 40) | 0),
