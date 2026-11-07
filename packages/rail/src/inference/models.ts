@@ -22,8 +22,12 @@ export interface ModelDef {
   e2ee: boolean;
   /** "roleplay" = fiction/storytelling specialists; listed last, never a default. */
   use: "general" | "roleplay";
-  /** What it's built on (shown in the picker / README). */
+  /** What it's built on (README / docs). */
   base: string;
+  /** Short "based on" shown in the picker for models whose name doesn't say it. */
+  basedOn?: string;
+  /** Who runs the enclave (TEE models only). */
+  host?: string;
   fallbackPrice: { in: number; out: number };
 }
 
@@ -39,15 +43,20 @@ const m = (
   use: "general" | "roleplay" = "general",
 ): ModelDef => ({ key, id, label, tier, structuredOutputs, e2ee: tier === "tee", use, base, fallbackPrice: { in: inP, out: outP } });
 
+const extra: Record<string, Pick<ModelDef, "basedOn" | "host">> = {
+  "large-flash": { basedOn: "DeepSeek V4.1 Flash" },
+  "large-v2": { basedOn: "GLM 5.3" },
+  "venice-uncensored": { basedOn: "Mistral" },
+  "venice-roleplay": { basedOn: "Mistral" },
+  "deepseek-abliterated-tee": { host: "NEAR AI enclave" },
+  "gemma-4-26b-tee": { host: "Phala enclave" },
+};
+
 export const MODELS: Record<string, ModelDef> = Object.fromEntries(
   [
     // anonymized: Venice strips identity; the upstream host may see prompt text
     m("large-flash", "abliteration-abliterated-model-large-flash", "Abliterated Large Flash", "anonymized", true, 1.25, 2.5, "DeepSeek V4.1 Flash, abliterated"),
     m("large-v2", "abliteration-abliterated-model-large-v2", "Abliterated Large V2", "anonymized", true, 3, 5, "GLM-5.3, abliterated + fine-tuned"),
-    m("aion-3.5", "aion-labs-aion-3-5", "Aion 3.5", "anonymized", true, 3.75, 7.5, "multi-model storytelling on GLM", "roleplay"),
-    m("aion-3.5-mini", "aion-labs-aion-3-5-mini", "Aion 3.5 Mini", "anonymized", true, 0.875, 1.75, "multi-model storytelling on GLM", "roleplay"),
-    m("aion-3.0", "aion-labs-aion-3-0", "Aion 3.0", "anonymized", true, 3.75, 7.5, "multi-model storytelling on GLM", "roleplay"),
-    m("aion-3.0-mini", "aion-labs-aion-3-0-mini", "Aion 3.0 Mini", "anonymized", true, 0.875, 1.75, "multi-model storytelling on DeepSeek", "roleplay"),
     m("qwen-3.6-plus", "qwen-3-6-plus", "Qwen 3.6 Plus Uncensored", "anonymized", true, 0.625, 3.75, "Qwen 3.6 Plus, uncensored"),
     // private: Venice-hosted, no retention
     m("deepseek-1017-uncensored", "deepseek-v4-1-flash-1017-uncensored", "DeepSeek V4.1 Flash 1017 Uncensored", "private", true, 0.33, 1.32, "DeepSeek V4.1 Flash 1017, abliterated"),
@@ -59,7 +68,7 @@ export const MODELS: Record<string, ModelDef> = Object.fromEntries(
     // tee: hardware enclave, attested, end-to-end encrypted from the browser
     m("deepseek-abliterated-tee", "e2ee-deepseek-v4-1-flash-1017-abliterated", "DeepSeek V4.1 Flash 1017 Abliterated (TEE)", "tee", false, 0.375, 1.5, "DeepSeek V4.1 Flash 1017, abliterated; NEAR AI enclave"),
     m("gemma-4-26b-tee", "e2ee-gemma-4-26b-a4b-uncensored-p", "Gemma 4 26B A4B Uncensored (TEE)", "tee", false, 0.19, 0.88, "Gemma 4 26B A4B, uncensored; Phala enclave"),
-  ].map((d) => [d.key, d]),
+  ].map((d) => [d.key, { ...d, ...extra[d.key] }]),
 );
 
 /**

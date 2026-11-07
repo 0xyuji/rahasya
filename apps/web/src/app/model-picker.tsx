@@ -19,6 +19,8 @@ const rank = (m: ModelDef) => (m.use === "roleplay" ? 10 : 0) + TIER_ORDER.index
 const fmt = (n: number) => (n < 1 ? `$${n.toFixed(2).replace(/0$/, "")}` : `$${n % 1 ? n.toFixed(2) : n}`);
 export const priceLine = (m: ModelDef) => `${fmt(m.fallbackPrice.in)} in · ${fmt(m.fallbackPrice.out)} out / 1M tokens`;
 export const tierLine = (t: PrivacyTier) => TIER_LABEL[t];
+const shortName = (m: ModelDef) => m.label.replace(" (TEE)", "");
+const fullName = (m: ModelDef) => (m.basedOn ? `${shortName(m)} (based on ${m.basedOn})` : shortName(m));
 
 export function ModelPicker({ mode, value, onChange }: { mode: PrivacyMode; value: string; onChange: (key: string) => void }) {
   const [open, setOpen] = useState(false);
@@ -72,7 +74,9 @@ export function ModelPicker({ mode, value, onChange }: { mode: PrivacyMode; valu
         aria-controls={listId}
         onClick={() => setOpen((o) => !o)}
       >
-        <span className={s.triggerLabel}>{current.label.replace(" (TEE)", "")}</span>
+        <span className={s.triggerLabel} title={fullName(current)}>
+          {shortName(current)}
+        </span>
         <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden className={open ? s.chevUp : undefined}>
           <path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
@@ -94,11 +98,11 @@ export function ModelPicker({ mode, value, onChange }: { mode: PrivacyMode; valu
                   onClick={() => pick(m)}
                 >
                   <span className={s.optName}>
-                    {m.label.replace(" (TEE)", "")}
+                    {fullName(m)}
                     {m.key === current.key && <span className={s.check}>Selected</span>}
                   </span>
                   <span className={s.optMeta}>
-                    {m.base ? `${m.base} · ` : ""}
+                    {m.host ? `${m.host} · ` : ""}
                     {priceLine(m)}
                   </span>
                 </div>
