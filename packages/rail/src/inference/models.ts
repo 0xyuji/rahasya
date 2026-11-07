@@ -46,8 +46,8 @@ const m = (
 const extra: Record<string, Pick<ModelDef, "basedOn" | "host">> = {
   "large-flash": { basedOn: "DeepSeek V4.1 Flash" },
   "large-v2": { basedOn: "GLM 5.3" },
-  "venice-uncensored": { basedOn: "Mistral" },
-  "venice-roleplay": { basedOn: "Mistral" },
+  "venice-uncensored": { basedOn: "Mistral Small 24B" },
+  "venice-roleplay": { basedOn: "Mistral Small 24B" },
   "deepseek-abliterated-tee": { host: "NEAR AI enclave" },
   "gemma-4-26b-tee": { host: "Phala enclave" },
 };
