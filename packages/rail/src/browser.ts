@@ -10,3 +10,4 @@ export * from "./venice/client.ts";
 export * from "./venice/e2ee.ts";
 export * from "./inference/models.ts";
 export * from "./inference/chat.ts";
+export * from "./wallet/derive.ts";

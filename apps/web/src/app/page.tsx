@@ -1,6 +1,7 @@
 import { Prompt } from "./prompt";
 import s from "./page.module.css";
 import { brand } from "../brand";
+import { ConnectButton } from "./connect-button";
 
 
 export default function Home() {
@@ -12,9 +13,7 @@ export default function Home() {
           <span className={s.wordmark}>{brand.name}</span>
           <span className={s.tagline}>{brand.tagline}</span>
         </a>
-        <button className={s.connect} type="button">
-          Connect wallet
-        </button>
+        <ConnectButton />
       </header>
 
       <main className={s.main}>
