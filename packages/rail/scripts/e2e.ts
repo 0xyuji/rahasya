@@ -23,7 +23,7 @@ import { randomActionId, sleep } from "../src/util.ts";
 import { VeniceClient, type TopUpAction } from "../src/venice/client.ts";
 
 const TOPUP_USD = 5; // Venice minimum
-const CHEAP_MODEL = "olafangensan-glm-4.7-flash-heretic"; // $0.07 / $0.40 per 1M — cheapest allowed
+const CHEAP_MODEL = "gemma-4-uncensored"; // $0.1625 / $0.50 per 1M — cheapest model in the catalog
 
 const cfg = loadConfig();
 const log = createLogger(cfg.LOG_LEVEL, "e2e");

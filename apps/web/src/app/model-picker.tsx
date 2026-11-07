@@ -10,6 +10,11 @@ const TIER_LABEL: Record<PrivacyTier, string> = {
   anonymized: "Third-party host, identity stripped",
 };
 const TIER_ORDER: PrivacyTier[] = ["anonymized", "private", "tee"];
+const ROLEPLAY_LABEL = "Roleplay & storytelling";
+
+/** General models grouped by tier; fiction specialists always last. */
+const groupOf = (m: ModelDef) => (m.use === "roleplay" ? ROLEPLAY_LABEL : TIER_LABEL[m.tier]);
+const rank = (m: ModelDef) => (m.use === "roleplay" ? 10 : 0) + TIER_ORDER.indexOf(m.tier);
 
 const fmt = (n: number) => (n < 1 ? `$${n.toFixed(2).replace(/0$/, "")}` : `$${n % 1 ? n.toFixed(2) : n}`);
 export const priceLine = (m: ModelDef) => `${fmt(m.fallbackPrice.in)} in · ${fmt(m.fallbackPrice.out)} out / 1M tokens`;
@@ -21,7 +26,7 @@ export function ModelPicker({ mode, value, onChange }: { mode: PrivacyMode; valu
   const root = useRef<HTMLDivElement>(null);
   const listId = useId();
 
-  const models = modelsForMode(mode).sort((a, b) => TIER_ORDER.indexOf(a.tier) - TIER_ORDER.indexOf(b.tier));
+  const models = modelsForMode(mode).sort((a, b) => rank(a) - rank(b));
   const current = models.find((m) => m.key === value) ?? models[0]!;
 
   useEffect(() => {
@@ -56,7 +61,7 @@ export function ModelPicker({ mode, value, onChange }: { mode: PrivacyMode; valu
     e.preventDefault();
   };
 
-  let lastTier: PrivacyTier | undefined;
+  let lastGroup: string | undefined;
   return (
     <div className={s.root} ref={root} onKeyDown={onKey}>
       <button
@@ -75,8 +80,9 @@ export function ModelPicker({ mode, value, onChange }: { mode: PrivacyMode; valu
       {open && (
         <ul className={s.list} role="listbox" id={listId} aria-label="Model">
           {models.map((m, i) => {
-            const header = m.tier !== lastTier ? TIER_LABEL[m.tier] : null;
-            lastTier = m.tier;
+            const group = groupOf(m);
+            const header = group !== lastGroup ? group : null;
+            lastGroup = group;
             return (
               <li key={m.key} role="presentation">
                 {header && <div className={s.group}>{header}</div>}
@@ -91,7 +97,10 @@ export function ModelPicker({ mode, value, onChange }: { mode: PrivacyMode; valu
                     {m.label.replace(" (TEE)", "")}
                     {m.key === current.key && <span className={s.check}>Selected</span>}
                   </span>
-                  <span className={s.optMeta}>{priceLine(m)}</span>
+                  <span className={s.optMeta}>
+                    {m.base ? `${m.base} · ` : ""}
+                    {priceLine(m)}
+                  </span>
                 </div>
               </li>
             );
