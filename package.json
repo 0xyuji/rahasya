@@ -9,9 +9,12 @@
   "scripts": {
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
-    "e2e": "npm run e2e -w @pay/rail --",
-    "bot": "npm run start -w @pay/tg-bot",
-    "proxy": "node packages/proxy/src/cli.ts"
+    "e2e": "node --env-file=.env packages/rail/scripts/e2e.ts",
+    "proxy": "node packages/proxy/src/cli.ts",
+    "verify:tee": "node packages/rail/scripts/verify-tee.ts",
+    "quote:dry": "node packages/rail/scripts/dry-quote.ts",
+    "dev": "npm run dev -w @pay/web",
+    "build": "npm run build -w @pay/web"
   },
   "engines": {
     "node": ">=22"
