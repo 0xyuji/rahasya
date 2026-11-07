@@ -15,7 +15,9 @@ import {
   type CreditAction,
 } from "../funding/flow";
 import { useWallet } from "../wallet/wallet-context";
+import { AnywherePanel } from "./anywhere-panel";
 import s from "./credit-dialog.module.css";
+import { UsdcPanel } from "./usdc-panel";
 
 const PRESETS = [5, 10, 20];
 const short = (a: string) => (a.length > 16 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a);
@@ -48,6 +50,7 @@ export function CreditDialog({ open, onClose, onCredited }: { open: boolean; onC
   const [action, setAction] = useState<CreditAction | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [tab, setTab] = useState<"wallet" | "anywhere" | "usdc">("wallet");
 
   useEffect(() => {
     const d = ref.current;
@@ -115,8 +118,23 @@ export function CreditDialog({ open, onClose, onCredited }: { open: boolean; onC
           ×
         </button>
       </div>
+      <div className={s.tabs} role="tablist" aria-label="How to pay">
+        {([
+          ["wallet", "From your wallet"],
+          ["anywhere", "Any token, anywhere"],
+          ["usdc", "USDC on Base"],
+        ] as const).map(([k, label]) => (
+          <button key={k} role="tab" aria-selected={tab === k} className={`${s.tab} ${tab === k ? s.tabOn : ""}`} onClick={() => setTab(k)}>
+            {label}
+          </button>
+        ))}
+      </div>
 
-      {!w.source || !w.inference ? (
+      {tab === "anywhere" ? (
+        <AnywherePanel onCredited={onCredited} />
+      ) : tab === "usdc" ? (
+        <UsdcPanel onCredited={onCredited} />
+      ) : !w.source || !w.inference ? (
         <p className={s.p}>Connect and unlock your wallet first.</p>
       ) : !w.sender ? (
         <p className={s.p}>
@@ -257,7 +275,7 @@ export function CreditDialog({ open, onClose, onCredited }: { open: boolean; onC
           )}
         </>
       )}
-      {err && <p className={s.warn}>{err}</p>}
+      {tab === "wallet" && err && <p className={s.warn}>{err}</p>}
     </dialog>
   );
 }
