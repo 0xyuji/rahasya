@@ -27,8 +27,9 @@ type Cell = {
   vx: number;
   vy: number;
   ch: string;
-  dense: boolean; // part of the figure
-  face: boolean; // the empty face: never drawn
+  dense: boolean; // part of the figure (rim or body)
+  rim: boolean; // lit outline of the figure
+  face: boolean; // the empty hood opening: never drawn
 };
 
 /** Stroke glyph for a motion direction (screen y points down). */
@@ -58,36 +59,62 @@ export function CipherField() {
 
     const rand = (s: string) => s[(Math.random() * s.length) | 0]!;
 
-    /** Hooded figure as a density mask, sampled from an offscreen path. */
+    /**
+     * Hooded figure (wide shoulders, narrow hood), sampled from an offscreen
+     * path into per-cell flags: rim (bright outline), body (dark, sparse), face (empty).
+     */
     function figureMask(w: number) {
-      const m = document.createElement("canvas");
-      m.width = cols;
-      m.height = rows;
-      const g = m.getContext("2d")!;
+      const inside = new Uint8Array(cols * rows); // 0 out, 1 body, 2 face opening
       if (w >= 900) {
-        const fh = rows * 0.78;
-        const fw = fh * 0.62 * (CELL_H / CELL_W);
-        const ox = cols * 0.8 - fw / 2;
+        const m = document.createElement("canvas");
+        m.width = cols;
+        m.height = rows;
+        const g = m.getContext("2d")!;
+        const fh = rows * 0.84;
+        const fw = cols * 0.62;
+        const ox = cols * 0.74 - fw / 2;
         const oy = rows - fh;
         const P = (x: number, y: number) => [ox + x * fw, oy + y * fh] as const;
         g.fillStyle = "#fff";
         g.beginPath();
-        g.moveTo(...P(-0.08, 1));
-        g.bezierCurveTo(...P(0.02, 0.82), ...P(0.12, 0.74), ...P(0.18, 0.66));
-        g.bezierCurveTo(...P(0.1, 0.42), ...P(0.18, 0.08), ...P(0.5, 0.02));
-        g.bezierCurveTo(...P(0.82, 0.08), ...P(0.9, 0.42), ...P(0.82, 0.66));
-        g.bezierCurveTo(...P(0.88, 0.74), ...P(0.98, 0.82), ...P(1.08, 1));
+        g.moveTo(...P(0, 1.02));
+        g.bezierCurveTo(...P(0.02, 0.86), ...P(0.05, 0.72), ...P(0.12, 0.64));
+        g.bezierCurveTo(...P(0.2, 0.55), ...P(0.3, 0.5), ...P(0.37, 0.46));
+        g.bezierCurveTo(...P(0.37, 0.36), ...P(0.37, 0.18), ...P(0.41, 0.07));
+        g.bezierCurveTo(...P(0.44, 0.0), ...P(0.56, 0.0), ...P(0.59, 0.07));
+        g.bezierCurveTo(...P(0.63, 0.18), ...P(0.63, 0.36), ...P(0.63, 0.46));
+        g.bezierCurveTo(...P(0.7, 0.5), ...P(0.8, 0.55), ...P(0.88, 0.64));
+        g.bezierCurveTo(...P(0.95, 0.72), ...P(0.98, 0.86), ...P(1, 1.02));
         g.closePath();
         g.fill();
-        g.fillStyle = "#f00"; // the empty face: anonymity
+        g.fillStyle = "#f00"; // the hood opening: no face, just dark
         g.beginPath();
-        g.ellipse(...P(0.5, 0.36), fw * 0.17, fh * 0.17, 0, 0, Math.PI * 2);
+        g.ellipse(...P(0.5, 0.25), fw * 0.072, fh * 0.15, 0, 0, Math.PI * 2);
         g.fill();
+        const data = g.getImageData(0, 0, cols, rows).data;
+        for (let i = 0; i < cols * rows; i++) {
+          const red = data[i * 4]! > 128;
+          const green = data[i * 4 + 1]! > 128;
+          inside[i] = green ? 1 : red ? 2 : 0;
+        }
       }
-      const data = g.getImageData(0, 0, cols, rows).data;
       return (c: number, r: number) => {
-        const i = (r * cols + c) * 4;
-        return { dense: data[i + 1]! > 128, face: data[i]! > 128 && data[i + 1]! < 128 };
+        const v = inside[r * cols + c]!;
+        if (v !== 1) return { rim: false, body: false, face: v === 2 };
+        // Rim light: body cells within ~2 columns / 1 row of the outside or the face.
+        let rim = false;
+        for (let dy = -1; dy <= 1 && !rim; dy++) {
+          for (let dx = -2; dx <= 2; dx++) {
+            const cc = c + dx;
+            const rr = r + dy;
+            if (rr < 0 || rr >= rows) continue;
+            if (cc < 0 || cc >= cols || inside[rr * cols + cc] !== 1) {
+              rim = true;
+              break;
+            }
+          }
+        }
+        return { rim, body: !rim, face: false };
       };
     }
 
@@ -109,7 +136,8 @@ export function CipherField() {
       cells = Array.from({ length: cols * rows }, (_, i) => {
         const c = i % cols;
         const r = (i / cols) | 0;
-        const { dense, face } = mask(c, r);
+        const { rim, body, face } = mask(c, r);
+        const dense = rim || body;
         return {
           hx: c * CELL_W + CELL_W / 2,
           hy: r * CELL_H + CELL_H / 2,
@@ -117,8 +145,9 @@ export function CipherField() {
           oy: 0,
           vx: 0,
           vy: 0,
-          ch: dense ? rand(HEAVY) : rand(LIGHT),
+          ch: rim ? rand(HEAVY) : rand(LIGHT),
           dense,
+          rim,
           face,
         };
       });
@@ -191,7 +220,9 @@ export function CipherField() {
         const disp = Math.hypot(c.ox, c.oy);
         const speed = Math.hypot(c.vx, c.vy);
         const ch = speed > 0.9 ? stroke(c.vx, c.vy) : disp > 3 ? stroke(c.ox, c.oy) : c.ch;
-        const base = c.dense ? 0.17 : 0.06;
+        // Rim-lit silhouette: bright outline, a body darker than the field around it.
+        if (c.dense && !c.rim && disp < 2 && (c.hx / CELL_W + c.hy / CELL_H) % 3 !== 0) continue;
+        const base = c.rim ? 0.3 : c.dense ? 0.035 : 0.06;
         const a = Math.min(0.5, base + disp * 0.006 + speed * 0.02) * calm;
         ctx.fillStyle = `rgba(236,231,222,${a})`;
         ctx.fillText(ch, x, y);
@@ -206,7 +237,7 @@ export function CipherField() {
       // Ciphertext keeps changing, a little at a time (only glyphs at rest).
       for (let i = 0; i < cells.length * 0.01; i++) {
         const c = cells[(Math.random() * cells.length) | 0]!;
-        if (!c.face && Math.abs(c.ox) + Math.abs(c.oy) < 1) c.ch = c.dense ? rand(HEAVY) : rand(LIGHT);
+        if (!c.face && Math.abs(c.ox) + Math.abs(c.oy) < 1) c.ch = c.rim ? rand(HEAVY) : rand(LIGHT);
       }
       draw();
     }
