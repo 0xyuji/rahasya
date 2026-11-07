@@ -1,17 +1,16 @@
 import { Prompt } from "./prompt";
 import s from "./page.module.css";
+import { brand } from "../brand";
 
-const NAME = "Sotto";
-const TAGLINE = "Private AI, paid in any token";
 
 export default function Home() {
   return (
     <>
       <div className="backdrop" aria-hidden />
       <header className={s.top}>
-        <a href="/" className={s.lockup} aria-label={`${NAME} — ${TAGLINE}`}>
-          <span className={s.wordmark}>{NAME}</span>
-          <span className={s.tagline}>{TAGLINE}</span>
+        <a href="/" className={s.lockup} aria-label={`${brand.name} — ${brand.tagline}`}>
+          <span className={s.wordmark}>{brand.name}</span>
+          <span className={s.tagline}>{brand.tagline}</span>
         </a>
         <button className={s.connect} type="button">
           Connect wallet
