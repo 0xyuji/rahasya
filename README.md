@@ -92,6 +92,18 @@ Conversations live in browser memory only. Switching from Truly private back to 
 - **Honest latency.** Live status at each step; the first mainnet run took 94 s against a quoted 22 s, and the UI says "about 1–2 min".
 - **Caps.** $5–$50 per credit top-up, a $25 cap on server-side swaps, and a kill switch for anything automated.
 
+## Security notes
+
+- **No custody, no server secrets that matter.** The only server-side secret is the optional 1Click partner key. Keys exist only in the browser's memory, or in `~/.naisho` (mode 0600) for the local proxy.
+- **Headers:** anti-framing (`frame-ancestors 'none'` + `X-Frame-Options: DENY`), so wallet prompts can't be clickjacked; `Referrer-Policy: no-referrer`; `nosniff`; HSTS; a locked-down `Permissions-Policy`. A strict `default-src` CSP isn't set because the WalletConnect modal loads from many origins.
+- **Local proxy:** binds to 127.0.0.1, requires a local bearer token (constant-time compare), refuses any request with a browser `Origin`, and never logs prompts.
+- **`npm audit`** reports 3 upstream advisories, all inside third-party wallet libraries:
+  - zod < 4.6.6 bundled inside Reown AppKit (our own zod is 4.6.7, not affected);
+  - `bigint-buffer` via `@solana/web3.js` 1.x / `spl-token` (we only encode our own amounts; no untrusted decoding);
+  - `jayson` / `stream-json` / `uuid` in web3.js's Node RPC client (not on our browser path).
+
+  None has an upstream fix that doesn't break those libraries.
+
 ## Repository
 
 ```
