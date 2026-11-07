@@ -3,24 +3,42 @@
 import { useEffect, useRef } from "react";
 
 /**
- * Landing backdrop: a field of flickering symbols. The pointer is a light:
- * glyphs under it brighten, warm and shift to heavier symbols. On wide screens a hooded figure with an empty face is
- * drawn in denser glyphs. Original artwork, drawn procedurally.
- *
- * Canvas 2D, ~24 fps, paused when the tab is hidden, static under
- * prefers-reduced-motion. Purely decorative: aria-hidden, no pointer events.
+ * Landing backdrop, symbols only. Every glyph is a particle on a spring:
+ * the pointer pushes glyphs out of its way and sweeps them along with its
+ * motion; they spring back home. While moving, a glyph turns into a stroke
+ * (- / | \) aligned with its motion. Click for a shockwave. A hooded figure
+ * with an empty face (heavier glyphs, stiffer springs) sits on wide screens.
+ * Canvas 2D, paused when hidden, static under prefers-reduced-motion.
  */
-// Symbols only, ordered light -> heavy by visual weight.
 const RAMP = ".,:;'-+/\\|!*=%#&$@";
 const LIGHT = RAMP.slice(0, 10); // background field
 const HEAVY = RAMP.slice(10); // hooded figure
 
 const CELL_W = 11;
 const CELL_H = 18;
-const LENS = 130; // px radius
-const FPS = 24;
+const RADIUS = 110; // px, cursor push radius
+const FPS = 45;
 
-type Cell = { ch: string; dense: boolean; face: boolean };
+type Cell = {
+  hx: number; // home position (px)
+  hy: number;
+  ox: number; // offset from home
+  oy: number;
+  vx: number;
+  vy: number;
+  ch: string;
+  dense: boolean; // part of the figure
+  face: boolean; // the empty face: never drawn
+};
+
+/** Stroke glyph for a motion direction (screen y points down). */
+function stroke(dx: number, dy: number): string {
+  const a = ((Math.atan2(dy, dx) * 180) / Math.PI + 180) % 180; // 0..180
+  if (a < 22.5 || a >= 157.5) return "-";
+  if (a < 67.5) return "\\";
+  if (a < 112.5) return "|";
+  return "/";
+}
 
 export function CipherField() {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -32,25 +50,21 @@ export function CipherField() {
     let cols = 0;
     let rows = 0;
     let cells: Cell[] = [];
-    let dpr = 1;
     let raf = 0;
     let last = 0;
-    let t = 0;
 
-    // Lens follows the pointer with easing; wanders on its own when idle.
-    const lens = { x: -999, y: -999, tx: -999, ty: -999 };
-    let lastMove = -1e9;
+    const ptr = { x: -9999, y: -9999, vx: 0, vy: 0, px: -9999, py: -9999, active: false };
+    const waves: Array<{ x: number; y: number; r: number; life: number }> = [];
 
     const rand = (s: string) => s[(Math.random() * s.length) | 0]!;
 
     /** Hooded figure as a density mask, sampled from an offscreen path. */
-    function figureMask(w: number, h: number) {
-      const show = w >= 900;
+    function figureMask(w: number) {
       const m = document.createElement("canvas");
       m.width = cols;
       m.height = rows;
       const g = m.getContext("2d")!;
-      if (show) {
+      if (w >= 900) {
         const fh = rows * 0.78;
         const fw = fh * 0.62 * (CELL_H / CELL_W);
         const ox = cols * 0.8 - fw / 2;
@@ -65,8 +79,7 @@ export function CipherField() {
         g.bezierCurveTo(...P(0.88, 0.74), ...P(0.98, 0.82), ...P(1.08, 1));
         g.closePath();
         g.fill();
-        // The empty face: anonymity.
-        g.fillStyle = "#f00";
+        g.fillStyle = "#f00"; // the empty face: anonymity
         g.beginPath();
         g.ellipse(...P(0.5, 0.36), fw * 0.17, fh * 0.17, 0, 0, Math.PI * 2);
         g.fill();
@@ -79,7 +92,7 @@ export function CipherField() {
     }
 
     function resize() {
-      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
       const w = window.innerWidth;
       const h = window.innerHeight;
       canvas.width = w * dpr;
@@ -88,15 +101,78 @@ export function CipherField() {
       canvas.style.height = `${h}px`;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.font = `13px ui-monospace, "SF Mono", Menlo, monospace`;
-      ctx.textBaseline = "top";
+      ctx.textBaseline = "middle";
+      ctx.textAlign = "center";
       cols = Math.ceil(w / CELL_W);
       rows = Math.ceil(h / CELL_H);
-      const mask = figureMask(w, h);
+      const mask = figureMask(w);
       cells = Array.from({ length: cols * rows }, (_, i) => {
-        const { dense, face } = mask(i % cols, (i / cols) | 0);
-        return { ch: dense ? rand(HEAVY) : rand(LIGHT), dense, face };
+        const c = i % cols;
+        const r = (i / cols) | 0;
+        const { dense, face } = mask(c, r);
+        return {
+          hx: c * CELL_W + CELL_W / 2,
+          hy: r * CELL_H + CELL_H / 2,
+          ox: 0,
+          oy: 0,
+          vx: 0,
+          vy: 0,
+          ch: dense ? rand(HEAVY) : rand(LIGHT),
+          dense,
+          face,
+        };
       });
       draw();
+    }
+
+    function physics() {
+      // Pointer velocity (for the "sweep"), decays when the pointer stops.
+      if (ptr.px > -9000) {
+        ptr.vx = ptr.vx * 0.5 + (ptr.x - ptr.px) * 0.5;
+        ptr.vy = ptr.vy * 0.5 + (ptr.y - ptr.py) * 0.5;
+      }
+      ptr.px = ptr.x;
+      ptr.py = ptr.y;
+      for (const wv of waves) {
+        wv.r += 14;
+        wv.life -= 1;
+      }
+      for (let i = waves.length - 1; i >= 0; i--) if (waves[i]!.life <= 0) waves.splice(i, 1);
+
+      const R2 = RADIUS * RADIUS;
+      for (const c of cells) {
+        if (c.face) continue;
+        const x = c.hx + c.ox;
+        const y = c.hy + c.oy;
+        const heavy = c.dense ? 0.45 : 1; // the figure resists more
+        if (ptr.active) {
+          const dx = x - ptr.x;
+          const dy = y - ptr.y;
+          const d2 = dx * dx + dy * dy;
+          if (d2 < R2 && d2 > 0.01) {
+            const d = Math.sqrt(d2);
+            const f = (1 - d / RADIUS) ** 2;
+            c.vx += (dx / d) * f * 3.2 * heavy + ptr.vx * f * 0.12 * heavy;
+            c.vy += (dy / d) * f * 3.2 * heavy + ptr.vy * f * 0.12 * heavy;
+          }
+        }
+        for (const wv of waves) {
+          const dx = x - wv.x;
+          const dy = y - wv.y;
+          const d = Math.hypot(dx, dy) || 1;
+          const band = Math.abs(d - wv.r);
+          if (band < 26) {
+            const f = (1 - band / 26) * (wv.life / 40) * 4 * heavy;
+            c.vx += (dx / d) * f;
+            c.vy += (dy / d) * f;
+          }
+        }
+        const k = c.dense ? 0.11 : 0.07; // spring back home
+        c.vx = (c.vx - c.ox * k) * 0.84;
+        c.vy = (c.vy - c.oy * k) * 0.84;
+        c.ox += c.vx;
+        c.oy += c.vy;
+      }
     }
 
     function draw() {
@@ -105,37 +181,20 @@ export function CipherField() {
       ctx.clearRect(0, 0, w, h);
       const cx = w / 2;
       const cy = h * 0.46;
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          const cell = cells[r * cols + c]!;
-          const x = c * CELL_W;
-          const y = r * CELL_H;
-          // Fade out behind the headline + prompt so text stays readable.
-          const dxC = (x - cx) / (w * 0.32);
-          const dyC = (y - cy) / (h * 0.3);
-          const calm = Math.min(1, Math.max(0, Math.hypot(dxC, dyC) - 0.55));
-          if (cell.face) {
-            if (calm > 0.1 && (r + c) % 7 === 0) {
-              ctx.fillStyle = `rgba(236,231,222,${0.05 * calm})`;
-              ctx.fillText("·", x, y);
-            }
-            continue;
-          }
-          const d = Math.hypot(x - lens.x, y - lens.y);
-          const reveal = d < LENS ? 1 - d / LENS : 0;
-          if (reveal > 0.08) {
-            // The light: push each glyph up the weight ramp and warm it toward brass.
-            const at = RAMP.indexOf(cell.ch);
-            const lift = Math.round(reveal * (RAMP.length - 1) * 0.75);
-            const ch = RAMP[Math.min(RAMP.length - 1, Math.max(0, at) + lift)]!;
-            ctx.fillStyle = `rgba(200,164,106,${(0.12 + 0.6 * reveal * reveal) * Math.max(calm, 0.35)})`;
-            ctx.fillText(ch, x, y);
-          } else {
-            const base = cell.dense ? 0.16 : 0.055;
-            ctx.fillStyle = `rgba(236,231,222,${base * calm})`;
-            ctx.fillText(cell.ch, x, y);
-          }
-        }
+      for (const c of cells) {
+        if (c.face) continue;
+        const x = c.hx + c.ox;
+        const y = c.hy + c.oy;
+        // Stay quiet behind the headline + prompt so text remains readable.
+        const calm = Math.min(1, Math.max(0, Math.hypot((c.hx - cx) / (w * 0.32), (c.hy - cy) / (h * 0.3)) - 0.55));
+        if (calm <= 0) continue;
+        const disp = Math.hypot(c.ox, c.oy);
+        const speed = Math.hypot(c.vx, c.vy);
+        const ch = speed > 0.9 ? stroke(c.vx, c.vy) : disp > 3 ? stroke(c.ox, c.oy) : c.ch;
+        const base = c.dense ? 0.17 : 0.06;
+        const a = Math.min(0.5, base + disp * 0.006 + speed * 0.02) * calm;
+        ctx.fillStyle = `rgba(236,231,222,${a})`;
+        ctx.fillText(ch, x, y);
       }
     }
 
@@ -143,38 +202,29 @@ export function CipherField() {
       raf = requestAnimationFrame(tick);
       if (now - last < 1000 / FPS) return;
       last = now;
-      t += 1;
-      // Idle: let the lens wander on a slow Lissajous path.
-      if (now - lastMove > 4000) {
-        const w = window.innerWidth;
-        const h = window.innerHeight;
-        lens.tx = w * (0.5 + 0.38 * Math.sin(t / 97));
-        lens.ty = h * (0.5 + 0.34 * Math.sin(t / 61 + 1));
-      }
-      lens.x += (lens.tx - lens.x) * 0.18;
-      lens.y += (lens.ty - lens.y) * 0.18;
-      // Ciphertext keeps changing, a little at a time.
-      for (let i = 0; i < cells.length * 0.02; i++) {
-        const cell = cells[(Math.random() * cells.length) | 0]!;
-        if (!cell.face) cell.ch = cell.dense ? rand(HEAVY) : rand(LIGHT);
+      physics();
+      // Ciphertext keeps changing, a little at a time (only glyphs at rest).
+      for (let i = 0; i < cells.length * 0.01; i++) {
+        const c = cells[(Math.random() * cells.length) | 0]!;
+        if (!c.face && Math.abs(c.ox) + Math.abs(c.oy) < 1) c.ch = c.dense ? rand(HEAVY) : rand(LIGHT);
       }
       draw();
     }
 
     const onMove = (e: PointerEvent) => {
-      lens.tx = e.clientX;
-      lens.ty = e.clientY;
-      if (lens.x < -900) {
-        lens.x = lens.tx;
-        lens.y = lens.ty;
+      if (ptr.px < -9000) {
+        ptr.px = e.clientX;
+        ptr.py = e.clientY;
       }
-      lastMove = performance.now();
-      if (reduce) {
-        lens.x = lens.tx;
-        lens.y = lens.ty;
-        draw();
-      }
+      ptr.x = e.clientX;
+      ptr.y = e.clientY;
+      ptr.active = true;
     };
+    const onLeave = () => {
+      ptr.active = false;
+      ptr.vx = ptr.vy = 0;
+    };
+    const onDown = (e: PointerEvent) => waves.push({ x: e.clientX, y: e.clientY, r: 0, life: 40 });
     const onVis = () => {
       cancelAnimationFrame(raf);
       if (!document.hidden && !reduce) raf = requestAnimationFrame(tick);
@@ -182,13 +232,21 @@ export function CipherField() {
 
     resize();
     window.addEventListener("resize", resize);
-    window.addEventListener("pointermove", onMove, { passive: true });
-    document.addEventListener("visibilitychange", onVis);
-    if (!reduce) raf = requestAnimationFrame(tick);
+    if (!reduce) {
+      window.addEventListener("pointermove", onMove, { passive: true });
+      window.addEventListener("pointerdown", onDown, { passive: true });
+      document.addEventListener("pointerleave", onLeave);
+      window.addEventListener("blur", onLeave);
+      document.addEventListener("visibilitychange", onVis);
+      raf = requestAnimationFrame(tick);
+    }
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", resize);
       window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerdown", onDown);
+      document.removeEventListener("pointerleave", onLeave);
+      window.removeEventListener("blur", onLeave);
       document.removeEventListener("visibilitychange", onVis);
     };
   }, []);
