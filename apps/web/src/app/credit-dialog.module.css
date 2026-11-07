@@ -319,3 +319,17 @@
     font-size: 12px;
   }
 }
+
+.code {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: #0f1012;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre;
+  overflow-x: auto;
+  color: var(--paper-dim);
+}

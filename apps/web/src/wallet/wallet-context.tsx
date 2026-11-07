@@ -31,6 +31,8 @@ interface WalletState {
   source: Source | null;
   /** In-memory inference wallet; null until unlocked. Never persisted. */
   inference: LocalAccount | null;
+  /** Same key as hex, only for the explicit "Use in your editor" reveal. Never persisted. */
+  inferenceKey: `0x${string}` | null;
   busy: boolean;
   error: string | null;
   /** Sends a deposit from the connected wallet; null if this wallet type can't fund yet. */
@@ -79,6 +81,7 @@ function WalletStateProvider({ children }: { children: React.ReactNode }) {
 
   const [nearAccount, setNearAccount] = useState<string | null>(null);
   const [inference, setInference] = useState<LocalAccount | null>(null);
+  const [inferenceKey, setInferenceKey] = useState<`0x${string}` | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [creditOpen, setCreditOpen] = useState(false);
@@ -116,6 +119,7 @@ function WalletStateProvider({ children }: { children: React.ReactNode }) {
   // A different (or no) source wallet means the old inference key must go.
   useEffect(() => {
     setInference(null);
+    setInferenceKey(null);
     setError(null);
   }, [source?.chain, source?.address]);
 
@@ -151,6 +155,7 @@ function WalletStateProvider({ children }: { children: React.ReactNode }) {
       const key = deriveInferenceKey(sig, source);
       sig.fill(0);
       setInference(privateKeyToAccount(key));
+      setInferenceKey(key);
     } catch (e) {
       setError((e as Error).message ?? String(e));
     } finally {
@@ -172,6 +177,7 @@ function WalletStateProvider({ children }: { children: React.ReactNode }) {
 
   const disconnect = useCallback(async () => {
     setInference(null);
+    setInferenceKey(null);
     if (source?.chain === "near") {
       await (await nearConnector()).disconnect().catch(() => {});
       setNearAccount(null);
@@ -192,12 +198,13 @@ function WalletStateProvider({ children }: { children: React.ReactNode }) {
     creditOpen,
     setCreditOpen,
     inference,
+    inferenceKey,
     busy,
     error,
     connectEvmOrSolana: () => void open({ view: "Connect" }),
     connectNear,
     unlock,
-    lock: () => setInference(null),
+    lock: () => (setInference(null), setInferenceKey(null)),
     disconnect,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

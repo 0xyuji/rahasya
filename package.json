@@ -10,7 +10,8 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "e2e": "npm run e2e -w @pay/rail --",
-    "bot": "npm run start -w @pay/tg-bot"
+    "bot": "npm run start -w @pay/tg-bot",
+    "proxy": "node packages/proxy/src/cli.ts"
   },
   "engines": {
     "node": ">=22"

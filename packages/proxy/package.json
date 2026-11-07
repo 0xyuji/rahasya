@@ -1,0 +1,13 @@
+{
+  "name": "@pay/proxy",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local OpenAI-compatible proxy: use your inference wallet's credit from opencode, Cursor, SillyTavern and other tools.",
+  "bin": { "naisho": "./src/cli.ts" },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --test \"src/**/*.test.ts\"",
+    "start": "node src/cli.ts serve"
+  }
+}

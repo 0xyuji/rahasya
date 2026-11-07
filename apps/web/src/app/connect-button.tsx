@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useCredit } from "../wallet/use-credit";
 import { useWallet } from "../wallet/wallet-context";
 import { CreditDialog } from "./credit-dialog";
+import { EditorDialog } from "./editor-dialog";
 import s from "./connect-button.module.css";
 
 const short = (a: string) => (a.length > 16 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a);
@@ -13,6 +14,7 @@ export function ConnectButton() {
   const w = useWallet();
   const [open, setOpen] = useState(false);
   const { creditUsd, idleUsdc, refresh } = useCredit();
+  const [editor, setEditor] = useState(false);
   const root = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -89,6 +91,12 @@ export function ConnectButton() {
                   <span className={s.sub}>Pay with any token from your wallet</span>
                 </button>
               )}
+              {w.inference && (
+                <button role="menuitem" className={s.item} onClick={() => (setOpen(false), setEditor(true))}>
+                  <span>Use in your editor</span>
+                  <span className={s.sub}>opencode, Cursor, SillyTavern, any OpenAI-compatible tool</span>
+                </button>
+              )}
               <p className={s.hint}>
                 The inference wallet is recreated from your signature each time you unlock. It is never stored or sent anywhere.
               </p>
@@ -109,6 +117,7 @@ export function ConnectButton() {
         </div>
       )}
       {w.error && <p className={s.error}>{w.error}</p>}
+      <EditorDialog open={editor} onClose={() => setEditor(false)} />
       <CreditDialog open={w.creditOpen} onClose={() => w.setCreditOpen(false)} onCredited={refresh} />
     </div>
   );
