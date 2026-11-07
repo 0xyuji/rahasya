@@ -22,7 +22,7 @@ export default function Home() {
           <h1 className={s.headline}>
             Speak <em>freely.</em>
           </h1>
-          <p className={s.sub}>Uncensored models, paid with whatever token you hold. No account, no card, no logs.</p>
+          <p className={s.sub}>Uncensored models, paid with whatever token you hold. No account. No card.</p>
           <Prompt />
         </div>
       </main>

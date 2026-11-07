@@ -1,0 +1,103 @@
+"use client";
+
+import { modelsForMode, type ModelDef, type PrivacyMode, type PrivacyTier } from "@pay/rail/browser";
+import { useEffect, useId, useRef, useState } from "react";
+import s from "./model-picker.module.css";
+
+const TIER_LABEL: Record<PrivacyTier, string> = {
+  tee: "Enclave, end-to-end encrypted",
+  private: "Venice-hosted, not retained",
+  anonymized: "Third-party host, identity stripped",
+};
+const TIER_ORDER: PrivacyTier[] = ["anonymized", "private", "tee"];
+
+const fmt = (n: number) => (n < 1 ? `$${n.toFixed(2).replace(/0$/, "")}` : `$${n % 1 ? n.toFixed(2) : n}`);
+export const priceLine = (m: ModelDef) => `${fmt(m.fallbackPrice.in)} in · ${fmt(m.fallbackPrice.out)} out / 1M tokens`;
+export const tierLine = (t: PrivacyTier) => TIER_LABEL[t];
+
+export function ModelPicker({ mode, value, onChange }: { mode: PrivacyMode; value: string; onChange: (key: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
+  const root = useRef<HTMLDivElement>(null);
+  const listId = useId();
+
+  const models = modelsForMode(mode).sort((a, b) => TIER_ORDER.indexOf(a.tier) - TIER_ORDER.indexOf(b.tier));
+  const current = models.find((m) => m.key === value) ?? models[0]!;
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => !root.current?.contains(e.target as Node) && setOpen(false);
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  useEffect(() => {
+    if (open) setActive(Math.max(0, models.findIndex((m) => m.key === current.key)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  const pick = (m: ModelDef) => {
+    onChange(m.key);
+    setOpen(false);
+  };
+
+  const onKey = (e: React.KeyboardEvent) => {
+    if (!open && (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter" || e.key === " ")) {
+      e.preventDefault();
+      setOpen(true);
+      return;
+    }
+    if (!open) return;
+    if (e.key === "Escape") setOpen(false);
+    else if (e.key === "ArrowDown") setActive((i) => Math.min(models.length - 1, i + 1));
+    else if (e.key === "ArrowUp") setActive((i) => Math.max(0, i - 1));
+    else if (e.key === "Enter") pick(models[active]!);
+    else return;
+    e.preventDefault();
+  };
+
+  let lastTier: PrivacyTier | undefined;
+  return (
+    <div className={s.root} ref={root} onKeyDown={onKey}>
+      <button
+        type="button"
+        className={s.trigger}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={listId}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span className={s.triggerLabel}>{current.label.replace(" (TEE)", "")}</span>
+        <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden className={open ? s.chevUp : undefined}>
+          <path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {open && (
+        <ul className={s.list} role="listbox" id={listId} aria-label="Model">
+          {models.map((m, i) => {
+            const header = m.tier !== lastTier ? TIER_LABEL[m.tier] : null;
+            lastTier = m.tier;
+            return (
+              <li key={m.key} role="presentation">
+                {header && <div className={s.group}>{header}</div>}
+                <div
+                  role="option"
+                  aria-selected={m.key === current.key}
+                  className={`${s.option} ${i === active ? s.active : ""}`}
+                  onMouseEnter={() => setActive(i)}
+                  onClick={() => pick(m)}
+                >
+                  <span className={s.optName}>
+                    {m.label.replace(" (TEE)", "")}
+                    {m.key === current.key && <span className={s.check}>Selected</span>}
+                  </span>
+                  <span className={s.optMeta}>{priceLine(m)}</span>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
