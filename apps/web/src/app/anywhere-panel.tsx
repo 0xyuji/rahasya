@@ -168,6 +168,13 @@ export function AnywherePanel({ onCredited }: { onCredited: () => void }) {
               <dt>Valid for</dt>
               <dd>{countdown}</dd>
             </dl>
+            {t.blockchain === "zec" && (
+              <p className={s.fine}>
+                Zcash: this is a transparent (t1…) address, so the amount is visible on-chain, but not who sent it from a shielded wallet. Send from spendable
+                (confirmed) funds and leave room for the network fee; anything between the two amounts above works. If your wallet won&apos;t send to a transparent
+                address, allow it in its privacy settings or shield your funds first. Arrival takes about 8–10 minutes.
+              </p>
+            )}
             {action.state === "INCOMPLETE" && (
               <p className={s.warn}>Less than the minimum has arrived so far. Send the rest before the timer ends, or it's refunded to your refund address.</p>
             )}
