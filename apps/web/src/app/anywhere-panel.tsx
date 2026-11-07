@@ -173,6 +173,9 @@ export function AnywherePanel({ onCredited }: { onCredited: () => void }) {
                 Zcash: this is a transparent (t1…) address, so the amount is visible on-chain, but not who sent it from a shielded wallet. Send from spendable
                 (confirmed) funds and leave room for the network fee; anything between the two amounts above works. If your wallet won&apos;t send to a transparent
                 address, allow it in its privacy settings or shield your funds first. Arrival takes about 8–10 minutes.
+                <br />
+                Sending from the Ironwood pool needs an Ironwood-ready wallet (NU6.3). If your wallet errors (for example &quot;No feasible note selection
+                found&quot;), update it first; Zodl, Cake Wallet, Vizor, Zkool and Zingo support Ironwood. Ywallet does not.
               </p>
             )}
             {action.state === "INCOMPLETE" && (
