@@ -1,0 +1,183 @@
+import { silentLogger, type Logger } from "../log.ts";
+import { VeniceInsufficientBalance, type VeniceClient } from "../venice/client.ts";
+import { attest, decryptStream, e2eeRequest, newSession, type AttestationReport } from "../venice/e2ee.ts";
+import { costUsd, parseVenicePrices, resolveModel, type LivePrices, type ModelDef, type PrivacyMode } from "./models.ts";
+
+export interface ChatMessage {
+  role: "system" | "user" | "assistant";
+  content: string;
+}
+
+export interface ChatRequest {
+  mode: PrivacyMode;
+  /** Key in MODELS; defaults to the mode's chat model. */
+  model?: string;
+  messages: ChatMessage[];
+  maxTokens?: number;
+  temperature?: number;
+  reasoningEffort?: "low" | "medium" | "high";
+  /** Skip the model's thinking phase (cheaper/faster for short tasks). */
+  noThinking?: boolean;
+  /** Ask for JSON; uses json_schema when supported, else prompt instructions (caller validates). */
+  json?: { name: string; schema: Record<string, unknown> };
+}
+
+export type ChatDelta = { type: "text" | "reasoning"; text: string };
+
+export interface ChatMeta {
+  model: ModelDef;
+  mode: PrivacyMode;
+  e2ee: boolean;
+  attestation?: AttestationReport;
+  /** Count of plaintext chunks received on an E2EE request (should be 0). */
+  plaintextChunks: number;
+}
+
+export interface ChatResult extends ChatMeta {
+  text: string;
+  reasoning: string;
+  costUsd?: number;
+}
+
+export interface VeniceChatOptions {
+  venice: VeniceClient;
+  /** Called on HTTP 402; should refill credit and resolve true if a retry makes sense. */
+  onLowBalance?: () => Promise<boolean>;
+  /** How long one attestation is reused before re-attesting (default 10 min). */
+  attestationTtlMs?: number;
+  log?: Logger;
+}
+
+/**
+ * One chat entry point for both modes.
+ *  - anonymous: plain streaming request.
+ *  - private:   fresh attestation (cached briefly) -> E2EE request -> decrypt stream.
+ * Refuses rather than downgrading: a private request never goes out in plaintext.
+ */
+export class VeniceChat {
+  private readonly o: VeniceChatOptions;
+  private readonly log: Logger;
+  private readonly attestations = new Map<string, AttestationReport>();
+  private prices?: { at: number; map: LivePrices };
+
+  constructor(opts: VeniceChatOptions) {
+    this.o = opts;
+    this.log = (opts.log ?? silentLogger).child("chat");
+  }
+
+  async livePrices(): Promise<LivePrices> {
+    if (this.prices && Date.now() - this.prices.at < 10 * 60_000) return this.prices.map;
+    try {
+      this.prices = { at: Date.now(), map: parseVenicePrices((await this.o.venice.models("text")) as never) };
+    } catch (e) {
+      this.log.warn("price fetch failed; using fallback prices", { err: String(e) });
+      this.prices = { at: Date.now(), map: new Map() };
+    }
+    return this.prices.map;
+  }
+
+  /** Fresh-nonce attestation for a TEE model, reused for attestationTtlMs. */
+  async attestation(model: ModelDef, force = false): Promise<AttestationReport> {
+    const cached = this.attestations.get(model.id);
+    const ttl = this.o.attestationTtlMs ?? 10 * 60_000;
+    if (!force && cached && Date.now() - Date.parse(cached.fetchedAt) < ttl) return cached;
+    const report = await attest({ model: model.id, authHeaders: (u) => this.o.venice.authHeaders(u) });
+    this.attestations.set(model.id, report);
+    return report;
+  }
+
+  /** Stream deltas; `meta` resolves once the request is accepted. */
+  async stream(req: ChatRequest): Promise<{ meta: ChatMeta; deltas: AsyncGenerator<ChatDelta> }> {
+    const model = resolveModel(req.mode, req.model);
+    const messages = this.withJsonInstructions(req, model);
+    const body: Record<string, unknown> = {
+      model: model.id,
+      messages,
+      ...(req.maxTokens ? { max_tokens: req.maxTokens } : {}),
+      ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
+      ...(req.reasoningEffort ? { reasoning_effort: req.reasoningEffort } : {}),
+      venice_parameters: { include_venice_system_prompt: false, ...(req.noThinking ? { disable_thinking: true } : {}) },
+    };
+    if (req.json && model.structuredOutputs) {
+      body.response_format = { type: "json_schema", json_schema: { ...req.json, strict: true } };
+    }
+
+    if (!model.e2ee) {
+      const res = await this.withRefill(() => this.o.venice.chatStream(body));
+      const meta: ChatMeta = { model, mode: req.mode, e2ee: false, plaintextChunks: 0 };
+      return { meta, deltas: plainDeltas(res) };
+    }
+
+    const report = await this.attestation(model);
+    if (!report.ok) throw new Error(`attestation failed for ${model.label}; not sending`);
+    const session = newSession(report);
+    const enc = e2eeRequest(session, body as never);
+    const res = await this.withRefill(() => this.o.venice.chatStream(enc.body, enc.headers));
+    const meta: ChatMeta = { model, mode: req.mode, e2ee: true, attestation: report, plaintextChunks: 0 };
+    const deltas = (async function* () {
+      try {
+        for await (const d of decryptStream(res, session)) {
+          if (!d.encrypted) meta.plaintextChunks++;
+          yield { type: d.field === "reasoning" ? "reasoning" : "text", text: d.text } as ChatDelta;
+        }
+      } finally {
+        session.clientPriv.fill(0);
+      }
+    })();
+    return { meta, deltas };
+  }
+
+  /** Non-streaming convenience: collect the whole reply. */
+  async complete(req: ChatRequest): Promise<ChatResult> {
+    const { meta, deltas } = await this.stream(req);
+    let text = "";
+    let reasoning = "";
+    for await (const d of deltas) d.type === "text" ? (text += d.text) : (reasoning += d.text);
+    return { ...meta, text, reasoning };
+  }
+
+  private withJsonInstructions(req: ChatRequest, model: ModelDef): ChatMessage[] {
+    if (!req.json || model.structuredOutputs) return req.messages;
+    const instr: ChatMessage = {
+      role: "system",
+      content: `Respond with ONLY a JSON object matching this JSON Schema, no prose, no code fences:\n${JSON.stringify(req.json.schema)}`,
+    };
+    return [instr, ...req.messages];
+  }
+
+  private async withRefill(call: () => Promise<Response>): Promise<Response> {
+    try {
+      return await call();
+    } catch (e) {
+      if (e instanceof VeniceInsufficientBalance && this.o.onLowBalance && (await this.o.onLowBalance())) return call();
+      throw e;
+    }
+  }
+}
+
+async function* plainDeltas(res: Response): AsyncGenerator<ChatDelta> {
+  const reader = res.body!.getReader();
+  const dec = new TextDecoder();
+  let buf = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) return;
+    buf += dec.decode(value, { stream: true });
+    let nl: number;
+    while ((nl = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, nl).trim();
+      buf = buf.slice(nl + 1);
+      if (!line.startsWith("data:")) continue;
+      const data = line.slice(5).trim();
+      if (data === "[DONE]") return;
+      try {
+        const delta = (JSON.parse(data) as { choices?: Array<{ delta?: { content?: string; reasoning_content?: string } }> })
+          .choices?.[0]?.delta;
+        if (delta?.reasoning_content) yield { type: "reasoning", text: delta.reasoning_content };
+        if (delta?.content) yield { type: "text", text: delta.content };
+      } catch {}
+    }
+  }
+}
+
+export { costUsd };

@@ -1,0 +1,16 @@
+{
+  "name": "@pay/tg-bot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --test --experimental-strip-types 'src/**/*.test.ts'",
+    "start": "tsx src/main.ts"
+  },
+  "dependencies": {
+    "@pay/rail": "^0.1.0",
+    "grammy": "^1.46.0",
+    "zod": "^4.6.7"
+  }
+}
