@@ -46,7 +46,7 @@ export function CipherField() {
     let streaks: Array<{ x: number; y: number; len: number; vx: number; life: number; ch: string }> = [];
 
     const rand = (s: string) => s[(Math.random() * s.length) | 0]!;
-    const g = (x: number, s: number) => Math.exp(-(x / s) ** 2);
+    const g = (x: number, s: number) => Math.exp(-((x / s) ** 2));
 
     /** Mask surface height at normalized (u, v) ∈ [-1, 1]², or null outside / in a hole. */
     function mask(u: number, v: number): number | null {
