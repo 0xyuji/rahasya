@@ -35,6 +35,9 @@ interface WalletState {
   error: string | null;
   /** Sends a deposit from the connected wallet; null if this wallet type can't fund yet. */
   sender: DepositSender | null;
+  /** The Add credit dialog, openable from anywhere (menu, chat errors). */
+  creditOpen: boolean;
+  setCreditOpen: (open: boolean) => void;
   connectEvmOrSolana: () => void;
   connectNear: () => Promise<void>;
   unlock: () => Promise<void>;
@@ -78,6 +81,7 @@ function WalletStateProvider({ children }: { children: React.ReactNode }) {
   const [inference, setInference] = useState<LocalAccount | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [creditOpen, setCreditOpen] = useState(false);
 
   // Restore a NEAR session if the connector auto-connected.
   useEffect(() => {
@@ -185,6 +189,8 @@ function WalletStateProvider({ children }: { children: React.ReactNode }) {
   const value: WalletState = {
     source,
     sender,
+    creditOpen,
+    setCreditOpen,
     inference,
     busy,
     error,

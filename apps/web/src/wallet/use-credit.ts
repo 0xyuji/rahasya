@@ -4,6 +4,11 @@ import { useCallback, useEffect, useState } from "react";
 import { inferenceUsdc, veniceFor } from "../funding/flow";
 import { useWallet } from "./wallet-context";
 
+/** Fire after anything that spends or adds credit; every useCredit() refreshes. */
+export function notifyCreditChanged() {
+  window.dispatchEvent(new Event("credit:changed"));
+}
+
 /** Venice credit + idle USDC on the inference wallet, refreshed every 30s while unlocked. */
 export function useCredit() {
   const { inference } = useWallet();
@@ -23,7 +28,12 @@ export function useCredit() {
     if (!inference) return;
     void refresh();
     const t = setInterval(refresh, 30_000);
-    return () => clearInterval(t);
+    const onChange = () => void refresh();
+    window.addEventListener("credit:changed", onChange);
+    return () => {
+      clearInterval(t);
+      window.removeEventListener("credit:changed", onChange);
+    };
   }, [inference, refresh]);
 
   return { creditUsd, idleUsdc, refresh };

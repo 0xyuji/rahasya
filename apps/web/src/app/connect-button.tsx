@@ -12,7 +12,6 @@ const CHAIN: Record<string, string> = { evm: "Base", sol: "Solana", near: "NEAR"
 export function ConnectButton() {
   const w = useWallet();
   const [open, setOpen] = useState(false);
-  const [credit, setCredit] = useState(false);
   const { creditUsd, idleUsdc, refresh } = useCredit();
   const root = useRef<HTMLDivElement>(null);
 
@@ -85,7 +84,7 @@ export function ConnectButton() {
                 </div>
               )}
               {w.inference && (
-                <button role="menuitem" className={s.item} onClick={() => (setOpen(false), setCredit(true))}>
+                <button role="menuitem" className={s.item} onClick={() => (setOpen(false), w.setCreditOpen(true))}>
                   <span>Add credit</span>
                   <span className={s.sub}>Pay with any token from your wallet</span>
                 </button>
@@ -110,7 +109,7 @@ export function ConnectButton() {
         </div>
       )}
       {w.error && <p className={s.error}>{w.error}</p>}
-      <CreditDialog open={credit} onClose={() => setCredit(false)} onCredited={refresh} />
+      <CreditDialog open={w.creditOpen} onClose={() => w.setCreditOpen(false)} onCredited={refresh} />
     </div>
   );
 }
