@@ -3,18 +3,17 @@
 import { useEffect, useRef } from "react";
 
 /**
- * Landing backdrop: a field of ciphertext. Under the pointer ("decryption
- * lens") the glyphs resolve into plaintext; elsewhere they flicker like
- * encrypted traffic. On wide screens a hooded figure with an empty face is
+ * Landing backdrop: a field of flickering symbols. The pointer is a light:
+ * glyphs under it brighten, warm and shift to heavier symbols. On wide screens a hooded figure with an empty face is
  * drawn in denser glyphs. Original artwork, drawn procedurally.
  *
  * Canvas 2D, ~24 fps, paused when the tab is hidden, static under
  * prefers-reduced-motion. Purely decorative: aria-hidden, no pointer events.
  */
-const CIPHER = "0123456789abcdef";
-const DENSE = "#%@&$8*+=";
-const PLAINTEXT =
-  "just between us · ask anything · no account · no card · sealed to the enclave · say it under your breath · nobody else reads this · ";
+// Symbols only, ordered light -> heavy by visual weight.
+const RAMP = ".,:;'-+/\\|!*=%#&$@";
+const LIGHT = RAMP.slice(0, 10); // background field
+const HEAVY = RAMP.slice(10); // hooded figure
 
 const CELL_W = 11;
 const CELL_H = 18;
@@ -95,7 +94,7 @@ export function CipherField() {
       const mask = figureMask(w, h);
       cells = Array.from({ length: cols * rows }, (_, i) => {
         const { dense, face } = mask(i % cols, (i / cols) | 0);
-        return { ch: dense ? rand(DENSE) : rand(CIPHER), dense, face };
+        return { ch: dense ? rand(HEAVY) : rand(LIGHT), dense, face };
       });
       draw();
     }
@@ -124,9 +123,12 @@ export function CipherField() {
           }
           const d = Math.hypot(x - lens.x, y - lens.y);
           const reveal = d < LENS ? 1 - d / LENS : 0;
-          if (reveal > 0.15) {
-            const ch = PLAINTEXT[(r * 37 + c) % PLAINTEXT.length]!;
-            ctx.fillStyle = `rgba(200,164,106,${(0.18 + 0.55 * reveal) * Math.max(calm, 0.35)})`;
+          if (reveal > 0.08) {
+            // The light: push each glyph up the weight ramp and warm it toward brass.
+            const at = RAMP.indexOf(cell.ch);
+            const lift = Math.round(reveal * (RAMP.length - 1) * 0.75);
+            const ch = RAMP[Math.min(RAMP.length - 1, Math.max(0, at) + lift)]!;
+            ctx.fillStyle = `rgba(200,164,106,${(0.12 + 0.6 * reveal * reveal) * Math.max(calm, 0.35)})`;
             ctx.fillText(ch, x, y);
           } else {
             const base = cell.dense ? 0.16 : 0.055;
@@ -154,7 +156,7 @@ export function CipherField() {
       // Ciphertext keeps changing, a little at a time.
       for (let i = 0; i < cells.length * 0.02; i++) {
         const cell = cells[(Math.random() * cells.length) | 0]!;
-        if (!cell.face) cell.ch = cell.dense ? rand(DENSE) : rand(CIPHER);
+        if (!cell.face) cell.ch = cell.dense ? rand(HEAVY) : rand(LIGHT);
       }
       draw();
     }
