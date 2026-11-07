@@ -1,0 +1,206 @@
+.dialog {
+  width: min(460px, calc(100vw - 32px));
+  padding: 22px 22px 20px;
+  border: 1px solid var(--line-strong);
+  border-radius: 18px;
+  background: var(--ink-2);
+  color: var(--paper);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55);
+}
+.dialog::backdrop {
+  background: rgba(6, 6, 8, 0.62);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 28px;
+  letter-spacing: -0.01em;
+}
+.x {
+  border: 0;
+  background: transparent;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--paper-dim);
+  cursor: pointer;
+}
+
+.p {
+  margin: 0 0 16px;
+  color: var(--paper-dim);
+  font-size: 14px;
+}
+.label {
+  margin: 14px 0 8px;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--paper-faint);
+}
+
+.presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.preset {
+  border: 1px solid var(--line);
+  background: transparent;
+  border-radius: var(--radius-pill);
+  padding: 7px 14px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.preset:hover {
+  border-color: var(--line-strong);
+}
+.on {
+  border-color: var(--paper);
+}
+.custom {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  padding: 0 12px;
+  font-size: 14px;
+  color: var(--paper-dim);
+}
+.custom input {
+  width: 56px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--paper);
+  font: inherit;
+  padding: 7px 0;
+}
+.dim {
+  color: var(--paper-faint);
+}
+
+.primary,
+.secondary {
+  margin-top: 18px;
+  border-radius: 12px;
+  padding: 11px 16px;
+  font-size: 14.5px;
+  cursor: pointer;
+}
+.primary {
+  width: 100%;
+  border: 0;
+  background: var(--paper);
+  color: var(--ink);
+}
+.primary:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.secondary {
+  border: 1px solid var(--line-strong);
+  background: transparent;
+}
+.row {
+  display: flex;
+  gap: 10px;
+}
+.row .primary {
+  flex: 1;
+}
+
+.fine {
+  margin: 12px 0 0;
+  font-size: 12.5px;
+  color: var(--paper-faint);
+}
+.fine a {
+  color: var(--paper-dim);
+}
+.warn {
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(232, 180, 164, 0.3);
+  color: #e8b4a4;
+  font-size: 13px;
+}
+.ok {
+  margin: 14px 0 0;
+  color: var(--brass);
+  font-size: 14px;
+}
+
+.quote {
+  display: grid;
+  grid-template-columns: 92px 1fr;
+  gap: 10px 14px;
+  margin: 8px 0 0;
+  font-size: 14px;
+}
+.quote dt {
+  color: var(--paper-faint);
+}
+.quote dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.steps {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+  font-size: 14px;
+}
+.steps li {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+.mark {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 1px solid var(--paper-faint);
+  transform: translateY(-1px);
+}
+.todo {
+  color: var(--paper-faint);
+}
+.now .mark {
+  border-color: var(--brass);
+  background: var(--brass);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+.done .mark {
+  border-color: var(--paper);
+  background: var(--paper);
+}
+.fail {
+  color: #e8b4a4;
+}
+.fail .mark {
+  border-color: #e8b4a4;
+}
+@keyframes pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .now .mark {
+    animation: none;
+  }
+}

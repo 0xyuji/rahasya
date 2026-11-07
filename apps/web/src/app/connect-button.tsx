@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useCredit } from "../wallet/use-credit";
 import { useWallet } from "../wallet/wallet-context";
+import { CreditDialog } from "./credit-dialog";
 import s from "./connect-button.module.css";
 
 const short = (a: string) => (a.length > 16 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a);
@@ -10,6 +12,8 @@ const CHAIN: Record<string, string> = { evm: "Base", sol: "Solana", near: "NEAR"
 export function ConnectButton() {
   const w = useWallet();
   const [open, setOpen] = useState(false);
+  const [credit, setCredit] = useState(false);
+  const { creditUsd, idleUsdc, refresh } = useCredit();
   const root = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -27,7 +31,7 @@ export function ConnectButton() {
   let label: string;
   if (!w.source) label = "Connect wallet";
   else if (!w.inference) label = w.busy ? "Check your wallet…" : "Unlock";
-  else label = short(w.source.address);
+  else label = creditUsd === null ? short(w.source.address) : `$${creditUsd.toFixed(2)} · ${short(w.source.address)}`;
 
   const onMain = () => {
     if (w.source && !w.inference && !w.busy) return void w.unlock();
@@ -71,6 +75,21 @@ export function ConnectButton() {
                   </button>
                 </div>
               )}
+              {w.inference && (
+                <div className={s.row}>
+                  <span className={s.k}>Credit</span>
+                  <span className={s.v}>
+                    {creditUsd === null ? "…" : `$${creditUsd.toFixed(4)}`}
+                    {idleUsdc ? ` + ${idleUsdc.toFixed(2)} USDC idle` : ""}
+                  </span>
+                </div>
+              )}
+              {w.inference && (
+                <button role="menuitem" className={s.item} onClick={() => (setOpen(false), setCredit(true))}>
+                  <span>Add credit</span>
+                  <span className={s.sub}>Pay with any token from your wallet</span>
+                </button>
+              )}
               <p className={s.hint}>
                 The inference wallet is recreated from your signature each time you unlock. It is never stored or sent anywhere.
               </p>
@@ -91,6 +110,7 @@ export function ConnectButton() {
         </div>
       )}
       {w.error && <p className={s.error}>{w.error}</p>}
+      <CreditDialog open={credit} onClose={() => setCredit(false)} onCredited={refresh} />
     </div>
   );
 }

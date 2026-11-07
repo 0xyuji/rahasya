@@ -7,12 +7,14 @@ import {
   isReproducibleEvmSignature,
   type SourceChain,
 } from "@pay/rail/browser";
+import { useAppKitConnection } from "@reown/appkit-adapter-solana/react";
 import { useAppKit, useAppKitAccount, useAppKitProvider, useDisconnect } from "@reown/appkit/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { hexToBytes, type LocalAccount } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { WagmiProvider, useSignMessage } from "wagmi";
+import { evmSender, solanaSender, type DepositSender, type SolanaWallet } from "../funding/senders";
 import { initAppKit, wagmiAdapter } from "./appkit";
 import { nearConnector } from "./near";
 
@@ -31,6 +33,8 @@ interface WalletState {
   inference: LocalAccount | null;
   busy: boolean;
   error: string | null;
+  /** Sends a deposit from the connected wallet; null if this wallet type can't fund yet. */
+  sender: DepositSender | null;
   connectEvmOrSolana: () => void;
   connectNear: () => Promise<void>;
   unlock: () => Promise<void>;
@@ -64,7 +68,10 @@ function WalletStateProvider({ children }: { children: React.ReactNode }) {
   const { disconnect: disconnectAppKit } = useDisconnect();
   const evm = useAppKitAccount({ namespace: "eip155" });
   const sol = useAppKitAccount({ namespace: "solana" });
-  const { walletProvider: solProvider } = useAppKitProvider<{ signMessage(m: Uint8Array): Promise<Uint8Array> }>("solana");
+  const { walletProvider: solProvider } = useAppKitProvider<
+    { signMessage(m: Uint8Array): Promise<Uint8Array> } & SolanaWallet
+  >("solana");
+  const { connection: solConnection } = useAppKitConnection();
   const { signMessageAsync } = useSignMessage();
 
   const [nearAccount, setNearAccount] = useState<string | null>(null);
@@ -169,8 +176,15 @@ function WalletStateProvider({ children }: { children: React.ReactNode }) {
     }
   }, [source?.chain, disconnectAppKit]);
 
+  const sender: DepositSender | null = useMemo(() => {
+    if (source?.chain === "evm") return evmSender;
+    if (source?.chain === "sol" && solProvider && solConnection) return solanaSender(solProvider, solConnection, source.address);
+    return null; // NEAR funding: next step
+  }, [source?.chain, source?.address, solProvider, solConnection]);
+
   const value: WalletState = {
     source,
+    sender,
     inference,
     busy,
     error,

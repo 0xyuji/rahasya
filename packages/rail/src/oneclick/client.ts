@@ -21,7 +21,8 @@ export class OneClickClient {
     this.baseUrl = (opts.baseUrl ?? "https://1click.chaindefuser.com").replace(/\/$/, "");
     this.apiKey = opts.apiKey;
     this.timeoutMs = opts.timeoutMs ?? 20_000;
-    this.fetchImpl = opts.fetch ?? fetch;
+    // Bound: browsers throw "Illegal invocation" if window.fetch is called as a method of another object.
+    this.fetchImpl = opts.fetch ?? ((input, init) => fetch(input, init));
   }
 
   /** Supported tokens, cached for 60s (prices move; ids don't). */

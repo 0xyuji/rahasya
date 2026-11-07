@@ -68,7 +68,8 @@ export class VeniceClient {
     this.o = opts;
     this.address = opts.account.address;
     this.base = (opts.baseUrl ?? "https://api.venice.ai/api/v1").replace(/\/$/, "");
-    this.f = opts.fetch ?? fetch;
+    // Bound: browsers throw "Illegal invocation" if window.fetch is called as a method of another object.
+    this.f = opts.fetch ?? ((input, init) => fetch(input, init));
     this.log = (opts.log ?? silentLogger).child("venice");
   }
 

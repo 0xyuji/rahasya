@@ -1,0 +1,263 @@
+"use client";
+
+import { CHAIN_LABEL, type Chain, type SymbolName } from "@pay/rail/browser";
+import { useEffect, useRef, useState } from "react";
+import {
+  CREDIT_FINAL,
+  MAX_CREDIT_USD,
+  MIN_CREDIT_USD,
+  PAY_OPTIONS,
+  actions,
+  friendly,
+  quoteCredit,
+  resend,
+  runCredit,
+  type CreditAction,
+} from "../funding/flow";
+import { useWallet } from "../wallet/wallet-context";
+import s from "./credit-dialog.module.css";
+
+const PRESETS = [5, 10, 20];
+const short = (a: string) => (a.length > 16 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a);
+const explorer = (chain: Chain, tx: string) => (chain === "sol" ? `https://solscan.io/tx/${tx}` : `https://basescan.org/tx/${tx}`);
+
+type Step = { label: string; status: "todo" | "now" | "done" | "fail" };
+
+function steps(a: CreditAction): Step[] {
+  const order = ["SENDING", "SWAPPING", "TOPPING_UP", "DONE"];
+  const at = a.state === "DEPOSIT_SENT" ? "SWAPPING" : a.state === "SWAPPED" ? "TOPPING_UP" : a.state;
+  const idx = order.indexOf(at);
+  const fail = a.state === "FAILED" || a.state === "REFUNDED";
+  const mk = (i: number, label: string): Step => ({
+    label,
+    status: fail && i === 1 ? "fail" : idx > i || a.state === "DONE" ? "done" : idx === i ? "now" : "todo",
+  });
+  return [
+    mk(0, `Send ${a.quote.quote.amountInFormatted} ${a.origin.symbol} from your wallet`),
+    mk(1, "Swap to USDC on Base through NEAR Intents (about 1–2 min)"),
+    mk(2, `Add $${a.usd.toFixed(2)} of credit (signed in your browser)`),
+  ];
+}
+
+export function CreditDialog({ open, onClose, onCredited }: { open: boolean; onClose: () => void; onCredited: () => void }) {
+  const w = useWallet();
+  const ref = useRef<HTMLDialogElement>(null);
+  const options = w.source ? PAY_OPTIONS[w.source.chain] : [];
+  const [usd, setUsd] = useState(5);
+  const [pay, setPay] = useState(0);
+  const [action, setAction] = useState<CreditAction | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    const d = ref.current;
+    if (!d) return;
+    if (open && !d.open) d.showModal();
+    if (!open && d.open) d.close();
+  }, [open]);
+
+  // Resume an unfinished deposit for this wallet instead of starting a new one.
+  useEffect(() => {
+    if (!open || !w.source || !w.inference) return;
+    const pending = actions
+      .all()
+      .filter((a) => a.source.address === w.source!.address && a.inferenceAddress === w.inference!.address && !CREDIT_FINAL.has(a.state) && a.state !== "QUOTED")
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+    if (pending) {
+      setAction(pending);
+      void drive(pending.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, w.source?.address, w.inference?.address]);
+
+  async function getQuote() {
+    if (!w.source || !w.inference) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      setAction(await quoteCredit({ usd, payWith: options[pay]!, source: w.source, inferenceAddress: w.inference.address }));
+    } catch (e) {
+      setErr(friendly(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function drive(id: string) {
+    if (!w.sender || !w.inference) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const done = await runCredit(id, { send: w.sender, inference: w.inference, onUpdate: setAction });
+      setAction(done);
+      if (done.error && !CREDIT_FINAL.has(done.state)) setErr(done.error);
+      if (done.state === "DONE") onCredited();
+    } catch (e) {
+      setErr(friendly(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const close = () => {
+    if (action && CREDIT_FINAL.has(action.state)) setAction(null);
+    onClose();
+  };
+
+  const q = action?.quote.quote;
+  const feeUsd = q ? Number(q.amountInUsd) - (action?.usd ?? 0) : 0;
+
+  return (
+    <dialog ref={ref} className={s.dialog} onClose={close} onCancel={close}>
+      <div className={s.head}>
+        <h2 className={s.title}>Add credit</h2>
+        <button className={s.x} onClick={close} aria-label="Close">
+          ×
+        </button>
+      </div>
+
+      {!w.source || !w.inference ? (
+        <p className={s.p}>Connect and unlock your wallet first.</p>
+      ) : !w.sender ? (
+        <p className={s.p}>
+          {w.source.chain === "near"
+            ? "Funding from NEAR wallets is coming next. For now, connect an EVM or Solana wallet."
+            : "Your wallet isn't ready to send yet. Reconnect and try again."}
+        </p>
+      ) : !action || action.state === "EXPIRED" ? (
+        <>
+          <p className={s.p}>Credit is prepaid and spent per message. It lives on your own inference wallet, not with us.</p>
+          <div className={s.label}>Amount</div>
+          <div className={s.presets}>
+            {PRESETS.map((v) => (
+              <button key={v} className={`${s.preset} ${usd === v ? s.on : ""}`} onClick={() => setUsd(v)}>
+                ${v}
+              </button>
+            ))}
+            <label className={s.custom}>
+              $
+              <input
+                type="number"
+                min={MIN_CREDIT_USD}
+                max={MAX_CREDIT_USD}
+                step={1}
+                value={usd}
+                onChange={(e) => setUsd(Number(e.target.value))}
+                aria-label="Custom amount in USD"
+              />
+            </label>
+          </div>
+          <div className={s.label}>Pay with</div>
+          <div className={s.presets}>
+            {options.map((o, i) => (
+              <button key={`${o.chain}:${o.symbol}`} className={`${s.preset} ${pay === i ? s.on : ""}`} onClick={() => setPay(i)}>
+                {o.symbol} <span className={s.dim}>on {CHAIN_LABEL[o.chain]}</span>
+              </button>
+            ))}
+          </div>
+          {action?.state === "EXPIRED" && <p className={s.warn}>That quote expired before it was sent. Nothing moved; get a new one.</p>}
+          <button className={s.primary} disabled={busy || usd < MIN_CREDIT_USD || usd > MAX_CREDIT_USD} onClick={getQuote}>
+            {busy ? "Getting a quote…" : "Get quote"}
+          </button>
+          <p className={s.fine}>
+            Minimum ${MIN_CREDIT_USD} (Venice's minimum top-up), maximum ${MAX_CREDIT_USD}.
+          </p>
+        </>
+      ) : action.state === "QUOTED" ? (
+        <>
+          <dl className={s.quote}>
+            <dt>You send</dt>
+            <dd>
+              {q!.amountInFormatted} {action.origin.symbol} <span className={s.dim}>≈ ${Number(q!.amountInUsd).toFixed(2)}</span>
+            </dd>
+            <dt>You get</dt>
+            <dd>${action.usd.toFixed(2)} of credit</dd>
+            <dt>Swap cost</dt>
+            <dd>
+              ≈ ${Math.max(0, feeUsd).toFixed(2)} <span className={s.dim}>(rate, solver and network fees, small buffer)</span>
+            </dd>
+            <dt>From</dt>
+            <dd>
+              {short(action.source.address)} <span className={s.dim}>· refunds go back here</span>
+            </dd>
+            <dt>To</dt>
+            <dd>
+              your inference wallet {short(action.inferenceAddress)} <span className={s.dim}>on Base</span>
+            </dd>
+          </dl>
+          <p className={s.fine}>
+            Non-custodial: funds go from your wallet to your own inference wallet through NEAR Intents. We never hold them and can't reverse, freeze or recover
+            anything. You're responsible for where your funds come from.
+          </p>
+          <div className={s.row}>
+            <button className={s.secondary} onClick={() => setAction(null)} disabled={busy}>
+              Back
+            </button>
+            <button className={s.primary} onClick={() => drive(action.id)} disabled={busy}>
+              {busy ? "Confirm in your wallet…" : "Confirm and send"}
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <ol className={s.steps}>
+            {steps(action).map((st) => (
+              <li key={st.label} className={s[st.status]}>
+                <span className={s.mark} aria-hidden />
+                {st.label}
+              </li>
+            ))}
+          </ol>
+          {action.oneclickStatus && !CREDIT_FINAL.has(action.state) && <p className={s.fine}>1Click status: {action.oneclickStatus.replaceAll("_", " ").toLowerCase()}</p>}
+          {action.depositTx && (
+            <p className={s.fine}>
+              Deposit:{" "}
+              <a href={explorer(action.origin.chain, action.depositTx)} target="_blank" rel="noreferrer">
+                {short(action.depositTx)}
+              </a>
+              {action.deliveredTx && (
+                <>
+                  {" "}
+                  · Delivered:{" "}
+                  <a href={explorer("base", action.deliveredTx)} target="_blank" rel="noreferrer">
+                    {short(action.deliveredTx)}
+                  </a>
+                </>
+              )}
+            </p>
+          )}
+          {action.state === "DONE" && <p className={s.ok}>Added ${action.usd.toFixed(2)} of credit.</p>}
+          {action.state === "REFUNDED" && <p className={s.warn}>The swap couldn't complete, so {action.refunded ?? "your deposit"} was refunded to your wallet.</p>}
+          {action.state === "FAILED" && <p className={s.warn}>{action.error}</p>}
+          {action.state === "SEND_UNCONFIRMED" && (
+            <>
+              <p className={s.warn}>
+                We never got a transaction back from your wallet, and 1Click hasn't seen a deposit yet. If your wallet shows it as sent, keep waiting. If not, send
+                again; an extra deposit is refunded automatically.
+              </p>
+              <div className={s.row}>
+                <button className={s.secondary} onClick={() => drive(action.id)} disabled={busy}>
+                  Keep waiting
+                </button>
+                <button className={s.primary} onClick={() => (setAction(resend(action.id)), void drive(action.id))} disabled={busy}>
+                  Send again
+                </button>
+              </div>
+            </>
+          )}
+          {action.state === "TOPPING_UP" && action.error && !busy && (
+            <button className={s.primary} onClick={() => drive(action.id)}>
+              Retry adding credit
+            </button>
+          )}
+          {CREDIT_FINAL.has(action.state) && (
+            <button className={s.primary} onClick={close}>
+              Done
+            </button>
+          )}
+        </>
+      )}
+      {err && <p className={s.warn}>{err}</p>}
+    </dialog>
+  );
+}
