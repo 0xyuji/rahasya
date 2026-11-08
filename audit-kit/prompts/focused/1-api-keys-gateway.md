@@ -15,7 +15,7 @@ Files in scope:
   apps/web/src/server/server.test.ts (existing tests + an in-memory Redis fake: setKvForTests)
   scripts/audit/probe.ts (black-box checks)
 Context: apps/web/content/docs/api.md and protocol.md; the audit kit's 02-what-to-check.md and
-03-known-issues.md (skip K1–K14 unless worse than stated).
+03-known-issues.md (skip K1–K18 unless worse than stated).
 
 Invariants to try to break:
   I8  key plaintext never stored; authorize checks existence, expiry, allowlist, limits, rate before upstream
@@ -26,6 +26,9 @@ Invariants to try to break:
   I11 API wallet keys decrypt only for their user (AAD), created at most once per user (SET NX)
   I12 prompts/replies never logged or stored
   I13 /api/oneclick only forwards 4 routes and only quotes delivering USDC on Base
+  I17 only our server sets swap appFees/referral (client values dropped)
+  I18 every key request charged exactly once: reservation, then one correction from Venice's usage
+      (streams settle as the usage chunk passes, in meterStream), kept if no usage arrives
 
 Specifically try:
 - Getting a session for a wallet you don't control (replay, chain/address confusion, NEAR
@@ -42,5 +45,5 @@ audit-findings/. Prove findings with node tests (use setKvForTests, run with
 `node --conditions=react-server --test`) or scripts against a local dev server.
 
 Output: Markdown report following templates/findings-template.md (header, summary, findings with
-severity/invariant/file:line/scenario/proof/fix, invariant checklist for I8–I13, coverage).
+severity/invariant/file:line/scenario/proof/fix, invariant checklist for I8–I13, I17, I18, coverage).
 ```

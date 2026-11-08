@@ -22,6 +22,8 @@ Breaking any of them is **High or worse**. For each, the right column says where
 | **I14** | The local proxy listens only on 127.0.0.1, requires a token of ≥ 32 chars (constant-time compare), refuses requests with an `Origin` header, and only accepts a localhost `Host` | `proxy/server.ts`, `proxy/cli.ts` | `proxy/server.test.ts` |
 | **I15** | Pages can't be framed (wallet prompts can't be clickjacked) | `web/next.config.ts` | Probe |
 | **I16** | Third-party verifier code (`@phala/dcap-qvl`) never runs on our server or in the page: only in a worker that has no storage, no raw network, and a `fetch` limited to GET on `/api/tee/pccs/` without cookies | `web/tee/lockdown.ts`, `web/tee/intel-verify.worker.ts` | `web/tee/lockdown.test.ts` (emulated); verified in headless Chrome on the production build |
+| **I17** | Only our server decides swap fees and attribution: a client's `appFees` and `referral` are always dropped; ours come from server env (recipient, bps as an integer, capped at 100) | `web/app/api/oneclick/[...path]/route.ts` | Probe ("client appFees and referral are replaced") |
+| **I18** | Every API-key request is charged exactly once: a reservation before the upstream call, corrected once to Venice's reported cost (for streams: as soon as the usage chunk passes, so a client hanging up after `[DONE]` doesn't matter), kept in full if no usage arrives, refunded only if the upstream call failed before generating anything | `web/server/gateway.ts` (`reserve`, `meterStream`, `passthrough`, `e2ee`), `web/server/keys.ts` (`recordSpend`) | `server.test.ts` ("streamed spend settles…", "a stream without usage…") |
 
 ## B. Attack checklist (highest value first)
 
@@ -45,6 +47,18 @@ Breaking any of them is **High or worse**. For each, the right column says where
 - [ ] Anything that builds a URL or header from user input (SSRF, header injection)
 - [ ] Very large / deeply nested JSON, slow-loris streaming
 
+### Fees and metering (new in v2, High)
+- [ ] Set or influence `appFees`, `referral` or the fee recipient from the client (body shapes, duplicate keys, other routes, path casing) (I17)
+- [ ] Make our 1% fee push a quote past `checkMaxInput` (+5% + $0.50) or cause refunds
+- [ ] Make `meterStream` settle with too-low usage, settle twice, or not settle: usage split across chunks, `usage: null`, usage in every chunk, the word usage inside content, cancelling at each point (I18)
+- [ ] Partial failures of the four parallel writes in `recordSpend` (K17): can they let a key exceed its limits?
+
+### Cloudflare runtime (new in v2, Medium)
+- [ ] Client IP: can a request reach the Worker with a `cf-connecting-ip` / `x-real-ip` / `x-forwarded-for` it controls (e.g. via the `*.workers.dev` URL)? Per-IP limits (K5) depend on it
+- [ ] Per-isolate in-memory caches (Intel collateral in the relay, Venice prices): poisoning, unbounded growth, staleness
+- [ ] The relay's `redirect: "manual"`: is every redirect refused?
+- [ ] Anything server-side that still assumes Node (`Buffer`, `fs`, `process.cwd`) and fails open on Workers
+
 ### Redirect or lose a deposit (Critical)
 - [ ] A malicious or MITM'd 1Click response: is every field we act on validated? (`quoteAnywhere` checks fewer fields than `validateQuote`; memo handling)
 - [ ] localStorage tampering of a saved action (deposit address, amounts) before `runCredit` sends
@@ -59,7 +73,7 @@ Breaking any of them is **High or worse**. For each, the right column says where
 - [ ] Encryption details: HKDF parameters, nonce reuse, ephemeral key handling
 
 ### x402 / credit (High)
-- [ ] `sweepToCredit` id scheme (`sweep_<address>_<cents>`) under concurrency; double sign; retry after `validBefore`
+- [ ] `sweepToCredit` id scheme (`sweep_<address>_<seq>`, plus a Redis lock) under concurrency; double sign; retry after `validBefore`
 - [ ] The top-up `amount` override: we raise `accepts[].amount` to the chosen top-up; is anything else trusted from the 402 response?
 
 ### Derivation (Critical if broken)

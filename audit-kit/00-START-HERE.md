@@ -1,4 +1,4 @@
-# Security audit kit: Rahasya
+# Security audit kit v2: Rahasya
 
 Thanks for reviewing this. This folder has everything you need: what the system does, what must never break, what to attack first, what we already know is weak, how to run it without spending money, ready-made prompts for AI agents, and the report format.
 
@@ -12,36 +12,40 @@ Thanks for reviewing this. This folder has everything you need: what the system 
 | **Running an AI agent with repo access** (Claude Code, Codex, Cursor agent…) | This file | Paste `prompts/full-audit.md` into the agent, run inside the source folder |
 | **Running several agents in parallel** | This file | One agent per file in `prompts/focused/`. Each one is self-contained |
 | **Using a chat model without tools** (ChatGPT, Claude.ai…) | This file | `prompts/chat-only.md`; paste the files it asks for |
+| **Reviewed kit v1 already** | `05-changes-since-v1.md` | `prompts/focused/6-changes-since-v1.md` (delta audit) |
 | **Checking findings someone else reported** | `03-known-issues.md` | `prompts/triage-findings.md` |
 
-## What's in the zip
+## What's in this folder
 
 ```
 00-START-HERE.md          this file
 01-overview.md            architecture, components, trust boundaries, assets
-02-what-to-check.md       the 16 invariants + prioritized attack checklist
+02-what-to-check.md       the 18 invariants + prioritized attack checklist
 03-known-issues.md        accepted risks: don't re-report unless worse than stated
-04-how-to-run.md          setup, tests, black-box probe, safe-testing rules
+04-how-to-run.md          setup, tests, Cloudflare runtime, black-box probe, safe-testing rules
+05-changes-since-v1.md    what's new since kit v1, and the questions we most want answered
 prompts/
   full-audit.md           one agent, whole codebase
-  focused/                five area-specific prompts for parallel agents
+  focused/                six area-specific prompts for parallel agents (6 = changes since v1)
   chat-only.md            for chat models: paste-in review
   triage-findings.md      verify and de-duplicate a findings report
 templates/
   findings-template.md    severity rubric + finding format + invariant checklist
-source/                   snapshot of the code at the commit below (in the zip only)
+source/                   snapshot of the code at the commit below (tracked files only)
 ```
 
-Commit under review: see `source/COMMIT.txt` in the zip, or `git rev-parse HEAD` in the repo.
+Commit under review: see `source/COMMIT.txt`, or `git rev-parse HEAD` in the repo.
+
+**Live site:** https://rahasya.chat (Cloudflare Workers). Prefer a local run; against the live site, only the black-box probe (`npm run audit:probe -- https://rahasya.chat`), which spends nothing and is rate limited.
 
 ## Ground rules (please share these with any agent you run)
 
 1. **No real money.** Don't run anything that sends a transaction, makes a deposit or tops up credit (`npm run e2e -- run`, the site's Add credit). NEAR Intents has no testnet. If a paid path must be tested, ask us; we'll do it with a throwaway wallet.
-2. **No secrets.** The snapshot contains none. If you're given a `.env`, don't print, copy or send its contents anywhere.
+2. **No secrets.** The snapshot contains none. If you're given a `.env` or `.dev.vars`, don't print, copy or send its contents anywhere.
 3. **Our infrastructure only.** Don't test against other people's accounts or keys, and don't load-test Venice, 1Click or public RPCs.
 4. **Proof over opinion.** A finding is much more useful with a failing test or a script that demonstrates it. Put those in an `audit-findings/` folder and reference them.
 5. **Report privately** to the team, not in public issues.
 
 ## What we need back
 
-One report per auditor, following `templates/findings-template.md`: a summary, findings (most severe first, each with file:line, exploit scenario, proof and fix), and the invariant checklist (I1–I16 holding or broken, and how you checked).
+One report per auditor, following `templates/findings-template.md`: a summary, findings (most severe first, each with file:line, exploit scenario, proof and fix), and the invariant checklist (I1–I18 holding or broken, and how you checked).

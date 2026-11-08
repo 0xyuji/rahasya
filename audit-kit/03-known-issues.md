@@ -15,9 +15,13 @@ No need to report these again. **Do** tell us if one is worse than described, an
 | K9 | **Partly fixed.** The Intel DCAP chain is now verified in the browser (sandboxed worker, `apps/web/src/tee/`). Still open: the enclave's software measurement (MRTD/RTMRs) isn't pinned, NVIDIA GPU evidence is only reported by Venice, and the API-key gateway and local proxy don't run the Intel check (they rely on Venice's verifier). So against Venice itself, Truly private relies on Venice running the enclave software it publishes | Shown as such in the UI and docs. Measurement pinning is on the roadmap |
 | K10 | Login verification trusts the configured Base RPC (EVM) and NEAR RPC | Use trusted RPCs in production |
 | K11 | Saved actions in localStorage include signed x402 authorizations (single-use, short-lived, credit the user's own wallet) | XSS could only replay them to top up the victim's own credit |
-| K12 | `authorize` makes ~5 sequential Redis REST calls (about 1 s per request far from the database, a few ms co-located) | Performance only |
+| K12 | `authorize` makes 3 sequential Redis REST calls (key hash → key record → spend counters + rate limit together), then 1 to load the API wallet and 1 to reserve. Far from the database that's ~2 s; co-located (Smart Placement) a few ms | Performance only |
 | K13 | 1Click may not refund the 0.5% slippage buffer on exact-output swaps | Seen on mainnet; documented |
 | K14 | ~~The local proxy doesn't check `Host`~~ **Fixed:** only `127.0.0.1`, `localhost` and `[::1]` are accepted as Host | Test in `packages/proxy/src/server.test.ts` |
+| K15 | Swap fee: we add a 1% app fee to 1Click quotes; 1Click keeps half of it (without an app fee it charges 0.2% itself). Direct USDC-on-Base funding and inference carry no fee | Business decision, stated in `docs/protocol.md` ("Fees"). Not a vulnerability unless a client can change it (I17) |
+| K16 | In-memory caches (Intel collateral, 1 h; Venice prices, 10 min) live per Worker isolate, so cold isolates refetch | Rate limits and spend are in Redis, not in memory. Collateral is Intel-signed and verified in the browser |
+| K17 | `recordSpend` issues its four writes (day counter, its TTL, total counter, last-used) in parallel, not atomically. A failed write can leave day and total apart by one request's cost, or a day key without a TTL | Bounded to one request per failure. A Redis `MULTI` would close it |
+| K18 | The Worker is also reachable on its `*.workers.dev` URL (same code, same secrets) | Same behaviour as `rahasya.chat`; tell us if anything differs there (e.g. client IP) |
 
 ## Fixed after the first audit (2026-11-08, report against commit 6be0d23)
 
@@ -39,6 +43,11 @@ Each fix has a regression test; please re-check them.
 | F-12: login message not domain-bound | EIP-4361 (SIWE) for EVM, the same format for Solana, NEP-413 recipient = our host | `server.test.ts` (incl. NEAR full-access check) |
 | F-13 | `GETDEL` for challenges; per-user lock on key creation; rate-limit TTL always set; `GET /api/account` is read-only (POST opens the wallet); expired keys can be renamed; x402 `payTo` pinned to Venice's address; client `appFees` stripped; body read with a streaming 4 MB cap; E2EE non-streamed requests reserve too; proxy logs no upstream error bodies; `__Host-` session cookie over HTTPS; "sign out everywhere" | `server.test.ts`, `topup.test.ts`, probe |
 
-## Fixed while preparing this kit (please re-check)
+## Fixed after kit v1 (please re-check)
+
+- **Streamed requests could stay charged at the full reservation.** The real cost replaced the reservation only when the upstream stream ended. Clients that hang up right after `[DONE]` (opencode does) cancelled the pipe first, so the correction never ran and keys hit their limits early. Venice was always charged the real amount. Now settled as soon as the usage chunk passes (`meterStream`; the E2EE path settles before closing). Tests in `server.test.ts`.
+- **The Intel collateral relay failed on Cloudflare** (`redirect: "error"` isn't supported there); now `redirect: "manual"`, with redirects refused as non-OK responses.
+
+## Fixed while preparing kit v1 (please re-check)
 
 - **A streaming abort skipped billing.** Streamed gateway requests were charged only from the final usage chunk, so aborting just before the end avoided the charge and let a key exceed its limits without bound. Now an up-front reservation is corrected at the end and kept if the stream is cut off (`apps/web/src/server/gateway.ts`, `reserve`).

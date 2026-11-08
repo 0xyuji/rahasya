@@ -7,11 +7,13 @@ Full user-facing explanation: `source/apps/web/content/docs/protocol.md`. API re
 | Component | Where | Role |
 |---|---|---|
 | `packages/rail` | shared TS library | 1Click client + quote validation, swap state machine (server-side scripts), Base/Solana deposit senders, Venice client (SIWX auth, x402 top-up), TEE attestation + E2EE, model catalog, privacy modes, inference-wallet derivation |
-| `apps/web` | Next.js 16 site + API | Wallet connect (Reown AppKit for EVM/Solana, near-connect for NEAR), browser funding flows, chat, API keys UI, `/api/*` server routes |
+| `apps/web` | Next.js 16 site + API, deployed to **Cloudflare Workers** with the OpenNext adapter (`wrangler.jsonc`, `open-next.config.ts`) | Wallet connect (Reown AppKit for EVM/Solana, near-connect for NEAR), browser funding flows, chat, API keys UI, `/api/*` server routes |
 | `apps/web/src/server` | server-only modules | Sessions + wallet-signature login, API wallet (encrypted key), API keys + limits, OpenAI-compatible gateway, Redis access |
 | `packages/proxy` | CLI | Local OpenAI-compatible proxy on 127.0.0.1 using the user's inference key |
 
-**External services:** Venice (models, x402 credit, TEE/E2EE), NEAR Intents 1Click (swaps), Upstash Redis (key/session store), Base / Solana / NEAR RPCs, Reown (wallet connection relay).
+**External services:** Cloudflare (hosting: Workers, static assets, DNS for `rahasya.chat`), Venice (models, x402 credit, TEE/E2EE), NEAR Intents 1Click (swaps; we add a server-set app fee and referral tag), Upstash Redis (key/session store), Base / Solana / NEAR RPCs, Reown (wallet connection relay), Intel PCS (attestation collateral, via our relay).
+
+**Runtime notes (Cloudflare Workers):** `nodejs_compat`; `global_fetch_strictly_public` (server-side fetch can't reach private addresses); Smart Placement (runs near Upstash); in-memory caches are per isolate; server secrets are Worker secrets, `NEXT_PUBLIC_*` values are baked in at build. Client IP for rate limits comes from `cf-connecting-ip`.
 
 ## The three ways to use it
 
@@ -35,7 +37,9 @@ Full user-facing explanation: `source/apps/web/content/docs/protocol.md`. API re
 | Boundary | What crosses it | What protects it |
 |---|---|---|
 | Wallet app → browser | Signatures only (derivation message, login challenges, deposit txs) | User approves each in their wallet |
+| Internet → Cloudflare → our Worker | Every request; client IP in `cf-connecting-ip` | Cloudflare sets the header; per-IP limits depend on it |
 | Browser → our server | 1Click quote/status requests; login proofs; key management (cookie) | Allowlisted proxy routes; Origin check + SameSite=Lax; session in Redis |
+| Our server → 1Click | Quotes with **our** `appFees` (recipient + bps from server env) and `referral` | Client's `appFees`/`referral` are deleted before ours are added |
 | Browser → Venice | SIWX-signed requests, x402 payments, E2EE ciphertext | Signatures; TEE attestation before encrypting |
 | API client → our server | Bearer key + prompt | Key hash lookup, limits, rate limit |
 | Our server → Venice | SIWX signed with API wallet; prompt (plaintext in transit) | Server holds sealed API wallet key |
@@ -55,7 +59,7 @@ Full user-facing explanation: `source/apps/web/content/docs/protocol.md`. API re
 | Sessions | Redis + httpOnly cookie (7 days) | Manage that user's keys |
 | Deposits in flight | 1Click deposit addresses | Funds misdirected if a quote is tampered with |
 | Prompts | In transit only (API keys); never stored | Disclosure |
-| Partner key, Upstash token, `API_WALLET_ENC_KEY` | Server env | Quota abuse / data access / API wallet decryption |
+| Partner key, Upstash token, `API_WALLET_ENC_KEY`, fee settings | Worker secrets (`wrangler secret`); `.dev.vars` locally (gitignored) | Quota abuse / data access / API wallet decryption |
 
 ## Code map (security-relevant, ~1,900 of ~6,800 lines)
 
@@ -70,9 +74,12 @@ Full user-facing explanation: `source/apps/web/content/docs/protocol.md`. API re
 | Privacy-mode context rules | `apps/web/src/chat/conversation.ts`, `packages/rail/src/inference/{chat,models}.ts` |
 | Local proxy | `packages/proxy/src/{server,cli,config}.ts` |
 | Security headers | `apps/web/next.config.ts` |
+| Deployment | `apps/web/wrangler.jsonc`, `apps/web/open-next.config.ts`, `apps/web/scripts/gen-docs.mjs` |
+| Swap fees | `apps/web/src/app/api/oneclick/[...path]/route.ts` |
+| Tool configs shown to users | `apps/web/src/app/opencode-config.ts` |
 
 Entry points for reading:
-- **Gateway:** `handleChat` → `authorize` → `apiWalletAccount` → `passthrough` / `e2ee` → `recordSpend`.
+- **Gateway:** `handleChat` → `authorize` → `apiWalletAccount` → `passthrough` (→ `meterStream`) / `e2ee` → `recordSpend`.
 - **Login:** `createChallenge` → `verifyLogin` → `createSession`.
 - **E2EE:** `attest` → `evaluateAttestation` → `newSession` → `e2eeRequest` → `decryptStream`.
 - **Funding:** `quoteCredit` → `runCredit`; `quoteAnywhere` → `runAnywhere`.

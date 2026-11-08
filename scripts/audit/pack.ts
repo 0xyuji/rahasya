@@ -1,10 +1,11 @@
 /**
- * Builds dist/rahasya-audit-kit-<commit>.zip: the audit-kit/ docs at the top level plus a
+ * Builds dist/rahasya-audit-kit-v2-<commit>(.zip): the audit-kit/ docs at the top level plus a
  * source/ snapshot made with `git archive` (tracked files only, so .env files, data/ and
  * node_modules can't end up in it). Refuses to run with uncommitted changes, so the
  * snapshot always matches COMMIT.txt. Then scans the result for anything secret-shaped.
  *
- *   npm run audit:pack
+ *   npm run audit:pack               # zip
+ *   npm run audit:pack -- --folder   # leave a plain folder, no zip
  */
 import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -18,7 +19,9 @@ if (run("git", ["status", "--porcelain"]).trim()) {
   process.exit(1);
 }
 const commit = run("git", ["rev-parse", "--short", "HEAD"]).trim();
-const name = `rahasya-audit-kit-${commit}`;
+const KIT_VERSION = "v2";
+const folderOnly = process.argv.includes("--folder");
+const name = `rahasya-audit-kit-${KIT_VERSION}-${commit}`;
 const dist = join(root, "dist");
 const stage = join(dist, name);
 rmSync(stage, { recursive: true, force: true });
@@ -65,7 +68,11 @@ if (bad.length) {
   process.exit(1);
 }
 
-// 4. Zip.
+// 4. Zip (or keep the folder).
+if (folderOnly) {
+  console.log(`${stage}\n${walk(stage).length} files, commit ${commit}, secret scan clean`);
+  process.exit(0);
+}
 const zip = join(dist, `${name}.zip`);
 if (existsSync(zip)) rmSync(zip);
 run("zip", ["-qr", `${name}.zip`, name], dist);

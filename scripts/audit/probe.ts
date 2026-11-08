@@ -112,6 +112,23 @@ expect(
 );
 
 {
+  // I17: a client can't set swap fees or the referral tag. A dry quote (nothing is created or sent)
+  // with our own appFees and referral: neither may survive to 1Click.
+  const dry = {
+    dry: true, swapType: "EXACT_OUTPUT", slippageTolerance: 50, originAsset: "nep141:eth.omft.near", depositType: "ORIGIN_CHAIN",
+    destinationAsset: "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near", amount: "5000000",
+    refundTo: "0x0000000000000000000000000000000000000001", refundType: "ORIGIN_CHAIN",
+    recipient: "0x0000000000000000000000000000000000000001", recipientType: "DESTINATION_CHAIN",
+    deadline: new Date(Date.now() + 3600_000).toISOString(),
+    appFees: [{ recipient: "probe-attacker.near", fee: 100 }], referral: "probe-attacker",
+  };
+  const r = await fetch(`${BASE}/api/oneclick/v0/quote`, { method: "POST", headers: ORIGIN, body: JSON.stringify(dry) });
+  const j = (await r.json().catch(() => ({}))) as { quoteRequest?: { appFees?: { recipient: string }[]; referral?: string } };
+  const fees = j.quoteRequest?.appFees ?? [];
+  expect("1Click proxy: client appFees and referral are replaced (I17)", "stripped", r.ok && !fees.some((f) => f.recipient === "probe-attacker.near") && j.quoteRequest?.referral !== "probe-attacker" ? "stripped" : `status ${r.status}, ${JSON.stringify(j.quoteRequest ?? {}).slice(0, 120)}`);
+}
+
+{
   // Rate limit per IP (20 quotes/min). These quotes fail local validation, so nothing reaches 1Click.
   const bad = { destinationAsset: "nep141:sol.omft.near", recipientType: "DESTINATION_CHAIN", depositType: "ORIGIN_CHAIN" };
   const statuses = await Promise.all(Array.from({ length: 25 }, () => fetch(`${BASE}/api/oneclick/v0/quote`, { method: "POST", headers: ORIGIN, body: JSON.stringify(bad) }).then((r) => r.status)));
