@@ -4,6 +4,7 @@ import { MODELS } from "@pay/rail/browser";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { opencodeConfig } from "./opencode-config";
 import { useWallet } from "../wallet/wallet-context";
+import { appFetch } from "./app-fetch";
 import s from "./credit-dialog.module.css";
 import k from "./api-keys.module.css";
 
@@ -35,7 +36,7 @@ const ago = (t?: number) => {
 };
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const r = await fetch(path, { ...init, headers: { "content-type": "application/json", ...(init?.headers ?? {}) } });
+  const r = await appFetch(path, { ...init, headers: { "content-type": "application/json", ...(init?.headers ?? {}) } });
   const j = (await r.json().catch(() => ({}))) as T & { message?: string };
   if (!r.ok) throw Object.assign(new Error(j.message ?? `Request failed (${r.status})`), { status: r.status });
   return j;

@@ -37,7 +37,7 @@ npm install
 
 | Do | See |
 |---|---|
-| `npm test` | **103 tests pass** offline: swap state machine (crash-resume never double-sends, dropped deposits re-signed once, refunds, kill switch, spend cap, tampered quotes refused), E2EE round trip, attestation checks against a real captured quote (replayed nonce, swapped key and debug enclave all rejected), wallet derivation golden vector, x402 top-up idempotency, API-key limits and login, privacy-mode context rules, proxy auth/origin/Host guards, the in-browser Intel quote verifier against a real captured quote (tampering and forged collateral rejected) and its worker lockdown, plus a regression test for every audit finding. |
+| `npm test` | **112 tests pass** offline: swap state machine (crash-resume never double-sends, dropped deposits re-signed once, refunds, kill switch, spend cap, tampered quotes refused), E2EE round trip, attestation checks against a real captured quote (replayed nonce, swapped key and debug enclave all rejected), wallet derivation golden vector, x402 top-up idempotency, API-key limits and login, privacy-mode context rules, proxy auth/origin/Host guards, the in-browser Intel quote verifier against a real captured quote (tampering and forged collateral rejected) and its worker lockdown, plus a regression test for every audit finding. |
 | `npm run verify:tee` | A live attestation of the NEAR AI enclave model with a fresh nonce: 7 checks done locally from the raw Intel TDX quote, 3 reported by Venice. Uses a throwaway in-memory wallet. |
 | `npm run quote:dry` | Live dry quotes from NEAR Intents for $5 of USDC on Base from SOL, ETH and NEAR. |
 

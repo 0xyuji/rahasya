@@ -17,6 +17,7 @@ import { GET as pccsGet } from "../app/api/tee/pccs/[...path]/route.ts";
 import { createChallenge, nep413Hash, verifyLogin } from "./login.ts";
 import { sweepToCredit } from "./api-wallet.ts";
 import { clientIp, overLimit, rateKey } from "./ratelimit.ts";
+import { fromOurPage } from "./http.ts";
 import { fakeKv } from "./fake-kv.test-helper.ts";
 
 process.env.API_WALLET_ENC_KEY = Buffer.alloc(32, 7).toString("base64");
@@ -357,4 +358,17 @@ test("V2-06: fmspc case variants share one upstream fetch, and the cache is boun
   assert.equal(upstreamCalls, 1, "one cache entry for both spellings");
   for (let i = 0; i < 35; i++) remember(`test-entry-${i}`, { at: Date.now(), status: 200, body: new ArrayBuffer(0), headers: {} });
   assert.ok(cacheSize() <= 32, `cache holds ${cacheSize()}`);
+});
+
+// ---------- T-02: cookie routes only answer the page's own fetch() ----------
+
+test("T-02: fromOurPage needs our header, our origin, and a fetch (not a module/script load)", () => {
+  const r = (headers: Record<string, string>, method = "GET") => new Request("https://rahasya.chat/api/keys", { method, headers });
+  assert.equal(fromOurPage(r({ "x-app-request": "1" })), true, "same-origin GET fetch from our page");
+  assert.equal(fromOurPage(r({ "x-app-request": "1", "sec-fetch-dest": "empty", origin: "https://rahasya.chat" }, "POST")), true);
+  assert.equal(fromOurPage(r({})), false, "no header: e.g. import('/api/keys', { with: { type: 'json' } })");
+  assert.equal(fromOurPage(r({ "x-app-request": "1", "sec-fetch-dest": "script" })), false, "a module/script load");
+  assert.equal(fromOurPage(r({ "x-app-request": "1", "sec-fetch-dest": "json" })), false);
+  assert.equal(fromOurPage(r({ "x-app-request": "1", origin: "https://evil.example" }, "POST")), false, "cross-site");
+  assert.equal(fromOurPage(r({ "x-app-request": "0" })), false);
 });

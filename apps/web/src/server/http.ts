@@ -12,9 +12,24 @@ export function sameOrigin(req: Request): boolean {
   return origin === new URL(req.url).origin;
 }
 
+/**
+ * Header our own pages send with every cookie-authenticated request (see src/app/app-fetch.ts).
+ * `import()`, <script>, <img> and navigations can't set it, and another site can't send it
+ * without a CORS preflight we never allow. So a cookie route only answers the page's own fetch():
+ * not a compromised library's `import("/api/keys", { with: { type: "json" } })` (audit T-02),
+ * and not a cross-site form or link (CSRF).
+ */
+export const APP_REQUEST_HEADER = "x-app-request";
+
+export function fromOurPage(req: Request): boolean {
+  const dest = req.headers.get("sec-fetch-dest");
+  if (dest && dest !== "empty") return false; // a module/script/document load, not fetch()
+  return req.headers.get(APP_REQUEST_HEADER) === "1" && sameOrigin(req);
+}
+
 export async function withUser(req: Request, fn: (uid: string) => Promise<Response>): Promise<Response> {
   try {
-    if (!sameOrigin(req)) return json(403, { message: "Cross-site request refused." });
+    if (!fromOurPage(req)) return json(403, { message: "Cross-site request refused." });
     const uid = await sessionUser(req);
     if (!uid) return json(401, { message: "Sign in with your wallet first." });
     return await fn(uid);

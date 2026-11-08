@@ -14,7 +14,14 @@ Object.assign(Scope.prototype, {
   EventSource: class {},
   importScripts() {},
   BroadcastChannel: class {},
+  WebSocketStream: class {},
 });
+// Worker-like navigator extras (Node's own navigator may or may not have them).
+for (const name of ["serviceWorker", "locks", "storage"]) {
+  try {
+    Object.defineProperty(Object.getPrototypeOf(navigator), name, { configurable: true, get: () => ({ fake: name }) });
+  } catch {}
+}
 Object.defineProperty(Scope.prototype, "fetch", {
   configurable: true,
   writable: true,
@@ -30,11 +37,15 @@ g.WebSocket = class {};
 const { RELAY } = await import("./lockdown.ts");
 
 test("storage and raw network APIs are gone, including from prototypes", () => {
-  for (const name of ["indexedDB", "caches", "XMLHttpRequest", "EventSource", "importScripts", "BroadcastChannel", "WebSocket", "Worker"]) {
+  for (const name of ["indexedDB", "caches", "XMLHttpRequest", "EventSource", "importScripts", "BroadcastChannel", "WebSocket", "WebSocketStream", "Worker"]) {
     assert.equal(g[name], undefined, name);
     assert.equal(Object.getOwnPropertyDescriptor(Scope.prototype, name), undefined, `${name} on the prototype`);
     assert.throws(() => Object.defineProperty(globalThis, name, { value: 1 }), TypeError, `${name} can't be redefined`);
   }
+});
+
+test("navigator.storage, serviceWorker and locks are gone (other contexts of our origin)", () => {
+  for (const name of ["storage", "serviceWorker", "locks"]) assert.equal((navigator as unknown as Record<string, unknown>)[name], undefined, name);
 });
 
 test("fetch only reaches the collateral relay, GET, without cookies", async () => {

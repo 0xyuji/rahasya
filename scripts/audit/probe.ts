@@ -12,7 +12,7 @@
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 
 const BASE = (process.argv[2] ?? "http://localhost:3000").replace(/\/$/, "");
-const ORIGIN = { origin: BASE, "content-type": "application/json" };
+const ORIGIN = { origin: BASE, "content-type": "application/json", "x-app-request": "1" }; // the header our pages send (server/http.ts)
 type Row = { check: string; expected: string; got: string; ok: boolean };
 const rows: Row[] = [];
 const expect = (check: string, expected: number | string, got: number | string) =>
@@ -57,6 +57,12 @@ expect("challenge from another origin refused", 403, (await fetch(`${BASE}/api/a
 // --- session-protected routes ---
 const A = { ...ORIGIN, cookie: alice.cookie };
 expect("GET /api/keys without session", 401, (await fetch(`${BASE}/api/keys`)).status);
+{
+  // T-02: a cookie route only answers the page's own fetch(): not import()/<script> loads, not requests without our header.
+  const { "x-app-request": _h, ...noHeader } = A;
+  expect("GET /api/keys without the app header refused (T-02)", 403, (await fetch(`${BASE}/api/keys`, { headers: noHeader })).status);
+  expect("GET /api/account as a module load (sec-fetch-dest: script) refused (T-02)", 403, (await fetch(`${BASE}/api/account`, { headers: { ...A, "sec-fetch-dest": "script" } })).status);
+}
 expect("POST /api/keys from another origin (with session)", 403, (await fetch(`${BASE}/api/keys`, { method: "POST", headers: { ...A, origin: "https://evil.example" }, body: "{}" })).status);
 expect("create key with unknown model refused", 400, (await fetch(`${BASE}/api/keys`, { method: "POST", headers: A, body: JSON.stringify({ name: "x", models: ["gpt-4o"] }) })).status);
 expect("create key with negative limit refused", 400, (await fetch(`${BASE}/api/keys`, { method: "POST", headers: A, body: JSON.stringify({ name: "x", limits: { dailyUsd: -1 } }) })).status);

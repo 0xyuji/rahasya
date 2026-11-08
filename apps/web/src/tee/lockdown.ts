@@ -7,9 +7,16 @@
  *  - storage: indexedDB (WalletConnect keeps sessions there), caches, the
  *    origin-private file system. (Workers never see localStorage, cookies'
  *    contents or the page's memory, where the inference key lives.)
- *  - network: XMLHttpRequest, WebSocket, WebTransport, EventSource, and nested
- *    workers. fetch is replaced by one that only GETs our public collateral relay,
- *    without cookies, so it can't call our API as the signed-in user.
+ *  - network: XMLHttpRequest, WebSocket(Stream), WebTransport, EventSource, nested
+ *    workers, service workers and cross-context locks. fetch is replaced by one that
+ *    only GETs our public collateral relay, without cookies, so it can't call our API
+ *    as the signed-in user.
+ *
+ * What this can't remove: `import()`, which is syntax (audit T-02). Two other layers
+ * cover it: the worker script is served with its own CSP (public/_headers:
+ * script-src/connect-src 'self', so no other origin), and our cookie routes refuse
+ * anything but a page's own fetch() (server/http.ts fromOurPage), so a same-origin
+ * `import("/api/keys")` gets a 403.
  *
  * Properties are removed from the whole prototype chain, then pinned as
  * non-configurable, so they can't be recovered from a prototype.
@@ -23,6 +30,7 @@ const BLOCKED = [
   "caches",
   "XMLHttpRequest",
   "WebSocket",
+  "WebSocketStream",
   "WebTransport",
   "EventSource",
   "Worker",
@@ -47,14 +55,17 @@ for (const name of BLOCKED) {
   } catch {}
 }
 
-// navigator.storage gives access to the origin-private file system.
-try {
-  for (let o: object | null = navigator; o; o = Object.getPrototypeOf(o)) {
-    const d = Object.getOwnPropertyDescriptor(o, "storage");
-    if (d?.configurable) delete (o as Record<string, unknown>).storage;
-  }
-  Object.defineProperty(navigator, "storage", { value: undefined, writable: false, configurable: false });
-} catch {}
+// navigator.storage gives access to the origin-private file system; serviceWorker and
+// locks reach other contexts of our origin.
+for (const name of ["storage", "serviceWorker", "locks"]) {
+  try {
+    for (let o: object | null = navigator; o; o = Object.getPrototypeOf(o)) {
+      const d = Object.getOwnPropertyDescriptor(o, name);
+      if (d?.configurable) delete (o as Record<string, unknown>)[name];
+    }
+    Object.defineProperty(navigator, name, { value: undefined, writable: false, configurable: false });
+  } catch {}
+}
 
 const relayOnly = (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
   const url = new URL(input instanceof Request ? input.url : String(input), self.location.origin);

@@ -11,7 +11,7 @@ npm install
 ## No keys, no money (start here)
 
 ```sh
-npm test               # 103 offline tests: rail 40, web 54, proxy 9. No network, no keys.
+npm test               # 112 offline tests: rail 40, web 63, proxy 9. No network, no keys.
 npm run typecheck      # all packages
 npm run verify:tee     # live TEE attestation with a throwaway in-memory wallet: 10 checks, prints PASS/FAIL
 npm run quote:dry      # live NEAR Intents dry quotes (nothing is created or sent)
@@ -56,7 +56,7 @@ npm run audit:probe -- http://127.0.0.1:8788   # against the local Cloudflare ru
 npm run audit:probe -- https://<site>   # against a deployment (only one we gave you permission for)
 ```
 
-It signs in with throwaway in-memory wallets (no funds) and runs 38 checks:
+It signs in with throwaway in-memory wallets (no funds) and runs 40 checks:
 - security headers
 - login replay and forged signatures
 - requests from another origin
@@ -71,7 +71,7 @@ It signs in with throwaway in-memory wallets (no funds) and runs 38 checks:
 - read-only `GET /api/account`
 - deleted keys, logout and "sign out everywhere"
 
-It prints PASS/FAIL and exits non-zero on any failure. Our last run: **38/38** on the local Cloudflare runtime. Note it uses up your IP's 1Click quote allowance for a minute.
+It prints PASS/FAIL and exits non-zero on any failure. Our last run: **40/40** against https://rahasya.chat. Note it uses up your IP's 1Click quote allowance for a minute.
 
 Side effect: a couple of throwaway users and their empty API wallets are created in that deployment's Redis. Their keys are deleted at the end.
 

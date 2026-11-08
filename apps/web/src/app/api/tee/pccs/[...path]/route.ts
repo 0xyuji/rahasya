@@ -68,6 +68,9 @@ export async function GET(req: Request, ctx: { params: Promise<{ path: string[] 
     } catch {
       return new Response("Intel's collateral service didn't answer", { status: 502 });
     }
+    // Intel's "not found" is an answer (no collateral for that FMSPC), passed through so the
+    // verifier can treat it as a fail; anything else is our or Intel's trouble (audit T-01).
+    if (res.status === 404) return new Response("not found at Intel", { status: 404 });
     if (!res.ok) return new Response(`upstream ${res.status}`, { status: 502 });
     const raw = await res.arrayBuffer();
     if (raw.byteLength > 512 * 1024) return new Response("upstream too large", { status: 502 });

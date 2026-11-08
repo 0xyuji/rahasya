@@ -1,0 +1,9 @@
+# Cloudflare static-asset headers (served without running the Worker, so next.config headers don't apply).
+#
+# The Intel-verifier Web Worker is loaded from these chunks, and a worker's CSP comes from
+# its own script response. This stops a compromised verifier library from using import()
+# to load code from, or send data to, any other origin (audit T-02). Browsers ignore CSP
+# on scripts loaded by a page, so it doesn't affect the site's other chunks.
+/_next/static/chunks/*
+  Content-Security-Policy: default-src 'none'; script-src 'self'; connect-src 'self'
+  X-Content-Type-Options: nosniff

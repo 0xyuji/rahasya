@@ -1,5 +1,6 @@
 "use client";
 
+import { appFetch } from "../app/app-fetch";
 import { useWallet } from "../wallet/wallet-context";
 
 export interface ResolvedTarget {
@@ -13,7 +14,7 @@ export interface ResolvedTarget {
 
 /** API wallet: the server signs the x402 top-up for the USDC that landed on it. */
 export async function sweepApiWallet(): Promise<number> {
-  const r = await fetch("/api/account/sweep", { method: "POST" });
+  const r = await appFetch("/api/account/sweep", { method: "POST" });
   const j = (await r.json().catch(() => ({}))) as { toppedUpUsd?: number; message?: string };
   if (!r.ok) throw new Error(j.message ?? `Top-up failed (${r.status})`);
   return j.toppedUpUsd ?? 0;
