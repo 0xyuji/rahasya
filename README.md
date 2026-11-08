@@ -69,7 +69,7 @@ On **https://rahasya.chat**, nothing to install. (To run it yourself: `cp apps/w
 **Local proxy (most private):** account menu → **Local proxy**, then (Node.js 22+, no clone needed):
 
 ```sh
-curl -fsSL https://rahasya.chat/rahasya.mjs -o rahasya.mjs
+curl -fsSLO https://rahasya.chat/rahasya.mjs
 node rahasya.mjs          # first run: paste the inference key (hidden input, saved 0600 in ~/.rahasya), then it serves
                           # http://127.0.0.1:8787/v1 + a local API key
 ```

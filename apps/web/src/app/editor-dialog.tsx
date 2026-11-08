@@ -76,7 +76,7 @@ export function EditorDialog({ open, onClose }: { open: boolean; onClose: () => 
   // Same value on the server and the first client render (no hydration mismatch), then the real origin.
   const [site, setSite] = useState(`https://${brand.domain}`);
   useEffect(() => setSite(window.location.origin), []);
-  const download = `curl -fsSL ${site}/rahasya.mjs -o rahasya.mjs\nnode rahasya.mjs`;
+  const download = `curl -fsSLO ${site}/rahasya.mjs\nnode rahasya.mjs`;
 
   return (
     <dialog ref={ref} className={s.dialog} onClose={onClose} onCancel={onClose}>
