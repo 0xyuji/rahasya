@@ -58,7 +58,7 @@ npm run dev                                    # http://localhost:3000
 
 ### 3. Use it from opencode, Cursor and other tools
 
-**API keys (hosted):** account menu → **API keys** → sign in with your wallet → **Add credit** to your API wallet → **New key** (optional daily/total limit, model allowlist, expiry). Paste the key into any OpenAI-compatible tool with base URL `https://<deployment>/api/v1`. The dialog shows a ready-made opencode config. Full reference: [docs/api.md](docs/api.md); per-tool setup: [docs/integrations.md](docs/integrations.md).
+**API keys (hosted):** account menu → **API keys** → sign in with your wallet → **Add credit** to your API wallet → **New key** (optional daily/total limit, model allowlist, expiry). Paste the key into any OpenAI-compatible tool with base URL `https://<deployment>/api/v1`. The dialog shows a ready-made opencode config. Full reference: [docs/api.md](apps/web/content/docs/api.md); per-tool setup: [docs/integrations.md](apps/web/content/docs/integrations.md).
 
 **Local proxy (most private):** account menu → **Local proxy**, then:
 
@@ -75,9 +75,11 @@ To reproduce it with your own throwaway wallets: `cp .env.example .env`, fund th
 
 ## Docs
 
-- [docs/api.md](docs/api.md): API reference (keys, endpoints, models, limits, errors)
-- [docs/integrations.md](docs/integrations.md): opencode, Cursor, Continue, Cline, Aider, Zed, SillyTavern, Open WebUI, LiteLLM, SDKs
-- [docs/protocol.md](docs/protocol.md): how it works (wallets, NEAR Intents funding, x402, SIWX, attestation + E2EE, API keys)
+On the site at **`/docs`** (rendered from `apps/web/content/docs/`):
+
+- [docs/api.md](apps/web/content/docs/api.md): API reference (keys, endpoints, models, limits, errors)
+- [docs/integrations.md](apps/web/content/docs/integrations.md): opencode, Cursor, Continue, Cline, Aider, Zed, SillyTavern, Open WebUI, LiteLLM, SDKs
+- [docs/protocol.md](apps/web/content/docs/protocol.md): how it works (wallets, NEAR Intents funding, x402, SIWX, attestation + E2EE, API keys)
 
 ## Who can see what
 

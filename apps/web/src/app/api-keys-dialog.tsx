@@ -169,7 +169,10 @@ export function ApiKeysDialog({ open, onClose }: { open: boolean; onClose: () =>
         </button>
       </div>
       <p className={s.p}>
-        Use your credit from opencode, Cursor, SillyTavern or any OpenAI-compatible tool. Base URL <code className={k.inline}>{base}</code>
+        Use your credit from opencode, Cursor, SillyTavern or any OpenAI-compatible tool. Base URL <code className={k.inline}>{base}</code> ·{" "}
+        <a href="/docs/integrations" target="_blank" rel="noreferrer">
+          setup guides
+        </a>
       </p>
 
       {!w.source ? (

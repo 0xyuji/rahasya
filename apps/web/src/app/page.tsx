@@ -13,7 +13,12 @@ export default function Home() {
           <span className={s.wordmark}>{brand.name}</span>
           <span className={s.tagline}>{brand.tagline}</span>
         </a>
-        <ConnectButton />
+        <nav className={s.navRight}>
+          <a href="/docs" className={s.docsLink}>
+            Docs
+          </a>
+          <ConnectButton />
+        </nav>
       </header>
 
       <ChatApp />
