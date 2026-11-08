@@ -192,7 +192,8 @@ export function CipherField() {
         const speed = Math.hypot(c.vx, c.vy);
         const ch = speed > 0.9 ? stroke(c.vx, c.vy) : disp > 3 ? stroke(c.ox, c.oy) : c.ch;
         const base = c.dense ? 0.17 : 0.06;
-        const a = Math.min(0.5, base + disp * 0.006 + speed * 0.02) * calm;
+        const glow = c.dense ? 1.2 : 1; // the figure reads 20% brighter than the field
+        const a = Math.min(0.5, base + disp * 0.006 + speed * 0.02) * glow * calm;
         ctx.fillStyle = `rgba(236,231,222,${a})`;
         ctx.fillText(ch, x, y);
       }
