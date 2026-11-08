@@ -27,9 +27,15 @@ Tested with opencode 2.1.3. Add a provider to `~/.config/opencode/opencode.jsonc
       "package": "@opencode/ai/providers/openai-compatible",
       "settings": { "baseURL": "https://<your-deployment>/api/v1" },
       "models": {
-        "large-v2": { "name": "Abliterated Large V2" },
-        "large-flash": { "name": "Abliterated Large Flash" },
-        "deepseek-1017-uncensored": { "name": "DeepSeek V4.1 Flash 1017 Uncensored" }
+        "large-flash":              { "name": "Abliterated Large Flash" },
+        "large-v2":                 { "name": "Abliterated Large V2" },
+        "qwen-3.6-plus":            { "name": "Qwen 3.6 Plus Uncensored" },
+        "deepseek-1017-uncensored": { "name": "DeepSeek V4.1 Flash 1017 Uncensored" },
+        "deepseek-uncensored":      { "name": "DeepSeek V4.1 Flash Uncensored" },
+        "qwen-3.8-27b":             { "name": "Qwen 3.8 27B Uncensored" },
+        "gemma-4-uncensored":       { "name": "Gemma 4 Uncensored" },
+        "venice-uncensored":        { "name": "Venice Uncensored 1.2" },
+        "venice-roleplay":          { "name": "Venice Role Play Uncensored" }
       }
     }
   }
@@ -38,10 +44,16 @@ Tested with opencode 2.1.3. Add a provider to `~/.config/opencode/opencode.jsonc
 
 ```sh
 export NAISHO_API_KEY=nsk_…
-opencode                                  # or: opencode run -m naisho/large-v2 "explain this repo"
+opencode --standalone                     # or: opencode run --standalone -m naisho/large-v2 "explain this repo"
 ```
 
-The website shows this exact config, with your key and URL filled in, when you create a key.
+Things that trip people up:
+
+- **File name.** opencode only reads `opencode.json` or `opencode.jsonc`. A file called `config.json` is ignored, and opencode quietly falls back to its built-in providers.
+- **The key isn't picked up.** opencode 2 runs a background service, and that service doesn't see variables you `export` after it started. Start with `--standalone` from the terminal where you exported the key. If you get "Invalid API key." straight away, this is why.
+- **Only some models show up.** opencode lists just the models named under `models`. The config above has every model that works with coding agents. The two TEE models are left out because they can't carry tool definitions.
+
+The website shows this exact config, with your key and URL filled in, when you create a key. If the key has a model allowlist, the config lists only those models.
 
 ## Cursor
 

@@ -3,6 +3,7 @@
 import { PRIVACY_MODES } from "@pay/rail/browser";
 import { useEffect, useRef, useState } from "react";
 import { brand } from "../brand";
+import { opencodeConfig } from "./opencode-config";
 import { useWallet } from "../wallet/wallet-context";
 import s from "./credit-dialog.module.css";
 
@@ -13,24 +14,7 @@ const DEFAULT_MODEL = PRIVACY_MODES.anonymous.chatModel;
 const TOOLS = {
   opencode: {
     label: "opencode",
-    text: (id: string) => `// ~/.config/opencode/opencode.jsonc  (then: export ${id.toUpperCase()}_API_KEY=<your local API key>)
-{
-  "$schema": "https://opencode.ai/config.json",
-  "model": "${id}/${DEFAULT_MODEL}",
-  "providers": {
-    "${id}": {
-      "name": "${brand.name}",
-      "env": ["${id.toUpperCase()}_API_KEY"],
-      "package": "@opencode/ai/providers/openai-compatible",
-      "settings": { "baseURL": "${BASE}" },
-      "models": {
-        "large-v2": { "name": "Abliterated Large V2" },
-        "large-flash": { "name": "Abliterated Large Flash" },
-        "deepseek-1017-uncensored": { "name": "DeepSeek V4.1 Flash 1017 Uncensored" }
-      }
-    }
-  }
-}`,
+    text: (_id: string) => opencodeConfig({ baseURL: BASE, keyHint: "<your local API key>" }),
   },
   generic: {
     label: "Cursor & others",

@@ -1,8 +1,8 @@
 "use client";
 
-import { MODELS, PRIVACY_MODES } from "@pay/rail/browser";
+import { MODELS } from "@pay/rail/browser";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { brand } from "../brand";
+import { opencodeConfig } from "./opencode-config";
 import { useWallet } from "../wallet/wallet-context";
 import s from "./credit-dialog.module.css";
 import k from "./api-keys.module.css";
@@ -51,7 +51,7 @@ export function ApiKeysDialog({ open, onClose }: { open: boolean; onClose: () =>
   const [err, setErr] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
-  const [fresh, setFresh] = useState<{ token: string; name: string } | null>(null);
+  const [fresh, setFresh] = useState<{ token: string; name: string; models: string[] } | null>(null);
   const [confirmDel, setConfirmDel] = useState<string | null>(null);
 
   useEffect(() => {
@@ -114,7 +114,7 @@ export function ApiKeysDialog({ open, onClose }: { open: boolean; onClose: () =>
         await api(`/api/keys/${editing}`, { method: "PATCH", body: JSON.stringify(toBody(draft)) });
       } else {
         const r = await api<{ token: string; key: KeyView }>("/api/keys", { method: "POST", body: JSON.stringify(toBody(draft)) });
-        setFresh({ token: r.token, name: r.key.name });
+        setFresh({ token: r.token, name: r.key.name, models: r.key.models });
       }
       setDraft(null);
       setEditing(null);
@@ -145,20 +145,7 @@ export function ApiKeysDialog({ open, onClose }: { open: boolean; onClose: () =>
   }
 
   const base = typeof window !== "undefined" ? `${window.location.origin}/api/v1` : "/api/v1";
-  const opencode = (token: string) => `// ~/.config/opencode/opencode.jsonc   then: export ${brand.repo.toUpperCase()}_API_KEY=${token}
-{
-  "$schema": "https://opencode.ai/config.json",
-  "model": "${brand.repo}/${PRIVACY_MODES.anonymous.chatModel}",
-  "providers": {
-    "${brand.repo}": {
-      "name": "${brand.name}",
-      "env": ["${brand.repo.toUpperCase()}_API_KEY"],
-      "package": "@opencode/ai/providers/openai-compatible",
-      "settings": { "baseURL": "${base}" },
-      "models": { "large-v2": {}, "large-flash": {}, "deepseek-1017-uncensored": {} }
-    }
-  }
-}`;
+  const opencode = (f: { token: string; models: string[] }) => opencodeConfig({ baseURL: base, keyHint: f.token, allowed: f.models });
 
   return (
     <dialog ref={ref} className={`${s.dialog} ${k.wide}`} onClose={onClose} onCancel={onClose}>
@@ -220,8 +207,8 @@ export function ApiKeysDialog({ open, onClose }: { open: boolean; onClose: () =>
                 Copy key
               </button>
               <div className={s.label}>opencode</div>
-              <pre className={s.code}>{opencode(fresh.token)}</pre>
-              <button className={s.copyBtn} onClick={() => navigator.clipboard.writeText(opencode(fresh.token))}>
+              <pre className={s.code}>{opencode(fresh)}</pre>
+              <button className={s.copyBtn} onClick={() => navigator.clipboard.writeText(opencode(fresh))}>
                 Copy config
               </button>
               <p className={s.fine}>Other tools: base URL {base}, API key above, model e.g. large-v2.</p>
