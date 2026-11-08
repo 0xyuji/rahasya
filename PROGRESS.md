@@ -51,10 +51,13 @@ npm run cf:deploy                      # builds, then deploys (plain `opennextjs
 
 ## npm release (after the repo is public)
 
-1. On your laptop, once: `cd packages/proxy && npm run bundle && cp dist/rahasya.mjs ../../LICENSE npm/ && cd npm && npm login && npm publish --access public` (browser + passkey).
-2. npmjs.com → package `rahasya` → Settings → **Trusted publisher** → GitHub Actions: owner `0xyuji`, repo `rahasya`, workflow `publish-proxy.yml`. Then **Publishing access → require 2FA and disallow tokens**.
-3. Later releases: bump `packages/proxy/npm/package.json` version, commit, `git tag proxy-v<version> && git push --tags`. GitHub publishes it with provenance.
+Trusted publisher set up on npmjs.com (11-08): GitHub Actions, 0xyuji/rahasya, `publish-proxy.yml`, **stage only** (both "Allow" boxes unchecked).
+
+1. Release: bump `packages/proxy/npm/package.json` version, commit, `git tag proxy-v<version> && git push --tags`. GitHub builds, tests and **stages** it.
+2. Approve with your passkey: npmjs.com (package `rahasya` → staged versions), or `npm stage list rahasya` then `npm stage approve <id>`.
+3. npmjs.com → package → Settings → Publishing access → **require 2FA and disallow tokens**.
 4. Docs then say `npx rahasya@<version>` (pinned).
+5. If npm refuses to stage the very first version (package doesn't exist yet), publish 0.1.0 once by hand: `cd packages/proxy && npm run bundle && cp dist/rahasya.mjs ../../LICENSE npm/ && cd npm && npm login && npm publish --access public`.
 
 ## Decisions
 
