@@ -8,3 +8,6 @@ data/
 next-env.d.ts
 *.tsbuildinfo
 .DS_Store
+
+# audit kit zips
+dist/

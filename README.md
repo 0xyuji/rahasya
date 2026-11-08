@@ -104,7 +104,9 @@ Conversations live in browser memory only. Switching from Truly private back to 
 
 ## Security notes
 
-- **No custody, no server secrets that matter.** The only server-side secret is the optional 1Click partner key. Keys exist only in the browser's memory, or in `~/.naisho` (mode 0600) for the local proxy.
+- **Website chat is non-custodial.** The inference key exists only in the browser's memory, or in `~/.naisho` (mode 0600) for the local proxy; the server never sees it.
+- **API keys are server-assisted.** The server holds each user's API wallet key, AES-256-GCM sealed in Redis (`API_WALLET_ENC_KEY`, AAD bound to the user). That wallet only holds Venice credit, which can't be withdrawn; incoming USDC is swept into credit. API keys are stored as SHA-256 hashes only.
+- **Audit kit:** [`audit-kit/`](audit-kit/00-START-HERE.md) has the invariants, threat model, known issues, ready-made auditor prompts and a black-box probe (`npm run audit:probe`). `npm run audit:pack` builds a shareable zip.
 - **Headers:** anti-framing (`frame-ancestors 'none'` + `X-Frame-Options: DENY`), so wallet prompts can't be clickjacked; `Referrer-Policy: no-referrer`; `nosniff`; HSTS; a locked-down `Permissions-Policy`. A strict `default-src` CSP isn't set because the WalletConnect modal loads from many origins.
 - **Local proxy:** binds to 127.0.0.1, requires a local bearer token (constant-time compare), refuses any request with a browser `Origin`, and never logs prompts.
 - **`npm audit`** reports 3 upstream advisories, all inside third-party wallet libraries:
@@ -122,6 +124,7 @@ packages/rail     1Click client, asset resolver, swap state machine, Base/Solana
 packages/proxy    local OpenAI-compatible proxy (naisho serve)
 apps/web          Next.js site (wallet connect, add credit, chat, proxy setup)
 docs/demo-runs    recorded mainnet runs
+audit-kit         security audit brief, auditor prompts, findings template
 ```
 
 ## Known limitations

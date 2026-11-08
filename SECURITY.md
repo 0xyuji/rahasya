@@ -8,7 +8,7 @@ Include what you found, how to reproduce it (a test or script is ideal), and the
 
 ## Auditing
 
-The audit kit is in [docs/audit/](docs/audit/README.md): scope, assets, the invariants that must hold, threat model, known issues, a black-box probe (`npm run audit:probe`), a ready-made prompt for AI auditors, and a findings template.
+The audit kit is in [audit-kit/](audit-kit/00-START-HERE.md): scope, assets, the invariants that must hold, threat model, known issues, a black-box probe (`npm run audit:probe`), a ready-made prompt for AI auditors, and a findings template.
 
 ## Rules for testing
 

@@ -18,7 +18,7 @@ Commit reviewed:    (git rev-parse HEAD)
 Date:
 Time spent:
 Tests run:          npm test → x/y pass; audit:probe → x/y pass against <url>
-Scope covered:      (areas from docs/audit/README.md §2)
+Scope covered:      (areas from 01-overview.md "Code map")
 Not covered:
 ```
 

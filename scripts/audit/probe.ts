@@ -1,7 +1,7 @@
 /**
  * Black-box security probe against a running deployment. No funds needed:
  * it creates throwaway wallets in memory, signs in, creates keys, and checks
- * that every guard answers the way docs/audit/README.md says it should.
+ * that every guard answers the way audit-kit/02-what-to-check.md says it should.
  *
  *   npm run audit:probe                          # http://localhost:3000
  *   npm run audit:probe -- https://your-site     # a deployment
