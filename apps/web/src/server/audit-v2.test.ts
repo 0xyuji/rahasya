@@ -11,7 +11,9 @@ import { MODELS, VENICE_PAY_TO, planSweep, type TopUpAction } from "@pay/rail/br
 import { encodePaymentRequiredHeader } from "@x402/core/http";
 import { setKvForTests } from "./kv.ts";
 import { createKey } from "./keys.ts";
-import { handleChat, meterStream, outputLimit, reserve } from "./gateway.ts";
+import { handleChat, meterStream, outputLimit, promptTokenBound, reserve } from "./gateway.ts";
+import { cacheSize, remember } from "./pccs-cache.ts";
+import { GET as pccsGet } from "../app/api/tee/pccs/[...path]/route.ts";
 import { createChallenge, nep413Hash, verifyLogin } from "./login.ts";
 import { sweepToCredit } from "./api-wallet.ts";
 import { clientIp, overLimit, rateKey } from "./ratelimit.ts";
@@ -256,6 +258,22 @@ test("V2-05: running totals are reported as running; the final total settles", a
   assert.ok(seen.slice(0, -1).every((s) => !s.final));
 });
 
+test("R-02: an early choices:[] usage chunk (prompt count only) is a running total, not final", async () => {
+  const seen: Array<{ tokens: number; final: boolean }> = [];
+  const upstream = new ReadableStream<Uint8Array>({
+    start(ctl) {
+      ctl.enqueue(enc.encode('data: {"choices":[],"usage":{"prompt_tokens":900,"completion_tokens":0}}\n\n'));
+      ctl.enqueue(enc.encode('data: {"choices":[{"delta":{"content":"hi"}}]}\n\n'));
+      ctl.enqueue(enc.encode('data: {"choices":[],"usage":{"prompt_tokens":900,"completion_tokens":400}}\n\ndata: [DONE]\n\n'));
+      ctl.close();
+    },
+  });
+  await new Response(upstream.pipeThrough(meterStream(async (u, final) => void seen.push({ tokens: (u as { completion_tokens: number }).completion_tokens, final })))).text();
+  assert.deepEqual(seen.at(-1), { tokens: 400, final: true }, "settles on the last usage at [DONE]");
+  assert.equal(seen[0]!.final, false);
+  assert.equal(seen.filter((x) => x.final).length, 1);
+});
+
 test("V2-05: usage on the finishing chunk (non-empty choices) counts as final", async () => {
   const seen: boolean[] = [];
   const upstream = new ReadableStream<Uint8Array>({
@@ -268,4 +286,75 @@ test("V2-05: usage on the finishing chunk (non-empty choices) counts as final", 
   await new Promise((r) => setTimeout(r, 5));
   await reader.cancel();
   assert.deepEqual(seen, [true]);
+});
+
+// ---------- R-01: the prompt half of the reservation is an upper bound ----------
+
+test("R-01: a 30k-character Yi prompt reserves at least its UTF-8 byte count in prompt tokens", () => {
+  const def = MODELS["large-v2"]!;
+  const messages = [{ role: "user", content: "\uA000".repeat(30_000) }];
+  const held = reserve(def, { max_tokens: 1, messages }, new Map());
+  const promptTokens = Math.round((held * 1e6 - def.fallbackPrice.out) / def.fallbackPrice.in);
+  assert.ok(promptTokens >= new TextEncoder().encode(JSON.stringify(messages)).length);
+});
+
+test("R-01: tool definitions and image parts count toward the prompt bound", () => {
+  const text = [{ role: "user", content: "hi" }];
+  const withImage = [{ role: "user", content: [{ type: "text", text: "hi" }, { type: "image_url", image_url: { url: "https://x/a.png" } }] }];
+  assert.ok(promptTokenBound({ messages: withImage }) >= 4_096);
+  const tools = [{ type: "function", function: { name: "read_file", description: "x".repeat(5_000), parameters: {} } }];
+  assert.ok(promptTokenBound({ messages: text, tools }) > promptTokenBound({ messages: text }) + 5_000);
+});
+
+// ---------- Info notes ----------
+
+test("rateKey: IPv4-mapped IPv6 is bucketed as its IPv4 address", () => {
+  assert.equal(rateKey("::ffff:203.0.113.7"), "203.0.113.7");
+  assert.equal(rateKey("::FFFF:1.2.3.4"), "1.2.3.4");
+});
+
+test("passthrough drops max_output_tokens so no alias competes with our limit", async () => {
+  const { token } = await createKey("evm:0xvictim", { name: "k" });
+  const upstream: Array<Record<string, unknown>> = [];
+  stubVeniceChat(upstream);
+  const res = await chat(token, { model: "gemma-4-uncensored", stream: true, max_tokens: 5, max_output_tokens: 999_999, messages: [{ role: "user", content: "hi" }] });
+  await res.body!.cancel();
+  assert.equal("max_output_tokens" in upstream[0]!, false);
+  assert.equal(upstream[0]!.max_tokens, 5);
+});
+
+// ---------- V2-07: late spend writes are registered with waitUntil ----------
+
+test("V2-07: the spend settlement is handed to the request's ctx.waitUntil", async () => {
+  const { token } = await createKey("evm:0xvictim", { name: "k" });
+  const upstream: Array<Record<string, unknown>> = [];
+  stubVeniceChat(upstream);
+  const registered: Promise<unknown>[] = [];
+  const sym = Symbol.for("__cloudflare-context__");
+  (globalThis as Record<symbol, unknown>)[sym] = { ctx: { waitUntil: (p: Promise<unknown>) => void registered.push(p) } };
+  try {
+    const res = await chat(token, { model: "gemma-4-uncensored", stream: true, max_tokens: 5, messages: [{ role: "user", content: "hi" }] });
+    await res.text();
+    assert.ok(registered.length >= 1, "the settle write was registered");
+    await Promise.all(registered);
+  } finally {
+    delete (globalThis as Record<symbol, unknown>)[sym];
+  }
+});
+
+// ---------- V2-06: the Intel collateral cache ----------
+
+test("V2-06: fmspc case variants share one upstream fetch, and the cache is bounded", async () => {
+  let upstreamCalls = 0;
+  globalThis.fetch = (async () => {
+    upstreamCalls++;
+    return new Response(new Uint8Array([1, 2, 3]), { status: 200 });
+  }) as typeof fetch;
+  const get = (fmspc: string) =>
+    pccsGet(new Request(`http://localhost/api/tee/pccs/tdx/certification/v4/tcb?fmspc=${fmspc}`), { params: Promise.resolve({ path: ["tdx", "certification", "v4", "tcb"] }) });
+  assert.equal((await get("00906ed50000")).status, 200);
+  assert.equal((await get("00906ED50000")).status, 200);
+  assert.equal(upstreamCalls, 1, "one cache entry for both spellings");
+  for (let i = 0; i < 35; i++) remember(`test-entry-${i}`, { at: Date.now(), status: 200, body: new ArrayBuffer(0), headers: {} });
+  assert.ok(cacheSize() <= 32, `cache holds ${cacheSize()}`);
 });

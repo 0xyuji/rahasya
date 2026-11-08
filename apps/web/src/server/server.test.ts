@@ -308,7 +308,7 @@ test("streamed spend settles on the usage chunk, even if the client hangs up rig
       ctl.enqueue(enc.encode('"completion_tokens":3}}\n\ndata: [DONE]\n\n'));
     },
   });
-  const reader = upstream.pipeThrough(meterStream(async (u) => void settled.push(u))).getReader();
+  const reader = upstream.pipeThrough(meterStream(async (u, final) => void (final && settled.push(u)))).getReader();
   let text = "";
   const dec = new TextDecoder();
   while (!text.includes("[DONE]")) text += dec.decode((await reader.read()).value);

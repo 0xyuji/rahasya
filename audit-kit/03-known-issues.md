@@ -43,6 +43,19 @@ Each fix has a regression test; please re-check them.
 | F-12: login message not domain-bound | EIP-4361 (SIWE) for EVM, the same format for Solana, NEP-413 recipient = our host | `server.test.ts` (incl. NEAR full-access check) |
 | F-13 | `GETDEL` for challenges; per-user lock on key creation; rate-limit TTL always set; `GET /api/account` is read-only (POST opens the wallet); expired keys can be renamed; x402 `payTo` pinned to Venice's address; client `appFees` stripped; body read with a streaming 4 MB cap; E2EE non-streamed requests reserve too; proxy logs no upstream error bodies; `__Host-` session cookie over HTTPS; "sign out everywhere" | `server.test.ts`, `topup.test.ts`, probe |
 
+## Fixed after the fix-verification review (2026-11-08, report against c3c7624)
+
+The review found all eight V2 fixes holding, plus these. Tests in `apps/web/src/server/audit-v2.test.ts`.
+
+| Finding | Fix |
+|---|---|
+| R-01 Medium: the prompt half of the reservation was UTF-16 length / 3 (about 9× low for some scripts) | `promptTokenBound`: UTF-8 byte length of the messages **and tool definitions**, plus 4096 tokens per image part. An upper bound for byte-level BPE; ordinary text is over-reserved and corrected when usage arrives |
+| R-02 Low: an early `choices: []` usage chunk counted as final | Final only on a chunk with a `finish_reason`, or at `[DONE]` / end of stream (using the last usage seen). Everything else is a running total, which can only raise the charge |
+| Info: no tests for V2-06 / V2-07 | Added: case variants of `fmspc` share one upstream fetch and the cache stays ≤ 32 entries (`server/pccs-cache.ts`); the settle write reaches `ctx.waitUntil` |
+| Info: IPv4-mapped IPv6 (`::ffff:1.2.3.4`) all in one bucket | Mapped to the IPv4 address. **Keep Cloudflare's Pseudo IPv4 "Overwrite headers" off** for the zone: it would replace IPv6 clients' `cf-connecting-ip` and undo the /64 bucketing |
+| Info: other output-limit aliases | `max_output_tokens` is removed before our limit is set |
+| Info: login availability with 2-of-3 public RPCs | Unchanged in code; see K10 (configure trusted `BASE_RPC_URL` / `NEAR_RPC_URL`) |
+
 ## Fixed after the second audit (2026-11-08, report against af123f8)
 
 Each fix has a regression test in `apps/web/src/server/audit-v2.test.ts`. The auditor's original proofs fail against the fixed code, as they should, except V2-02c (two colluding NEAR RPCs; see K10).

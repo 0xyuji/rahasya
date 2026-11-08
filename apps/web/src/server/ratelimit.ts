@@ -22,6 +22,8 @@ export function clientIp(req: Request): string {
  * controls a whole /64 and could otherwise rotate addresses per request (audit V2-04).
  */
 export function rateKey(ip: string): string {
+  const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(ip);
+  if (mapped) return mapped[1]!; // IPv4-mapped IPv6 is that IPv4 client
   if (!ip.includes(":")) return ip;
   const [head = "", tail = ""] = ip.toLowerCase().split("::");
   const left = head ? head.split(":") : [];

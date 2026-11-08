@@ -14,7 +14,7 @@ Working state of the project: what's done, what's left, and decisions made. Upda
 | API keys (hosted) | ✅ Mostly tested | curl, opencode, daily limit (429), model allowlist (403) verified. Open: deleted key (401), sign out everywhere, second same-amount top-up (F-02) |
 | opencode integration | ✅ Done | Generated config lists all non-TEE models, prices, `enabled_providers`. Needs `opencode.jsonc` + `--standalone` |
 | Local proxy (`rahasya serve`) | ✅ Done | Not re-tested since the rename |
-| Security audit | ✅ Audit 1 (F-01..F-13) and audit 2 (V2-01..V2-08) fixed, with regression tests | Residual: two colluding NEAR RPCs (K10); set trusted `BASE_RPC_URL` / `NEAR_RPC_URL` for production |
+| Security audit | ✅ Audit 1 (F-01..F-13), audit 2 (V2-01..V2-08) and the fix review (R-01, R-02, notes) fixed, with regression tests. 103 tests | Residual: two colluding NEAR RPCs (K10); set trusted `BASE_RPC_URL` / `NEAR_RPC_URL` for production |
 | Name / brand | ✅ **Rahasya**, `rahasya.chat` bought | `rahasya.ai` only if we win |
 | GitHub | ✅ Private repo `0xyuji/rahasya` | Must be **public** by the deadline (ask first) |
 | Cloudflare deploy | ✅ Live at **https://rahasya.chat** (+ www, + rahasya.itadori.workers.dev). 38/38 probe on workers.dev | Domain at Namecheap, DNS on Cloudflare (MX/TXT email forwarding kept) |
@@ -62,6 +62,9 @@ npm run cf:deploy                      # builds, then deploys (plain `opennextjs
 | 11-08 | opencode config hides other providers (`enabled_providers`) | Owner's request; one line to delete if a user wants them |
 
 ## Known gaps (not blocking the submission)
+
+- Keep Cloudflare's **Pseudo IPv4 "Overwrite headers"** off for rahasya.chat (it would undo per-/64 rate limits).
+- The in-browser Intel verifier and its sandbox (I6, I16) weren't re-checked in audit 2.
 
 - Enclave software measurement (MRTD) is shown but not pinned (audit K9).
 - `recordSpend` writes aren't atomic (K17).

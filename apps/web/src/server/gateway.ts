@@ -142,21 +142,41 @@ export function outputLimit(def: ModelDef, body: Record<string, unknown>): numbe
   return typeof asked === "number" && Number.isInteger(asked) && asked >= 1 ? Math.min(asked, cap) : cap;
 }
 
+/** Tokens charged per image part in the estimate (remote image URLs are short but cost a lot). */
+const IMAGE_TOKENS = 4_096;
+const utf8Length = (s: string) => new TextEncoder().encode(s).length;
+
+/**
+ * Upper bound on prompt tokens, from what we send: the UTF-8 byte length of the
+ * messages and tool definitions (byte-level BPE never needs more than one token per
+ * byte), plus a flat charge per image part (audit R-01). It over-estimates ordinary
+ * text several times; that's corrected as soon as Venice reports usage.
+ */
+export function promptTokenBound(body: Record<string, unknown>): number {
+  const text = JSON.stringify(body.messages ?? []) + JSON.stringify(body.tools ?? []);
+  let images = 0;
+  for (const m of Array.isArray(body.messages) ? body.messages : []) {
+    const content = (m as { content?: unknown })?.content;
+    if (Array.isArray(content)) for (const part of content) if (/image/.test(String((part as { type?: unknown })?.type ?? ""))) images++;
+  }
+  return utf8Length(text) + images * IMAGE_TOKENS;
+}
+
 /**
  * Up-front reservation: a client that aborts before the final usage chunk must still
- * be charged. Estimate = prompt size + the request's output limit at live prices;
- * corrected to the real cost when usage arrives.
+ * be charged. Both halves are upper bounds: prompt (promptTokenBound) + the request's
+ * output limit (outputLimit), at live prices. Corrected to the real cost when usage arrives.
  */
 export function reserve(def: ModelDef, body: Record<string, unknown>, live: LivePrices): number {
-  const inTok = Math.ceil(JSON.stringify(body.messages ?? []).length / 3);
-  return Math.max(0, costUsd(def, { prompt_tokens: inTok, completion_tokens: outputLimit(def, body) }, live) ?? 0);
+  return Math.max(0, costUsd(def, { prompt_tokens: promptTokenBound(body), completion_tokens: outputLimit(def, body) }, live) ?? 0);
 }
 
 /**
  * Pass an OpenAI-style SSE stream through untouched, reporting each usage object
  * to `onUsage` as it goes by, with `final` set when it's the request's last word:
- * a usage chunk with no choices (OpenAI's final shape) or a finish_reason, or
- * [DONE] / the end of the stream after any usage. Reporting happens while the
+ * usage on a chunk with a finish_reason, or [DONE] / the end of the stream after any
+ * usage. Usage anywhere else (including an early "choices: []" chunk, which some
+ * upstreams send with the prompt count) is a running total (audit R-02). Reporting happens while the
  * stream flows, right after forwarding the chunk, not at the end: clients such as
  * opencode hang up right after [DONE], which cancels the pipe, so an end-of-stream
  * hook alone would never run. No usage at all reports nothing (the reservation stays).
@@ -189,7 +209,7 @@ export function meterStream(onUsage: (usage: unknown, final: boolean) => Promise
           const ev = JSON.parse(line.slice(5)) as { usage?: unknown; choices?: Array<{ finish_reason?: unknown }> };
           if (!ev.usage || typeof ev.usage !== "object") continue; // "usage": null on ordinary chunks
           last = ev.usage;
-          const final = !ev.choices?.length || ev.choices.some((c) => c?.finish_reason != null);
+          const final = !!ev.choices?.some((c) => c?.finish_reason != null);
           await report(ev.usage, final);
         } catch {}
       }
@@ -221,6 +241,7 @@ async function passthrough(rec: KeyRecord, venice: VeniceClient, def: ModelDef, 
   const keepAlive = keepAliveForRequest();
   const limit = outputLimit(def, body);
   const upstream: Record<string, unknown> = { ...body, model: def.id, venice_parameters: veniceParams(body), max_tokens: limit, max_completion_tokens: limit };
+  delete upstream.max_output_tokens; // no other output-limit alias may compete with ours
   // Every request reserves an estimate first, so a reply without usage (or an aborted stream) is still charged.
   const held = reserve(def, body, live);
   const day = await recordSpend(rec, held);

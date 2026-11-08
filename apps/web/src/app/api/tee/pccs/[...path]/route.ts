@@ -1,4 +1,5 @@
-import { overLimit } from "../../../../../server/ratelimit";
+import { cached, remember } from "../../../../../server/pccs-cache.ts";
+import { overLimit } from "../../../../../server/ratelimit.ts";
 
 /**
  * Relay for Intel's public attestation collateral (certificate revocation lists,
@@ -15,7 +16,6 @@ import { overLimit } from "../../../../../server/ratelimit";
  */
 const INTEL_PCS = "https://api.trustedservices.intel.com";
 const INTEL_ROOT_CA_CRL = "https://certificates.trustedservices.intel.com/IntelSGXRootCA.der";
-const TTL_MS = 60 * 60_000;
 
 type Route = { query: (q: URLSearchParams) => boolean; upstream: (q: URLSearchParams) => string; hexBody?: boolean; headers: string[] };
 
@@ -49,17 +49,6 @@ function keysAre(q: URLSearchParams, keys: string[]): boolean {
   return got.length === keys.length && [...keys].sort().every((k, i) => got[i] === k);
 }
 
-type Cached = { at: number; status: number; body: ArrayBuffer; headers: Record<string, string> };
-// Keyed on the upstream URL (so query variants of the same request share one entry), and
-// bounded: oldest entries go first. Real traffic needs a handful (audit V2-06).
-const cache = new Map<string, Cached>();
-const MAX_ENTRIES = 32;
-function remember(key: string, v: Cached) {
-  cache.delete(key);
-  cache.set(key, v);
-  for (const [k, c] of cache) if (cache.size > MAX_ENTRIES || Date.now() - c.at > TTL_MS) cache.delete(k);
-}
-
 export async function GET(req: Request, ctx: { params: Promise<{ path: string[] }> }) {
   const path = (await ctx.params).path.join("/");
   const route = Object.hasOwn(ROUTES, path) ? ROUTES[path]! : undefined;
@@ -68,8 +57,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ path: string[] 
   if (!route.query(q)) return new Response("bad query", { status: 400 });
 
   const key = route.upstream(q);
-  let hit = cache.get(key);
-  if (!hit || Date.now() - hit.at > TTL_MS) {
+  let hit = cached(key);
+  if (!hit) {
     // Each verification needs 4 of these; cached requests above don't count.
     if (await overLimit(req, "pccs", 40)) return new Response("too many requests", { status: 429 });
     let res: Response;
