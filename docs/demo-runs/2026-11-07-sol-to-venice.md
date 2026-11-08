@@ -39,3 +39,11 @@ Paid via the same x402 credit; prompt sent as ciphertext, reply decrypted locall
 
 Local checks: nonce echoed; model id; keccak(enclave pubkey) == signing address; TDX quote v4 / type 0x81; quote REPORTDATA binds our nonce; quote REPORTDATA binds enclave address; TD debug bit off.
 Not checked locally (shown as server-verified): Intel DCAP quote signature + cert chain, NVIDIA GPU evidence.
+
+## Follow-up: opencode through the local proxy (2026-11-08)
+
+`npm run proxy -- serve` (burner inference wallet) + a project-local `opencode.jsonc` using
+`"package": "@opencode/ai/providers/openai-compatible"`, `"settings": { "baseURL": "http://127.0.0.1:<port>/v1" }`,
+`"env": ["NAISHO_API_KEY"]` (the proxy's local token). `opencode run --standalone -m naisho/gemma-4-uncensored "…"` (opencode v2.1.3)
+replied `opencode works through naisho`; the proxy logged two calls (reply + session title) with model and latency only.
+Not yet run here: an agentic tool-call session (needs interactive approval in opencode).
