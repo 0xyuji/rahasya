@@ -37,7 +37,7 @@ npm install
 
 | Do | See |
 |---|---|
-| `npm test` | **66 tests pass** offline: swap state machine (crash-resume never double-sends, dropped deposits re-signed once, refunds, kill switch, spend cap, tampered quotes refused), E2EE round trip, attestation checks against a real captured quote (replayed nonce, swapped key and debug enclave all rejected), wallet derivation golden vector, x402 top-up idempotency, API-key limits and login, privacy-mode context rules, proxy auth/origin/Host guards, plus a regression test for every audit finding. |
+| `npm test` | **78 tests pass** offline: swap state machine (crash-resume never double-sends, dropped deposits re-signed once, refunds, kill switch, spend cap, tampered quotes refused), E2EE round trip, attestation checks against a real captured quote (replayed nonce, swapped key and debug enclave all rejected), wallet derivation golden vector, x402 top-up idempotency, API-key limits and login, privacy-mode context rules, proxy auth/origin/Host guards, the in-browser Intel quote verifier against a real captured quote (tampering and forged collateral rejected) and its worker lockdown, plus a regression test for every audit finding. |
 | `npm run verify:tee` | A live attestation of the NEAR AI enclave model with a fresh nonce: 7 checks done locally from the raw Intel TDX quote, 3 reported by Venice. Uses a throwaway in-memory wallet. |
 | `npm run quote:dry` | Live dry quotes from NEAR Intents for $5 of USDC on Base from SOL, ETH and NEAR. |
 
@@ -92,7 +92,7 @@ On the site at **`/docs`** (rendered from `apps/web/content/docs/`):
 | Anyone on-chain | Deposit from your wallet to a 1Click address, USDC arriving at your inference wallet, x402 payment to Venice | same |
 | Reown relay | Connection metadata, only when using WalletConnect QR / mobile wallets | same |
 
-\* The browser checks that the attestation is fresh, bound to the key it encrypts to, and from a non-debug Intel TDX enclave. Intel's signature on it is checked by Venice's verifier, not locally, so against Venice itself this relies on Venice reporting honestly.
+\* The browser checks that the attestation is fresh, bound to the key it encrypts to, and from a non-debug Intel TDX enclave, and verifies Intel's signature chain itself (in a sandboxed worker, with Intel's data relayed through our server so your browser contacts no third party). Which software runs inside the enclave isn't pinned yet, so against Venice itself this relies on Venice running the code it publishes.
 
 Conversations live in browser memory only. Switching from Truly private back to Anonymous never sends private-mode messages to a non-enclave model. In E2EE mode the history is folded into one encrypted message, because Venice only encrypts user/system roles.
 
@@ -111,12 +111,13 @@ Conversations live in browser memory only. Switching from Truly private back to 
 - **Audit kit:** [`audit-kit/`](audit-kit/00-START-HERE.md) has the invariants, threat model, known issues, ready-made auditor prompts and a black-box probe (`npm run audit:probe`). `npm run audit:pack` builds a shareable zip.
 - **Headers:** anti-framing (`frame-ancestors 'none'` + `X-Frame-Options: DENY`), so wallet prompts can't be clickjacked; `Referrer-Policy: no-referrer`; `nosniff`; HSTS; a locked-down `Permissions-Policy`. A strict `default-src` CSP isn't set because the WalletConnect modal loads from many origins.
 - **Local proxy:** binds to 127.0.0.1, requires a local bearer token (constant-time compare), refuses any request with a browser `Origin`, and never logs prompts.
-- **`npm audit`** reports 3 upstream advisories, all inside third-party wallet libraries:
+- **`npm audit`** reports upstream advisories, all inside third-party libraries (none in our code):
   - zod < 4.6.6 bundled inside Reown AppKit (our own zod is 4.6.7, not affected);
   - `bigint-buffer` via `@solana/web3.js` 1.x / `spl-token` (we only encode our own amounts; no untrusted decoding);
-  - `jayson` / `stream-json` / `uuid` in web3.js's Node RPC client (not on our browser path).
+  - `jayson` / `stream-json` / `uuid` in web3.js's Node RPC client (not on our browser path);
+  - `elliptic` (CVE-2025-14505, low, no fixed version) via `@phala/dcap-qvl`: the bug is in signature *generation*; the verifier only verifies, holds no private keys, and runs in a sandboxed worker.
 
-  None has an upstream fix that doesn't break those libraries.
+  None has a fix we can apply without breaking those libraries.
 
 ## Repository
 
@@ -132,7 +133,7 @@ audit-kit         security audit brief, auditor prompts, findings template
 ## Known limitations
 
 - Abliterated Large Flash / Large V2 are only available as Venice "anonymized" models (third-party host). Use Truly private mode when the content matters.
-- The Intel DCAP signature chain and NVIDIA GPU evidence are reported by Venice's verifier, not re-verified locally (shown as such in the UI), and enclave measurements aren't pinned yet. Until both are done, Truly private mode protects you from everyone except Venice itself, where it relies on Venice's verifier being honest.
+- Intel's signature chain is verified in the browser, but the enclave's software measurement isn't pinned yet, and NVIDIA GPU evidence is reported by Venice's verifier (shown as such in the UI). Until pinning is done, Truly private mode protects you from everyone except Venice itself, where it relies on Venice running the enclave software it publishes. API keys and the local proxy don't run the in-browser Intel check.
 - One-click funding from a connected NEAR wallet isn't built yet; NEAR tokens work through *Any token, anywhere*.
 - Venice credit can't be withdrawn. Top up in small amounts.
 - On exact-output swaps the small slippage buffer (0.5%) may not be refunded.
@@ -142,7 +143,7 @@ audit-kit         security audit brief, auditor prompts, findings template
 
 **Services:** NEAR Intents 1Click, Venice AI (x402, TEE/E2EE), NEAR AI and Phala enclaves (via Venice), Base, Solana.
 
-**Libraries:** Next.js, React, viem, wagmi, Reown AppKit, `@hot-labs/near-connect`, `@solana/kit`, `@solana/web3.js`, `@solana/spl-token`, `@x402/core`, `@x402/evm`, `@noble/curves`, `@noble/hashes`, `@noble/ciphers`, zod, `@tanstack/react-query`, react-markdown, remark-gfm, qrcode.
+**Libraries:** Next.js, React, viem, wagmi, Reown AppKit, `@hot-labs/near-connect`, `@solana/kit`, `@solana/web3.js`, `@solana/spl-token`, `@x402/core`, `@x402/evm`, `@noble/curves`, `@noble/hashes`, `@noble/ciphers`, `@phala/dcap-qvl` (Intel TDX quote verification), `@upstash/redis`, zod, `@tanstack/react-query`, react-markdown, remark-gfm, qrcode.
 
 **AI assistance:** Most of the code was written with Claude Code (Anthropic) as the coding agent, directed and reviewed by the team.
 

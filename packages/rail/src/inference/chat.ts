@@ -1,6 +1,6 @@
 import { silentLogger, type Logger } from "../log.ts";
 import { VeniceInsufficientBalance, type VeniceClient } from "../venice/client.ts";
-import { attest, decryptStream, e2eeRequest, newSession, type AttestationReport, type StreamUsage } from "../venice/e2ee.ts";
+import { attest, decryptStream, e2eeRequest, newSession, withQuoteVerdict, type AttestationReport, type QuoteVerifier, type StreamUsage } from "../venice/e2ee.ts";
 import { costUsd, parseVenicePrices, resolveModel, type LivePrices, type ModelDef, type PrivacyMode } from "./models.ts";
 
 export interface ChatMessage {
@@ -45,6 +45,8 @@ export interface VeniceChatOptions {
   onLowBalance?: () => Promise<boolean>;
   /** How long one attestation is reused before re-attesting (default 10 min). */
   attestationTtlMs?: number;
+  /** Optional local verification of the Intel quote's signature chain (the website runs it in a sandboxed worker). */
+  verifyQuote?: QuoteVerifier;
   log?: Logger;
 }
 
@@ -58,6 +60,7 @@ export class VeniceChat {
   private readonly o: VeniceChatOptions;
   private readonly log: Logger;
   private readonly attestations = new Map<string, AttestationReport>();
+  private readonly inflight = new Map<string, Promise<AttestationReport>>();
   private prices?: { at: number; map: LivePrices };
 
   constructor(opts: VeniceChatOptions) {
@@ -81,9 +84,26 @@ export class VeniceChat {
     const cached = this.attestations.get(model.id);
     const ttl = this.o.attestationTtlMs ?? 10 * 60_000;
     if (!force && cached && Date.now() - Date.parse(cached.fetchedAt) < ttl) return cached;
-    const report = await attest({ model: model.id, authHeaders: (u) => this.o.venice.authHeaders(u) });
-    this.attestations.set(model.id, report);
-    return report;
+    // One attestation in flight per model: a prefetch (switching to Truly private) and a send share it.
+    const pending = this.inflight.get(model.id);
+    if (pending && !force) return pending;
+    const run = (async () => {
+      let report = await attest({ model: model.id, authHeaders: (u) => this.o.venice.authHeaders(u) });
+      if (this.o.verifyQuote && report.quoteHex) {
+        report = withQuoteVerdict(
+          report,
+          await this.o.verifyQuote(report.quoteHex).catch((e: unknown) => ({ status: "unavailable" as const, detail: `Couldn't check right now (${(e as Error)?.message ?? "error"}).` })),
+        );
+      }
+      this.attestations.set(model.id, report);
+      return report;
+    })();
+    this.inflight.set(model.id, run);
+    try {
+      return await run;
+    } finally {
+      this.inflight.delete(model.id);
+    }
   }
 
   /** Stream deltas; `meta` resolves once the request is accepted. */

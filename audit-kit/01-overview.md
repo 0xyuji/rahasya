@@ -40,7 +40,9 @@ Full user-facing explanation: `source/apps/web/content/docs/protocol.md`. API re
 | API client → our server | Bearer key + prompt | Key hash lookup, limits, rate limit |
 | Our server → Venice | SIWX signed with API wallet; prompt (plaintext in transit) | Server holds sealed API wallet key |
 | Our server → Redis | Sessions, key hashes, sealed API wallet keys, spend counters | Upstash token; AES-GCM for wallet keys |
-| Local tool → local proxy | Local token + prompt | 127.0.0.1 bind, token, refuses `Origin` |
+| Local tool → local proxy | Local token + prompt | 127.0.0.1 bind, token, refuses `Origin`, localhost `Host` only |
+| Page → Intel-verifier worker | The quote (public) in; a small verdict out | Worker lockdown (no storage, fetch only to our relay, no cookies); the page re-validates the verdict |
+| Our server → Intel PCS | Platform FMSPC (public), no user data | Allowlisted endpoints; everything returned is Intel-signed |
 
 ## Assets and impact
 
@@ -60,7 +62,7 @@ Full user-facing explanation: `source/apps/web/content/docs/protocol.md`. API re
 | Area | Files |
 |---|---|
 | Gateway, keys, sessions, API wallet | `apps/web/src/server/{gateway,keys,login,api-wallet,crypto,http,kv}.ts`, `apps/web/src/app/api/{auth,keys,account,v1}/**/route.ts` |
-| E2EE + attestation | `packages/rail/src/venice/e2ee.ts` |
+| E2EE + attestation | `packages/rail/src/venice/e2ee.ts`; in-browser Intel signature check: `apps/web/src/tee/{lockdown,intel-verify.worker,intel-verify}.ts`, relay `apps/web/src/app/api/tee/pccs/[...path]/route.ts` |
 | x402 + SIWX | `packages/rail/src/venice/{client,siwx}.ts` |
 | Inference wallet derivation | `packages/rail/src/wallet/derive.ts`, `apps/web/src/wallet/wallet-context.tsx` |
 | Browser funding | `apps/web/src/funding/{flow,anywhere,senders,target,local-store}.ts`, `apps/web/src/app/api/oneclick/[...path]/route.ts` |

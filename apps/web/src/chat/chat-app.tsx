@@ -12,7 +12,7 @@ import s from "./chat.module.css";
 
 export function ChatApp() {
   const w = useWallet();
-  const { messages, attestations, busy, send, stop, clear } = useChat(notifyCreditChanged);
+  const { messages, attestations, busy, send, stop, clear, prepare } = useChat(notifyCreditChanged);
   const end = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -30,7 +30,7 @@ export function ChatApp() {
           <p className={page.sub}>
             Uncensored and abliterated models, built not to refuse or lecture. Paid with whatever token you hold. No account. No card.
           </p>
-          <Prompt onSend={send} />
+          <Prompt onSend={send} onPrepare={prepare} />
         </div>
       </main>
     );
@@ -51,7 +51,7 @@ export function ChatApp() {
               New chat (nothing is saved)
             </button>
           )}
-          <Prompt onSend={send} busy={busy} onStop={stop} showChips={false} />
+          <Prompt onSend={send} onPrepare={prepare} busy={busy} onStop={stop} showChips={false} />
         </div>
       </div>
     </>

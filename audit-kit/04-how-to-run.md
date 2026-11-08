@@ -11,7 +11,7 @@ npm install
 ## No keys, no money (start here)
 
 ```sh
-npm test               # 66 offline tests: rail 35, web 22, proxy 9. No network, no keys.
+npm test               # 78 offline tests: rail 40, web 29, proxy 9. No network, no keys.
 npm run typecheck      # all packages
 npm run verify:tee     # live TEE attestation with a throwaway in-memory wallet: 10 checks, prints PASS/FAIL
 npm run quote:dry      # live NEAR Intents dry quotes (nothing is created or sent)

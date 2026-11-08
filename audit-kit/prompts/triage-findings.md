@@ -13,7 +13,7 @@ For EACH finding:
 2. Classify it as: CONFIRMED (reproduced), PLAUSIBLE (code path exists, not reproduced; say what's
    missing), NOT A BUG (explain), DUPLICATE (of which finding or known issue K#), or KNOWN-BUT-WORSE
    (a known issue where the report shows more impact).
-3. Re-assess severity with the rubric in findings-template.md, mapped to invariants I1–I15.
+3. Re-assess severity with the rubric in findings-template.md, mapped to invariants I1–I16.
 4. For CONFIRMED ones: the smallest correct fix (file:line + diff sketch) and a regression test to add.
 
 Output:

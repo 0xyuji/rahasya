@@ -70,10 +70,25 @@ export const isHexEncrypted = (s: string) => s.length >= 186 && /^[0-9a-fA-F]+$/
 
 export interface AttestationCheck {
   name: string;
-  status: "pass" | "fail";
+  /** "unavailable" = couldn't be checked right now; shown, but doesn't block (only "fail" does). */
+  status: "pass" | "fail" | "unavailable";
   by: "local" | "server";
   detail: string;
 }
+
+/** Result of verifying the Intel TDX quote's signature chain (DCAP), e.g. in a browser worker. */
+export interface QuoteVerdict {
+  status: "pass" | "fail" | "unavailable";
+  detail: string;
+  /** REPORTDATA of the report whose signature was verified (hex, 64 bytes). */
+  reportDataHex?: string;
+  /** Intel TCB level of the platform (UpToDate, SWHardeningNeeded, OutOfDate, ...). */
+  tcbStatus?: string;
+  /** MRTD: measurement of the enclave's initial image (hex). Shown, not pinned yet. */
+  mrTd?: string;
+}
+
+export type QuoteVerifier = (quoteHex: string) => Promise<QuoteVerdict>;
 
 export interface AttestationReport {
   ok: boolean;
@@ -87,8 +102,32 @@ export interface AttestationReport {
   gpu?: string;
   sourceCommit?: string;
   sourceRepo?: string;
+  /** The raw Intel TDX quote (hex), for signature verification. */
+  quoteHex?: string;
+  /** Enclave measurement (MRTD) from a verified quote. */
+  mrTd?: string;
   checks: AttestationCheck[];
   fetchedAt: string;
+}
+
+export const INTEL_CHECK = "Genuine Intel hardware";
+
+/**
+ * Add an Intel signature verdict to a report. A "pass" only counts if the
+ * verified report is the very quote we checked locally (same REPORTDATA, so the
+ * same nonce and enclave key). "unavailable" is shown but doesn't block;
+ * "fail" makes the whole attestation fail, so nothing is sent.
+ */
+export function withQuoteVerdict(report: AttestationReport, v: QuoteVerdict): AttestationReport {
+  let status = v.status;
+  let detail = v.detail;
+  const ours = report.quoteHex && report.quoteHex.length >= (TD_REPORT_DATA + 64) * 2 ? report.quoteHex.slice(TD_REPORT_DATA * 2, (TD_REPORT_DATA + 64) * 2).toLowerCase() : undefined;
+  if (status === "pass" && (!ours || v.reportDataHex?.toLowerCase() !== ours)) {
+    status = "fail";
+    detail = "The signature check passed for a report that doesn't match the quote we checked.";
+  }
+  const checks = [...report.checks.filter((c) => c.name !== INTEL_CHECK), { name: INTEL_CHECK, status, by: "local" as const, detail }];
+  return { ...report, mrTd: status === "pass" ? v.mrTd : undefined, checks, ok: checks.every((c) => c.status !== "fail") };
 }
 
 // TDX quote v4: 48-byte header, then TD report body. Offsets within the body:
@@ -210,6 +249,7 @@ export function evaluateAttestation(a: Attestation, model: string, sentNonce: st
     gpu,
     sourceRepo: a.attestation?.source_provenance?.repo_url,
     sourceCommit: a.attestation?.source_provenance?.repo_commit,
+    quoteHex: quote ? a.intel_quote!.toLowerCase() : undefined,
     checks,
     fetchedAt: new Date().toISOString(),
   };

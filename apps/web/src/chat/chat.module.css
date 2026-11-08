@@ -248,6 +248,12 @@
 .fail .tick {
   color: #e8b4a4;
 }
+/* Couldn't be checked right now: shown, doesn't block. */
+.unknown,
+.unknown .tick {
+  color: var(--paper-dim);
+  opacity: 0.75;
+}
 .proofFacts {
   display: grid;
   grid-template-columns: 100px 1fr;

@@ -5,7 +5,7 @@
 | Severity | Meaning (for this system) |
 |---|---|
 | **Critical** | Steal or redirect user funds; take over another user's API wallet or keys at scale; recover inference or API wallet private keys; send private-mode content in plaintext to a non-enclave party |
-| **High** | Spend another user's credit; bypass key limits or the model allowlist without bound; break any invariant I1–I15; make E2EE/attestation accept a forged or replayed enclave; double-charge an x402 top-up |
+| **High** | Spend another user's credit; bypass key limits or the model allowlist without bound; break any invariant I1–I16; make E2EE/attestation accept a forged or replayed enclave; double-charge an x402 top-up |
 | **Medium** | Bounded limit overshoot beyond K1; denial of service on a user's keys or funding flow; leak of key hashes, sessions or user identifiers; meaningful privacy leak (e.g. linking wallets) |
 | **Low** | Hardening gaps with no direct exploit; misleading UI or docs about security properties; missing validation that fails safe |
 | **Info** | Code quality, defense-in-depth suggestions |
@@ -52,4 +52,5 @@ I1  holds / broken (F-xx) / not checked: <how checked>
 I2  …
 …
 I15 …
+I16 …
 ```

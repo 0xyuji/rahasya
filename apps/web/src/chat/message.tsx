@@ -1,6 +1,6 @@
 "use client";
 
-import { MODELS, type AttestationReport } from "@pay/rail/browser";
+import { INTEL_CHECK, MODELS, type AttestationCheck, type AttestationReport } from "@pay/rail/browser";
 import { useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -89,9 +89,25 @@ export function Message({ m, attestation, onUnlock }: { m: Msg; attestation?: At
   );
 }
 
+const TICK: Record<AttestationCheck["status"], string> = { pass: "✓", fail: "✗", unavailable: "–" };
+
+function Check({ c }: { c: AttestationCheck }) {
+  return (
+    <li className={c.status === "pass" ? s.pass : c.status === "fail" ? s.fail : s.unknown}>
+      <span className={s.tick} aria-hidden>
+        {TICK[c.status]}
+      </span>
+      <span>
+        <strong>{c.name}.</strong> {c.detail}
+      </span>
+    </li>
+  );
+}
+
 function Proof({ a, plaintextChunks }: { a: AttestationReport; plaintextChunks: number }) {
   const local = a.checks.filter((c) => c.by === "local");
   const server = a.checks.filter((c) => c.by === "server");
+  const intel = a.checks.find((c) => c.name === INTEL_CHECK)?.status;
   return (
     <div className={s.proof}>
       <p className={s.proofLead}>
@@ -101,14 +117,7 @@ function Proof({ a, plaintextChunks }: { a: AttestationReport; plaintextChunks: 
       <div className={s.proofGroup}>Checked in your browser</div>
       <ul className={s.checks}>
         {local.map((c) => (
-          <li key={c.name} className={c.status === "pass" ? s.pass : s.fail}>
-            <span className={s.tick} aria-hidden>
-              {c.status === "pass" ? "✓" : "✗"}
-            </span>
-            <span>
-              <strong>{c.name}.</strong> {c.detail}
-            </span>
-          </li>
+          <Check key={c.name} c={c} />
         ))}
         <li className={plaintextChunks === 0 ? s.pass : s.fail}>
           <span className={s.tick} aria-hidden>
@@ -119,29 +128,30 @@ function Proof({ a, plaintextChunks }: { a: AttestationReport; plaintextChunks: 
           </span>
         </li>
       </ul>
-      <div className={s.proofGroup}>Reported by Venice&apos;s verifier (not re-checked here)</div>
+      <div className={s.proofGroup}>Also reported by Venice&apos;s verifier</div>
       <ul className={s.checks}>
         {server.map((c) => (
-          <li key={c.name} className={c.status === "pass" ? s.pass : s.fail}>
-            <span className={s.tick} aria-hidden>
-              {c.status === "pass" ? "✓" : "✗"}
-            </span>
-            <span>
-              <strong>{c.name}.</strong> {c.detail}
-            </span>
-          </li>
+          <Check key={c.name} c={c} />
         ))}
       </ul>
       <p className={s.proofLead}>
         <strong>What this means.</strong> Nobody between you and that key can read your messages: not us, not your network, not the model
-        host&apos;s operators. Intel&apos;s signature on the attestation is checked by Venice&apos;s verifier, not in your browser, so against
-        Venice itself this relies on Venice reporting honestly.
+        host&apos;s operators.{" "}
+        {intel === "pass"
+          ? "Your browser confirmed Intel's signature, so the key really is inside an Intel TDX enclave. Which software runs in that enclave isn't pinned yet, so against Venice itself this still relies on Venice running the code it says it does."
+          : "Intel's signature couldn't be checked in your browser this time, so against Venice itself this relies on Venice's own verifier reporting honestly."}
       </p>
       <dl className={s.proofFacts}>
         <dt>Enclave key</dt>
         <dd>{a.signingAddress}</dd>
         <dt>Our nonce</dt>
         <dd>{a.nonce}</dd>
+        {a.mrTd && (
+          <>
+            <dt>Enclave measurement (MRTD)</dt>
+            <dd>{a.mrTd}</dd>
+          </>
+        )}
         {a.sourceRepo && (
           <>
             <dt>Gateway code</dt>

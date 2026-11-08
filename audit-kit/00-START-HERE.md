@@ -19,7 +19,7 @@ Thanks for reviewing this. This folder has everything you need: what the system 
 ```
 00-START-HERE.md          this file
 01-overview.md            architecture, components, trust boundaries, assets
-02-what-to-check.md       the 15 invariants + prioritized attack checklist
+02-what-to-check.md       the 16 invariants + prioritized attack checklist
 03-known-issues.md        accepted risks: don't re-report unless worse than stated
 04-how-to-run.md          setup, tests, black-box probe, safe-testing rules
 prompts/
@@ -44,4 +44,4 @@ Commit under review: see `source/COMMIT.txt` in the zip, or `git rev-parse HEAD`
 
 ## What we need back
 
-One report per auditor, following `templates/findings-template.md`: a summary, findings (most severe first, each with file:line, exploit scenario, proof and fix), and the invariant checklist (I1–I15 holding or broken, and how you checked).
+One report per auditor, following `templates/findings-template.md`: a summary, findings (most severe first, each with file:line, exploit scenario, proof and fix), and the invariant checklist (I1–I16 holding or broken, and how you checked).

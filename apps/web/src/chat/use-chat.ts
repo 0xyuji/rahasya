@@ -1,8 +1,9 @@
 "use client";
 
-import { RailError, VeniceChat, type AttestationReport, type PrivacyMode } from "@pay/rail/browser";
+import { RailError, VeniceChat, resolveModel, type AttestationReport, type PrivacyMode } from "@pay/rail/browser";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { friendly, veniceFor } from "../funding/flow";
+import { verifyIntelQuote } from "../tee/intel-verify";
 import { useWallet } from "../wallet/wallet-context";
 import { buildContext, newId, type Msg } from "./conversation";
 
@@ -14,7 +15,19 @@ export function useChat(onCreditChange: () => void) {
   const stopRef = useRef(false);
   const busy = messages.some((m) => m.status === "streaming");
 
-  const chat = useMemo(() => (w.inference ? new VeniceChat({ venice: veniceFor(w.inference) }) : null), [w.inference]);
+  // Truly private: every attestation's Intel signature is also verified here, in a sandboxed worker.
+  const chat = useMemo(() => (w.inference ? new VeniceChat({ venice: veniceFor(w.inference), verifyQuote: verifyIntelQuote }) : null), [w.inference]);
+
+  /** Attest (and verify) ahead of time when Truly private is selected, so the first message doesn't wait. */
+  const prepare = useCallback(
+    (mode: PrivacyMode, modelKey: string) => {
+      if (mode !== "private" || !chat) return;
+      try {
+        void chat.attestation(resolveModel(mode, modelKey)).catch(() => {});
+      } catch {}
+    },
+    [chat],
+  );
 
   const patch = (id: string, p: Partial<Msg>) => setMessages((ms) => ms.map((m) => (m.id === id ? { ...m, ...p } : m)));
 
@@ -68,5 +81,5 @@ export function useChat(onCreditChange: () => void) {
   const stop = () => (stopRef.current = true);
   const clear = () => setMessages([]);
 
-  return { messages, attestations, busy, send, stop, clear };
+  return { messages, attestations, busy, send, stop, clear, prepare };
 }

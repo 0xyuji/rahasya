@@ -11,7 +11,7 @@ Breaking any of them is **High or worse**. For each, the right column says where
 | **I3** | The derivation message, salt and NEP-413 params never change (or every user silently gets a new wallet) | `rail/wallet/derive.ts` | Golden vector in `derive.test.ts` |
 | **I4** | Truly private mode never sends user/system content in plaintext, never falls back to a non-TEE model, and refuses if any attestation check fails | `rail/inference/chat.ts`, `rail/inference/models.ts` (`resolveModel`), `rail/venice/e2ee.ts` (`newSession`) | `models.test.ts`, `e2ee.test.ts` |
 | **I5** | Anonymous requests never include messages exchanged in Truly private mode; E2EE requests carry no plaintext-role history | `web/chat/conversation.ts`, `proxy/server.ts` (`foldForE2ee`), `web/server/gateway.ts` (`fold`) | `conversation.test.ts`, `proxy/server.test.ts` |
-| **I6** | An attestation passes only if: the nonce is echoed, the model matches, keccak(enclave key) = signing address, it's a TDX v4 quote, REPORTDATA binds our nonce and that address, and the debug bit is off | `rail/venice/e2ee.ts` (`evaluateAttestation`) | `e2ee.test.ts` (replay, swapped key, debug) |
+| **I6** | An attestation passes only if: the nonce is echoed, the model matches, keccak(enclave key) = signing address, it's a TDX v4 quote, REPORTDATA binds our nonce and that address, and the debug bit is off. On the website, Intel's DCAP signature chain must also verify for that same quote (same REPORTDATA); "fail" blocks, "couldn't check" doesn't | `rail/venice/e2ee.ts` (`evaluateAttestation`, `withQuoteVerdict`), `web/tee/*` | `e2ee.test.ts`, `intel-verdict.test.ts`, `web/tee/intel-verify.test.ts` |
 | **I7** | An x402 authorization is persisted before sending; a retry re-sends the same one; a new one is signed only after the old `validBefore` + 120 s; payment only to Venice's known `payTo` | `rail/venice/client.ts` (`topUp`) | Review |
 | **I8** | API key plaintext is never stored; `authorize` checks existence, expiry, model allowlist, daily/total limits and rate **before** any upstream call | `web/server/keys.ts` | `server.test.ts`, probe |
 | **I9** | Key create/edit/delete only with a valid session, from our own origin, on keys owned by that user | `web/server/http.ts`, `web/server/keys.ts` (`own`) | `server.test.ts`, probe |
@@ -21,6 +21,7 @@ Breaking any of them is **High or worse**. For each, the right column says where
 | **I13** | `/api/oneclick` forwards only 4 routes, only quotes delivering USDC on Base to `DESTINATION_CHAIN`, never the caller's `appFees`, within per-IP rate limits | `web/app/api/oneclick/[...path]/route.ts` | Probe |
 | **I14** | The local proxy listens only on 127.0.0.1, requires a token of ≥ 32 chars (constant-time compare), refuses requests with an `Origin` header, and only accepts a localhost `Host` | `proxy/server.ts`, `proxy/cli.ts` | `proxy/server.test.ts` |
 | **I15** | Pages can't be framed (wallet prompts can't be clickjacked) | `web/next.config.ts` | Probe |
+| **I16** | Third-party verifier code (`@phala/dcap-qvl`) never runs on our server or in the page: only in a worker that has no storage, no raw network, and a `fetch` limited to GET on `/api/tee/pccs/` without cookies | `web/tee/lockdown.ts`, `web/tee/intel-verify.worker.ts` | `web/tee/lockdown.test.ts` (emulated); verified in headless Chrome on the production build |
 
 ## B. Attack checklist (highest value first)
 
@@ -51,6 +52,7 @@ Breaking any of them is **High or worse**. For each, the right column says where
 - [ ] Refund-address handling (wrong chain format accepted?)
 
 ### Break E2EE / attestation (High)
+- [ ] The in-browser Intel check (`apps/web/src/tee/`): can anything in the worker get around the lockdown (storage, network, cookies, the page's memory)? Can the page be made to accept a "pass" for a different quote? Can the relay `/api/tee/pccs/` be made to fetch anything other than Intel's four collateral endpoints?
 - [ ] Field confusion between `signing_key`, `signing_public_key` and the `aci/1` nested format; a different REPORTDATA layout
 - [ ] A plaintext chunk accepted as decrypted (`isHexEncrypted` heuristic)
 - [ ] Attestation caching (10 min): could the enclave key rotate or be substituted under us?

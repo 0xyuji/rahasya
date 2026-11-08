@@ -81,11 +81,16 @@ For the two TEE models, the browser:
    - REPORTDATA contains the enclave's address (so the key is bound to this hardware)
    - the TD debug bit is off
 
-   Intel's signature chain and the GPU evidence are reported by Venice's verifier and shown as such.
+2. **Verifies Intel's signature, in your browser.** The quote's ECDSA signature, the quoting enclave's report, Intel's certificate chain up to Intel's root (built into the verifier), the revocation lists and the platform's TCB level are all checked with [`@phala/dcap-qvl`](https://github.com/Phala-Network/dcap-qvl) (pinned version). The verified report must be the same quote checked above (same REPORTDATA). How it's isolated:
+   - It runs in a throwaway Web Worker that first removes storage (IndexedDB, caches, file system) and network access (XHR, WebSocket, …) and replaces `fetch` with one that can only GET our collateral relay, without cookies. The worker can't see the page's memory, where your inference key lives.
+   - Intel's public collateral (CRLs, TCB info, QE identity) comes through our relay `/api/tee/pccs/…`, cached for an hour, so your browser never contacts a third party. Everything there is signed by Intel, so the relay can withhold it but can't forge it.
+   - A failed signature check blocks sending. If the collateral can't be fetched, the check shows as "couldn't check" and the other checks still apply.
 
-   **What this does and doesn't prove.** The checks above make the attestation fresh (no replay), bind it to the exact key we encrypt to, and confirm a non-debug TDX quote. What they can't do on their own is prove the quote was signed by genuine Intel hardware: that signature, and the certificate chain behind it, are verified by Venice's verifier, and we don't pin the enclave's software measurements yet. So Truly private mode protects your messages from us, your network and the model host's operators; against Venice itself, it relies on Venice's verifier being honest. Verifying the Intel signature and pinning measurements in the browser is on the roadmap.
-2. **Encrypts:** ECDH on secp256k1 with the enclave key → HKDF-SHA256 → AES-256-GCM, a fresh ephemeral key per message. Only the user and system roles are encrypted (that's Venice's E2EE), so the conversation history is folded into one encrypted message rather than sent as plaintext assistant turns.
-3. **Decrypts** the streamed reply, and counts any chunk that arrives unencrypted (the UI flags it).
+   The GPU evidence is reported by Venice's verifier and shown as such.
+
+   **What this does and doesn't prove.** Together these show that the key you encrypt to was generated inside a genuine, non-debug Intel TDX enclave, for this request (no replay). They don't yet prove *which software* runs in that enclave: its measurement (MRTD) is shown but not pinned. So Truly private mode protects your messages from us, your network and the model host's operators; against Venice itself, it relies on Venice running the enclave software it publishes. Pinning measurements is on the roadmap. (API keys and the local proxy rely on Venice's verifier for the Intel signature; the in-browser check is website-only.)
+3. **Encrypts:** ECDH on secp256k1 with the enclave key → HKDF-SHA256 → AES-256-GCM, a fresh ephemeral key per message. Only the user and system roles are encrypted (that's Venice's E2EE), so the conversation history is folded into one encrypted message rather than sent as plaintext assistant turns.
+4. **Decrypts** the streamed reply, and counts any chunk that arrives unencrypted (the UI flags it).
 
 Code: `packages/rail/src/venice/e2ee.ts`, tests against a captured real attestation in `e2ee.test.ts`. Try it with no keys: `npm run verify:tee`.
 
@@ -118,7 +123,7 @@ Code: `apps/web/src/server/` (`keys.ts`, `api-wallet.ts`, `gateway.ts`, `login.t
 | **1Click solver** | deposit and delivery addresses and amounts | same | same | — |
 | **Anyone on-chain** | your deposit to 1Click, USDC to your wallet, x402 settlement | same | same | — |
 
-\* Assuming Venice's attestation verifier reports honestly; see "What this does and doesn't prove" in section 5.
+\* The enclave is verified as genuine Intel hardware (in your browser on the website); which software runs in it isn't pinned yet, so against Venice itself this relies on Venice running what it publishes. See "What this does and doesn't prove" in section 5.
 
 Nothing here links your connected wallet to your inference wallet on-chain unless you fund one from the other.
 

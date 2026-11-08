@@ -17,8 +17,11 @@ export function Prompt({
   busy = false,
   onStop,
   showChips = true,
+  onPrepare,
 }: {
   onSend: (text: string, mode: PrivacyMode, modelKey: string) => void;
+  /** Called when the mode/model changes, so Truly private can attest ahead of the first message. */
+  onPrepare?: (mode: PrivacyMode, modelKey: string) => void;
   busy?: boolean;
   onStop?: () => void;
   showChips?: boolean;
@@ -39,6 +42,10 @@ export function Prompt({
       return MODELS[PRIVACY_MODES[mode].chatModel]!;
     }
   })();
+
+  useEffect(() => {
+    onPrepare?.(mode, model.key);
+  }, [onPrepare, mode, model.key]);
 
   // Grow with the text, up to the CSS max-height.
   useEffect(() => {
