@@ -37,6 +37,8 @@ export interface Source {
   address: string;
 }
 
+export type ToolPanel = "keys" | "proxy" | null;
+
 interface WalletState {
   /** The user's own wallet (login + funding source). */
   source: Source | null;
@@ -54,6 +56,9 @@ interface WalletState {
   /** Where Add credit delivers: the browser inference wallet (default) or the server API wallet. */
   creditTarget: CreditTarget;
   openCredit: (target?: CreditTarget) => void;
+  /** API keys / Local proxy dialogs, openable from anywhere (header, landing page, menu). */
+  toolPanel: ToolPanel;
+  setToolPanel: (p: ToolPanel) => void;
   /** Sign a server login challenge with the connected wallet. */
   signLogin: (c: { id: string; message: string; nonce: string; recipient: string }) => Promise<LoginProof>;
   connectEvmOrSolana: () => void;
@@ -103,6 +108,7 @@ function WalletStateProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [creditOpen, setCreditOpen] = useState(false);
   const [creditTarget, setCreditTarget] = useState<CreditTarget>({ kind: "inference" });
+  const [toolPanel, setToolPanel] = useState<ToolPanel>(null);
 
   // Restore a NEAR session if the connector auto-connected.
   useEffect(() => {
@@ -259,6 +265,8 @@ function WalletStateProvider({ children }: { children: React.ReactNode }) {
       setCreditTarget(target);
       setCreditOpen(true);
     },
+    toolPanel,
+    setToolPanel,
     signLogin,
     inference,
     inferenceKey,

@@ -15,8 +15,6 @@ export function ConnectButton() {
   const w = useWallet();
   const [open, setOpen] = useState(false);
   const { creditUsd, idleUsdc, refresh } = useCredit();
-  const [editor, setEditor] = useState(false);
-  const [keysOpen, setKeysOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -93,16 +91,14 @@ export function ConnectButton() {
                   <span className={s.sub}>Pay with any token from your wallet</span>
                 </button>
               )}
-              <button role="menuitem" className={s.item} onClick={() => (setOpen(false), setKeysOpen(true))}>
+              <button role="menuitem" className={s.item} onClick={() => (setOpen(false), w.setToolPanel("keys"))}>
                 <span>API keys</span>
                 <span className={s.sub}>Paste into opencode, Cursor, SillyTavern, any OpenAI-compatible tool</span>
               </button>
-              {w.inference && (
-                <button role="menuitem" className={s.item} onClick={() => (setOpen(false), setEditor(true))}>
-                  <span>Local proxy (most private)</span>
-                  <span className={s.sub}>Run it on your computer; nothing passes through us</span>
-                </button>
-              )}
+              <button role="menuitem" className={s.item} onClick={() => (setOpen(false), w.setToolPanel("proxy"))}>
+                <span>Local proxy (most private)</span>
+                <span className={s.sub}>Run it on your computer; nothing passes through us</span>
+              </button>
               <p className={s.hint}>
                 The inference wallet is recreated from your signature each time you unlock. It is never stored or sent anywhere.
               </p>
@@ -123,8 +119,8 @@ export function ConnectButton() {
         </div>
       )}
       {w.error && <p className={s.error}>{w.error}</p>}
-      <EditorDialog open={editor} onClose={() => setEditor(false)} />
-      <ApiKeysDialog open={keysOpen} onClose={() => setKeysOpen(false)} />
+      <EditorDialog open={w.toolPanel === "proxy"} onClose={() => w.setToolPanel(null)} />
+      <ApiKeysDialog open={w.toolPanel === "keys"} onClose={() => w.setToolPanel(null)} />
       <CreditDialog open={w.creditOpen} onClose={() => w.setCreditOpen(false)} onCredited={refresh} />
     </div>
   );

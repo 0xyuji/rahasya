@@ -219,3 +219,53 @@
 .docsLink:hover {
   color: var(--paper);
 }
+
+/* Header text links that are buttons (API, Local proxy): look like the Docs link. */
+.navBtn {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+/* On small screens the header keeps only Docs + wallet; the row under the prompt has the rest. */
+@media (max-width: 640px) {
+  .navTool {
+    display: none;
+  }
+}
+
+/* "Chat here · API keys for your tools · Local proxy" under the prompt. */
+.ways {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: baseline;
+  gap: 6px 10px;
+  margin: 22px auto 0;
+  font-size: 13px;
+  color: var(--paper-faint);
+}
+.waysDot {
+  color: var(--line-strong);
+}
+.waysLink {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--paper-dim);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 4px;
+  transition: color 120ms ease, text-decoration-color 120ms ease;
+}
+.waysLink:hover {
+  color: var(--paper);
+  text-decoration-color: var(--paper-dim);
+}
+.waysNote {
+  color: var(--paper-faint);
+}

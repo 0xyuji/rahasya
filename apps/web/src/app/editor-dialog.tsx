@@ -73,12 +73,15 @@ export function EditorDialog({ open, onClose }: { open: boolean; onClose: () => 
 
   const copy = (t: string) => void navigator.clipboard.writeText(t);
   const id = brand.repo;
-  const site = typeof window !== "undefined" ? window.location.origin : `https://${brand.domain}`;
+  // Same value on the server and the first client render (no hydration mismatch), then the real origin.
+  const [site, setSite] = useState(`https://${brand.domain}`);
+  useEffect(() => setSite(window.location.origin), []);
+  const download = `curl -fsSL ${site}/rahasya.mjs -o rahasya.mjs\nnode rahasya.mjs`;
 
   return (
     <dialog ref={ref} className={s.dialog} onClose={onClose} onCancel={onClose}>
       <div className={s.head}>
-        <h2 className={s.title}>Use in your editor</h2>
+        <h2 className={s.title}>Local proxy</h2>
         <button className={s.x} onClick={onClose} aria-label="Close">
           ×
         </button>
@@ -89,10 +92,13 @@ export function EditorDialog({ open, onClose }: { open: boolean; onClose: () => 
       </p>
 
       <div className={s.label}>1. Download and start it (needs Node.js 22 or newer)</div>
-      <pre className={s.code}>{`curl -fsSL ${site}/rahasya.mjs -o rahasya.mjs
-node rahasya.mjs     # first run asks for the key from step 2 (input hidden)`}</pre>
+      <pre className={s.code}>{download}</pre>
+      <button className={s.copyBtn} onClick={() => copy(download)}>
+        Copy commands
+      </button>
       <p className={s.fine}>
-        One readable file, the same code as in our repo. Later runs start straight away; <code>node rahasya.mjs --help</code> shows the other commands.
+        The first run asks for the key from step 2 (input hidden). One readable file, the same code as in our repo. Later runs start straight away;{" "}
+        <code>node rahasya.mjs --help</code> shows the other commands.
         {sha && (
           <>
             {" "}
@@ -103,7 +109,20 @@ node rahasya.mjs     # first run asks for the key from step 2 (input hidden)`}</
 
       <div className={s.label}>2. Your inference wallet key</div>
       {!w.inferenceKey ? (
-        <p className={s.fine}>Unlock your wallet first.</p>
+        !w.source ? (
+          <div className={s.row}>
+            <button className={s.secondary} onClick={() => (onClose(), w.connectEvmOrSolana())}>
+              Connect wallet to get your key
+            </button>
+            <button className={s.secondary} onClick={() => (onClose(), void w.connectNear())}>
+              NEAR wallet
+            </button>
+          </div>
+        ) : (
+          <button className={s.secondary} onClick={() => void w.unlock()} disabled={w.busy}>
+            {w.busy ? "Check your wallet…" : "Unlock to get your key"}
+          </button>
+        )
       ) : reveal ? (
         <>
           <code className={s.addr}>{w.inferenceKey}</code>

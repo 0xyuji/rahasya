@@ -146,7 +146,9 @@ export function ApiKeysDialog({ open, onClose }: { open: boolean; onClose: () =>
     setNeedsLogin(true);
   }
 
-  const base = typeof window !== "undefined" ? `${window.location.origin}/api/v1` : "/api/v1";
+  // Same value on the server and the first client render (no hydration mismatch), then the real origin.
+  const [base, setBase] = useState("/api/v1");
+  useEffect(() => setBase(`${window.location.origin}/api/v1`), []);
   const opencode = (f: { token: string; models: string[] }) => opencodeConfig({ baseURL: base, keyHint: f.token, allowed: f.models });
 
   return (
@@ -165,7 +167,17 @@ export function ApiKeysDialog({ open, onClose }: { open: boolean; onClose: () =>
       </p>
 
       {!w.source ? (
-        <p className={s.fine}>Connect a wallet first.</p>
+        <>
+          <p className={s.p}>Your wallet is your login: no email, no password. Connect it to create keys and add credit.</p>
+          <div className={s.row}>
+            <button className={s.primary} onClick={() => (onClose(), w.connectEvmOrSolana())}>
+              Connect wallet
+            </button>
+            <button className={s.secondary} onClick={() => (onClose(), void w.connectNear())}>
+              NEAR wallet
+            </button>
+          </div>
+        </>
       ) : needsLogin ? (
         <>
           <p className={s.p}>Sign a message with your wallet to manage keys. It&apos;s not a transaction and costs nothing.</p>

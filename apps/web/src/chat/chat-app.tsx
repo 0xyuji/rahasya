@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { CipherField } from "../app/cipher-field";
 import { Prompt } from "../app/prompt";
+import { WaysRow } from "../app/tool-links";
 import page from "../app/page.module.css";
 import { notifyCreditChanged } from "../wallet/use-credit";
 import { useWallet } from "../wallet/wallet-context";
@@ -31,6 +32,7 @@ export function ChatApp() {
             Uncensored and abliterated models, built not to refuse or lecture. Paid with whatever token you hold. No account. No card.
           </p>
           <Prompt onSend={send} onPrepare={prepare} />
+          <WaysRow />
         </div>
       </main>
     );

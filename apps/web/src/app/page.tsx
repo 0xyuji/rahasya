@@ -2,6 +2,7 @@ import { ChatApp } from "../chat/chat-app";
 import s from "./page.module.css";
 import { brand } from "../brand";
 import { ConnectButton } from "./connect-button";
+import { NavTools } from "./tool-links";
 
 
 export default function Home() {
@@ -14,6 +15,7 @@ export default function Home() {
           <span className={s.tagline}>{brand.tagline}</span>
         </a>
         <nav className={s.navRight}>
+          <NavTools />
           <a href="/docs" className={s.docsLink}>
             Docs
           </a>
