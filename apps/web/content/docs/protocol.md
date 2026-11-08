@@ -43,7 +43,7 @@ Every quote must echo back exactly what we asked for (assets, amount, recipient,
 
 Our server proxies 1Click only to attach the partner key, our app fee and a referral tag. It holds no funds and only allows quotes that deliver USDC on Base.
 
-**Fees.** Swaps through NEAR Intents carry a **0.5% fee** in total, split evenly between us and NEAR Intents. It's already included in the amount the quote asks you to send, so the credit you get is exactly what you asked for. The fee is set on our server, and a client can't change or add one. There is no fee on:
+**Fees.** Swaps through NEAR Intents carry a **1% fee** in total, split evenly between us and NEAR Intents. It's already included in the amount the quote asks you to send, so the credit you get is exactly what you asked for. The fee is set on our server, and a client can't change or add one. There is no fee on:
 
 - funding with **USDC on Base** directly (no swap);
 - **inference**: you pay Venice's own per-token prices, with no markup, including through API keys.
