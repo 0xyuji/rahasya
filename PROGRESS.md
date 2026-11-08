@@ -3,7 +3,7 @@
 Working state of the project: what's done, what's left, and decisions made. Update this file whenever something changes; it's the first thing to read when picking the work back up.
 
 **Deadline:** 2026-11-14 23:59 UTC (NEAR hackathon, submit once). Judging 2026-11-16, results by 2026-11-18.
-**Last updated:** 2026-11-08
+**Last updated:** 2026-11-08 (evening)
 
 ## Status
 
@@ -17,16 +17,15 @@ Working state of the project: what's done, what's left, and decisions made. Upda
 | Security audit | ✅ v1 findings F-01..F-13 fixed | Kit v2 built: `npm run audit:pack -- --folder` |
 | Name / brand | ✅ **Rahasya**, `rahasya.chat` bought | `rahasya.ai` only if we win |
 | GitHub | ✅ Private repo `0xyuji/rahasya` | Must be **public** by the deadline (ask first) |
-| Cloudflare deploy | ✅ Live at https://rahasya.itadori.workers.dev (38/38 probe) | `rahasya.chat` waits on DNS: domain is at Namecheap, nameservers must point to Cloudflare |
+| Cloudflare deploy | ✅ Live at **https://rahasya.chat** (+ www, + rahasya.itadori.workers.dev). 38/38 probe on workers.dev | Domain at Namecheap, DNS on Cloudflare (MX/TXT email forwarding kept) |
 | Demo video | ⬜ Not started | |
 | X post | ⬜ Not started | Tag @NEARProtocol #NEARHackathon, with the video |
 | Hackathon submission | ⬜ Not started | Print the payload and get an explicit yes first |
 
 ## Next steps (in order)
 
-1. **Attach rahasya.chat:** owner adds the domain in Cloudflare (Free plan) and sets Namecheap → Custom DNS to Cloudflare's two nameservers. When Cloudflare says "active", put the `routes` back in `apps/web/wrangler.jsonc`, `npm run cf:deploy`, probe `https://rahasya.chat`.
-2. Add `rahasya.itadori.workers.dev` and `rahasya.chat` to Reown's allowed domains; test wallet connect live.
-3. Update the audit kit's live URL if it changes.
+1. Probe `https://rahasya.chat` once the owner's Mac DNS cache clears (it still had the old parking IP); test wallet connect live (Reown domains added).
+2. Second audit with kit v2 (`dist/rahasya-audit-kit-v2-<commit>`); triage the report.
 4. One real end-to-end run on the live site: pay with a non-USDC token, chat in both modes, use an API key. Check the fee lands in `rahasya.near`'s NEAR Intents balance.
 5. Finish the API checks: deleted key → 401, sign out everywhere, second same-amount top-up.
 6. Demo video (2–3 min): pay with any token → chat → Truly private with the Intel check → API key in opencode.

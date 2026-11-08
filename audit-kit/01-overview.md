@@ -65,7 +65,7 @@ Full user-facing explanation: `source/apps/web/content/docs/protocol.md`. API re
 
 | Area | Files |
 |---|---|
-| Gateway, keys, sessions, API wallet | `apps/web/src/server/{gateway,keys,login,api-wallet,crypto,http,kv}.ts`, `apps/web/src/app/api/{auth,keys,account,v1}/**/route.ts` |
+| Gateway, keys, sessions, API wallet | `apps/web/src/server/{gateway,keys,login,api-wallet,crypto,http,kv,rpc,ratelimit}.ts`, `apps/web/src/app/api/{auth,keys,account,v1}/**/route.ts` |
 | E2EE + attestation | `packages/rail/src/venice/e2ee.ts`; in-browser Intel signature check: `apps/web/src/tee/{lockdown,intel-verify.worker,intel-verify}.ts`, relay `apps/web/src/app/api/tee/pccs/[...path]/route.ts` |
 | x402 + SIWX | `packages/rail/src/venice/{client,siwx}.ts` |
 | Inference wallet derivation | `packages/rail/src/wallet/derive.ts`, `apps/web/src/wallet/wallet-context.tsx` |
