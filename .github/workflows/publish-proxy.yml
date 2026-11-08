@@ -1,0 +1,47 @@
+# Publishes the local proxy to npm as `rahasya`, with npm trusted publishing (OIDC):
+# no npm token is stored anywhere, and npm records provenance (which commit and workflow
+# built each version).
+#
+# Release: bump packages/proxy/npm/package.json "version", commit, then push a tag
+# `proxy-v<version>` (e.g. proxy-v0.1.1). The job refuses if the tag and version differ.
+#
+# One-time setup on npmjs.com (package rahasya → Settings → Trusted publisher):
+# GitHub Actions, owner 0xyuji, repository rahasya, workflow publish-proxy.yml.
+name: publish-proxy
+
+on:
+  push:
+    tags: ["proxy-v*"]
+
+permissions:
+  contents: read
+  id-token: write # lets npm verify this run (OIDC); no secrets needed
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - name: Install (no install scripts)
+        run: npm ci --ignore-scripts
+      - name: Tag must match the package version
+        run: |
+          v=$(node -p 'require("./packages/proxy/npm/package.json").version')
+          [ "proxy-v$v" = "$GITHUB_REF_NAME" ] || { echo "tag $GITHUB_REF_NAME != proxy-v$v"; exit 1; }
+      - name: Test
+        run: npm test -w @pay/proxy
+      - name: Bundle
+        run: |
+          npm run -w @pay/proxy bundle
+          cp packages/proxy/dist/rahasya.mjs packages/proxy/npm/rahasya.mjs
+          cp LICENSE packages/proxy/npm/LICENSE
+          cat packages/proxy/dist/rahasya.mjs.sha256
+      - name: Publish (trusted publishing needs npm 11.5.1+)
+        working-directory: packages/proxy/npm
+        run: |
+          npm install -g npm@11
+          npm publish --access public

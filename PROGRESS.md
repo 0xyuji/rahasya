@@ -13,7 +13,7 @@ Working state of the project: what's done, what's left, and decisions made. Upda
 | Funding (any token → 1Click → USDC on Base → Venice x402) | ✅ Done, tested on mainnet | 1% app fee on swaps, half to `rahasya.near` |
 | API keys (hosted) | ✅ Mostly tested | curl, opencode, daily limit (429), model allowlist (403) verified. Open: deleted key (401), sign out everywhere, second same-amount top-up (F-02) |
 | opencode integration | ✅ Done | Generated config lists all non-TEE models, prices, `enabled_providers`. Needs `opencode.jsonc` + `--standalone` |
-| Local proxy | ✅ One-file download: `curl -fsSL https://rahasya.chat/rahasya.mjs -o rahasya.mjs && node rahasya.mjs` (Node 22+). First run asks for the key | Tested from the live site with a throwaway key. Optional: publish to npm as `npx rahasya` (name is free; needs the owner's npm account) |
+| Local proxy | ✅ One-file download: `curl -fsSL https://rahasya.chat/rahasya.mjs -o rahasya.mjs && node rahasya.mjs` (Node 22+). First run asks for the key | Tested from the live site with a throwaway key. npm: account made with passkey 2FA (11-08); package `packages/proxy/npm` + workflow `.github/workflows/publish-proxy.yml` ready, first publish after the repo is public (see "npm release") |
 | Security audit | ✅ Audit 1 (F-01..F-13), audit 2 (V2-01..V2-08) and the fix review (R-01, R-02, T-01, T-02, notes) fixed, with regression tests. 112 tests | Residual: two colluding NEAR RPCs (K10); set trusted `BASE_RPC_URL` / `NEAR_RPC_URL` for production |
 | Name / brand | ✅ **Rahasya**, `rahasya.chat` bought | `rahasya.ai` only if we win |
 | GitHub | ✅ Private repo `0xyuji/rahasya` | Must be **public** by the deadline (ask first) |
@@ -48,6 +48,13 @@ npm run cf:deploy                      # builds, then deploys (plain `opennextjs
 - `API_WALLET_ENC_KEY` must stay the same everywhere: the funded API wallet is encrypted with it, and local and production share one Upstash database.
 - Server-side RPCs: free endpoints rate-limit Cloudflare (mainnet.base.org → 429), so `src/server/rpc.ts` falls back across publicnode, drpc and mainnet.base.org (Base) and fastnear, rpc.mainnet.near.org (NEAR). Set `BASE_RPC_URL` / `NEAR_RPC_URL` secrets for a paid RPC.
 - Bundle: about 2.9 MB gzipped. The free plan limit is 3 MB; the paid plan ($5/month) allows 10 MB.
+
+## npm release (after the repo is public)
+
+1. On your laptop, once: `cd packages/proxy && npm run bundle && cp dist/rahasya.mjs ../../LICENSE npm/ && cd npm && npm login && npm publish --access public` (browser + passkey).
+2. npmjs.com → package `rahasya` → Settings → **Trusted publisher** → GitHub Actions: owner `0xyuji`, repo `rahasya`, workflow `publish-proxy.yml`. Then **Publishing access → require 2FA and disallow tokens**.
+3. Later releases: bump `packages/proxy/npm/package.json` version, commit, `git tag proxy-v<version> && git push --tags`. GitHub publishes it with provenance.
+4. Docs then say `npx rahasya@<version>` (pinned).
 
 ## Decisions
 

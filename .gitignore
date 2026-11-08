@@ -21,3 +21,7 @@ dist/
 packages/proxy/dist/
 apps/web/public/rahasya.mjs
 apps/web/public/rahasya.mjs.sha256
+
+# npm package contents (copied by the publish workflow)
+packages/proxy/npm/rahasya.mjs
+packages/proxy/npm/LICENSE

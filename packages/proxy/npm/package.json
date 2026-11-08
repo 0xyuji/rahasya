@@ -1,0 +1,13 @@
+{
+  "name": "rahasya",
+  "version": "0.1.0",
+  "description": "Rahasya local proxy: an OpenAI-compatible API on 127.0.0.1 that spends your own inference wallet's credit. TEE models are end-to-end encrypted from your machine.",
+  "type": "module",
+  "bin": { "rahasya": "rahasya.mjs" },
+  "files": ["rahasya.mjs", "README.md", "LICENSE"],
+  "engines": { "node": ">=22" },
+  "license": "MIT",
+  "homepage": "https://rahasya.chat",
+  "repository": { "type": "git", "url": "git+https://github.com/0xyuji/rahasya.git", "directory": "packages/proxy" },
+  "keywords": ["openai-compatible", "proxy", "privacy", "tee", "e2ee", "venice", "near-intents"]
+}
