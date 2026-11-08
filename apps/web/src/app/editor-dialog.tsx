@@ -49,6 +49,19 @@ export function EditorDialog({ open, onClose }: { open: boolean; onClose: () => 
   const ref = useRef<HTMLDialogElement>(null);
   const [reveal, setReveal] = useState(false);
   const [tool, setTool] = useState<keyof typeof TOOLS>("opencode");
+  const [sha, setSha] = useState<string | null>(null);
+
+  // The download's SHA-256, published next to it at build time.
+  useEffect(() => {
+    if (!open || sha) return;
+    fetch("/rahasya.mjs.sha256")
+      .then((r) => (r.ok ? r.text() : ""))
+      .then((t) => {
+        const h = t.trim().split(/\s+/)[0] ?? "";
+        if (/^[0-9a-f]{64}$/.test(h)) setSha(h);
+      })
+      .catch(() => {});
+  }, [open, sha]);
 
   useEffect(() => {
     const d = ref.current;
@@ -60,6 +73,7 @@ export function EditorDialog({ open, onClose }: { open: boolean; onClose: () => 
 
   const copy = (t: string) => void navigator.clipboard.writeText(t);
   const id = brand.repo;
+  const site = typeof window !== "undefined" ? window.location.origin : `https://${brand.domain}`;
 
   return (
     <dialog ref={ref} className={s.dialog} onClose={onClose} onCancel={onClose}>
@@ -74,9 +88,18 @@ export function EditorDialog({ open, onClose }: { open: boolean; onClose: () => 
         Nothing goes through us.
       </p>
 
-      <div className={s.label}>1. Start the proxy (from the repo)</div>
-      <pre className={s.code}>{`npm run proxy -- login     # paste the key from step 2 (input hidden)
-npm run proxy -- serve     # prints your local API key`}</pre>
+      <div className={s.label}>1. Download and start it (needs Node.js 22 or newer)</div>
+      <pre className={s.code}>{`curl -fsSL ${site}/rahasya.mjs -o rahasya.mjs
+node rahasya.mjs     # first run asks for the key from step 2 (input hidden)`}</pre>
+      <p className={s.fine}>
+        One readable file, the same code as in our repo. Later runs start straight away; <code>node rahasya.mjs --help</code> shows the other commands.
+        {sha && (
+          <>
+            {" "}
+            Check the download: <code>shasum -a 256 rahasya.mjs</code> should print <code className={s.hash}>{sha}</code>.
+          </>
+        )}
+      </p>
 
       <div className={s.label}>2. Your inference wallet key</div>
       {!w.inferenceKey ? (

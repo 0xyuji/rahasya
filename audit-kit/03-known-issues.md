@@ -22,6 +22,7 @@ No need to report these again. **Do** tell us if one is worse than described, an
 | K16 | In-memory caches (Intel collateral, 1 h; Venice prices, 10 min) live per Worker isolate, so cold isolates refetch | Rate limits and spend are in Redis, not in memory. Collateral is Intel-signed and verified in the browser |
 | K17 | `recordSpend` issues its four writes (day counter, its TTL, total counter, last-used) in parallel, not atomically. A failed write can leave day and total apart by one request's cost, or a day key without a TTL | Bounded to one request per failure. A Redis `MULTI` would close it |
 | K18 | The Worker is also reachable on its `*.workers.dev` URL (same code, same secrets) | Same behaviour as `rahasya.chat`; tell us if anything differs there (e.g. client IP) |
+| K19 | The proxy download (`/rahasya.mjs`) and its SHA-256 come from the same site, so the checksum only catches a broken download, not a compromised deployment. The file is built from the public repo on every deploy, but the build isn't reproducible-verified | Users who don't want to trust the site can run it from a clone (`npm run proxy`). A signed release (or npm provenance) would close it |
 
 ## Fixed after the first audit (2026-11-08, report against commit 6be0d23)
 

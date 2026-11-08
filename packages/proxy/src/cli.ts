@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 /**
+ * rahasya         — first run: ask for your inference wallet key, then serve
  * rahasya login   — save your inference wallet key (hidden input) to ~/.rahasya
  * rahasya serve   — run the local OpenAI-compatible proxy on 127.0.0.1
  * rahasya token   — print (or --rotate) the local access token
@@ -11,12 +12,12 @@ import { home, loadInferenceKey, loadOrCreateToken, rotateToken, saveInferenceKe
 import { createProxy } from "./server.ts";
 
 const CREDIT_URL = process.env.RAHASYA_SITE_URL ?? "the website (account menu → Add credit)";
-const [cmd = "help", ...args] = process.argv.slice(2);
+const [cmd = "start", ...args] = process.argv.slice(2);
 
 function venice(): VeniceClient {
   const key = loadInferenceKey();
   if (!key) {
-    console.error("No inference key yet. Run `rahasya login` first (copy the key from the website: account menu → Use in your editor).");
+    console.error("No inference key yet. Run `rahasya` (or `rahasya login`) first. Copy the key from the website: account menu → Local proxy.");
     process.exit(1);
   }
   return new VeniceClient({ account: privateKeyToAccount(key), topups: new JsonStore<TopUpAction>(home(), "topups"), maxTopUpUsd: 0.01 });
@@ -54,17 +55,39 @@ async function readHidden(prompt: string): Promise<string> {
   });
 }
 
-if (cmd === "login") {
+async function login() {
   const key = await readHidden("Paste your inference wallet key (input hidden): ");
   saveInferenceKey(key);
   const address = privateKeyToAccount(key as `0x${string}`).address;
   console.log(`Saved to ${home()} (only your user can read it). Inference wallet: ${address}`);
+}
+
+if (cmd === "start") {
+  // One command for everything: ask for the key the first time, then serve.
+  if (!loadInferenceKey()) {
+    console.log("First run. Copy your inference key from the website: account menu → Local proxy → Copy key.");
+    await login();
+  }
+  serve();
+} else if (cmd === "login") {
+  await login();
 } else if (cmd === "token") {
   console.log(args.includes("--rotate") ? rotateToken() : loadOrCreateToken());
 } else if (cmd === "balance") {
   const b = await venice().balance();
   console.log(`Credit: $${b.balanceUsd.toFixed(4)}${b.canConsume ? "" : " (add credit to use it)"}`);
 } else if (cmd === "serve") {
+  serve();
+} else {
+  console.log(`usage:
+  rahasya                  first run: asks for your inference wallet key, then serves
+  rahasya serve [--port N] run the local OpenAI-compatible proxy (default port 8787)
+  rahasya login            save (or replace) your inference wallet key
+  rahasya token [--rotate] print or rotate the local access token
+  rahasya balance          show your credit`);
+}
+
+function serve() {
   const port = Number(args[args.indexOf("--port") + 1]) || Number(process.env.RAHASYA_PORT) || 8787;
   const v = venice();
   const token = loadOrCreateToken();
@@ -97,10 +120,4 @@ if (cmd === "login") {
   Prompts are never logged. Ctrl+C to stop.
 `);
   });
-} else {
-  console.log(`usage:
-  rahasya login            save your inference wallet key (from the website: account menu → Use in your editor)
-  rahasya serve [--port N] run the local OpenAI-compatible proxy (default port 8787)
-  rahasya token [--rotate] print or rotate the local access token
-  rahasya balance          show your credit`);
 }

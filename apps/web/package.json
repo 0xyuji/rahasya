@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "next dev",
-    "build": "node scripts/gen-docs.mjs && next build",
+    "build": "node scripts/gen-docs.mjs && npm run -s -w @pay/proxy bundle && cp ../../packages/proxy/dist/rahasya.mjs ../../packages/proxy/dist/rahasya.mjs.sha256 public/ && next build",
     "start": "next start",
     "typecheck": "next typegen && tsc --noEmit -p tsconfig.typecheck.json",
     "test": "node --conditions=react-server --test \"src/**/*.test.ts\"",

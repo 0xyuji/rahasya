@@ -15,7 +15,7 @@ Uncensored models are useful exactly where people least want an account trail: h
 3. **Chat.** Choose a model and a privacy mode in the prompt bar:
    - **Anonymous**: all allowed models, including Abliterated Large V2 / Large Flash. You're unlinkable (wallet auth, no account), but the model host can read the prompt.
    - **Truly private**: TEE models only. The browser fetches an attestation with a fresh nonce, checks it, and encrypts the conversation to a key inside the enclave (ECDH secp256k1 → HKDF-SHA256 → AES-256-GCM). One of the two TEE models runs on **NEAR AI** enclaves.
-4. **Use it from your tools.** A local proxy (`npm run proxy -- serve`) exposes an OpenAI-compatible API on `127.0.0.1`, so opencode, Cursor, SillyTavern or the OpenAI SDK can spend the same credit.
+4. **Use it from your tools.** A local proxy (`node rahasya.mjs`, one downloadable file) exposes an OpenAI-compatible API on `127.0.0.1`, so opencode, Cursor, SillyTavern or the OpenAI SDK can spend the same credit.
 
 ## How NEAR fits
 
@@ -60,12 +60,15 @@ npm run dev                                    # http://localhost:3000
 
 **API keys (hosted):** account menu → **API keys** → sign in with your wallet → **Add credit** to your API wallet → **New key** (optional daily/total limit, model allowlist, expiry). Paste the key into any OpenAI-compatible tool with base URL `https://<deployment>/api/v1`. The dialog shows a ready-made opencode config. Full reference: [docs/api.md](apps/web/content/docs/api.md); per-tool setup: [docs/integrations.md](apps/web/content/docs/integrations.md).
 
-**Local proxy (most private):** account menu → **Local proxy**, then:
+**Local proxy (most private):** account menu → **Local proxy**, then (Node.js 22+, no clone needed):
 
 ```sh
-npm run proxy -- login    # paste the inference key (hidden input), saved 0600 in ~/.rahasya
-npm run proxy -- serve    # http://127.0.0.1:8787/v1 + a local API key
+curl -fsSL https://rahasya.chat/rahasya.mjs -o rahasya.mjs
+node rahasya.mjs          # first run: paste the inference key (hidden input, saved 0600 in ~/.rahasya), then it serves
+                          # http://127.0.0.1:8787/v1 + a local API key
 ```
+
+`rahasya.mjs` is `packages/proxy` bundled into one readable file (`npm run -w @pay/proxy bundle`); its SHA-256 is published at `/rahasya.mjs.sha256`. From a clone, `npm run proxy` does the same.
 
 ### 4. Mainnet evidence
 

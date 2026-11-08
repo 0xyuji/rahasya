@@ -16,3 +16,8 @@ dist/
 .open-next/
 .wrangler/
 .dev.vars
+
+# Built proxy bundle (packages/proxy/scripts/bundle.mjs), copied into the site at build time
+packages/proxy/dist/
+apps/web/public/rahasya.mjs
+apps/web/public/rahasya.mjs.sha256

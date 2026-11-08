@@ -333,3 +333,11 @@
   overflow-x: auto;
   color: var(--paper-dim);
 }
+
+/* SHA-256 of the proxy download: long, so let it wrap. */
+.hash {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.85em;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}

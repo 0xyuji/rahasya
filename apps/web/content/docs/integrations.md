@@ -185,4 +185,4 @@ A key works well as an agent's spending allowance. Give the agent its own key wi
 
 ## Local proxy instead of a hosted key
 
-To keep everything on your machine, use the same configs with `http://127.0.0.1:8787/v1` and the local key printed by `npm run proxy -- serve`. See [api.md](api.md#local-proxy-alternative).
+To keep everything on your machine, use the same configs with `http://127.0.0.1:8787/v1` and the local key printed by `node rahasya.mjs` (see the Local proxy dialog, or [api.md](api.md#local-proxy-alternative)). See [api.md](api.md#local-proxy-alternative).
