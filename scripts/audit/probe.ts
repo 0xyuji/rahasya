@@ -56,7 +56,7 @@ expect("challenge from another origin refused", 403, (await fetch(`${BASE}/api/a
 
 // --- session-protected routes ---
 const A = { ...ORIGIN, cookie: alice.cookie };
-expect("GET /api/keys without session", 401, (await fetch(`${BASE}/api/keys`)).status);
+expect("GET /api/keys without session", 401, (await fetch(`${BASE}/api/keys`, { headers: ORIGIN })).status);
 {
   // T-02: a cookie route only answers the page's own fetch(): not import()/<script> loads, not requests without our header.
   const { "x-app-request": _h, ...noHeader } = A;
@@ -151,7 +151,7 @@ await fetch(`${BASE}/api/auth/logout`, { method: "POST", headers: A });
   const s1 = await login(carol);
   const s2 = await login(carol);
   await fetch(`${BASE}/api/auth/logout?everywhere=1`, { method: "POST", headers: { ...ORIGIN, cookie: s1.cookie } });
-  expect("sign out everywhere ends the wallet's other sessions", 401, (await fetch(`${BASE}/api/keys`, { headers: { cookie: s2.cookie } })).status);
+  expect("sign out everywhere ends the wallet's other sessions", 401, (await fetch(`${BASE}/api/keys`, { headers: { ...ORIGIN, cookie: s2.cookie } })).status);
 }
 await fetch(`${BASE}/api/auth/logout`, { method: "POST", headers: B });
 expect("session gone after logout", 401, (await fetch(`${BASE}/api/keys`, { headers: A })).status);
