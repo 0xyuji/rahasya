@@ -15,6 +15,7 @@ import {
   type AnywhereAction,
 } from "../funding/anywhere";
 import { MAX_CREDIT_USD, MIN_CREDIT_USD, friendly, oneclick } from "../funding/flow";
+import { useCreditTarget } from "../funding/target";
 import { useWallet } from "../wallet/wallet-context";
 import s from "./credit-dialog.module.css";
 
@@ -53,6 +54,7 @@ function Copy({ text, label }: { text: string; label?: string }) {
 
 export function AnywherePanel({ onCredited }: { onCredited: () => void }) {
   const w = useWallet();
+  const t = useCreditTarget();
   const [tokens, setTokens] = useState<TokenResponse[]>([]);
   const [query, setQuery] = useState("");
   const [token, setToken] = useState<TokenResponse | null>(null);
@@ -70,19 +72,19 @@ export function AnywherePanel({ onCredited }: { onCredited: () => void }) {
 
   // Resume the newest unfinished deposit for this inference wallet.
   useEffect(() => {
-    if (!w.inference) return;
+    if (!t.address) return;
     const pending = anywhereActions
       .all()
-      .filter((a) => a.inferenceAddress === w.inference!.address && !ANYWHERE_FINAL.has(a.state))
+      .filter((a) => a.inferenceAddress === t.address && !ANYWHERE_FINAL.has(a.state))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
     if (pending) setAction(pending);
-  }, [w.inference]);
+  }, [t.address]);
 
   // Watch the deposit while this panel is open.
   useEffect(() => {
     if (!action || ANYWHERE_FINAL.has(action.state)) return;
     const ctl = new AbortController();
-    void runAnywhere(action.id, { inference: w.inference, onUpdate: setAction, signal: ctl.signal }).then((a) => {
+    void runAnywhere(action.id, { inference: w.inference, onUpdate: setAction, signal: ctl.signal, topUp: t.topUp }).then((a) => {
       if (a.state === "DONE") onCredited();
     });
     return () => ctl.abort();
@@ -110,11 +112,11 @@ export function AnywherePanel({ onCredited }: { onCredited: () => void }) {
   }, [tokens, query]);
 
   async function getQuote() {
-    if (!token || !w.inference) return;
+    if (!token || !t.address) return;
     setBusy(true);
     setErr(null);
     try {
-      setAction(await quoteAnywhere({ usd, token, refundTo, inferenceAddress: w.inference.address }));
+      setAction(await quoteAnywhere({ usd, token, refundTo, inferenceAddress: t.address }));
     } catch (e) {
       setErr(friendly(e));
     } finally {
@@ -122,7 +124,7 @@ export function AnywherePanel({ onCredited }: { onCredited: () => void }) {
     }
   }
 
-  if (!w.inference) return <p className={s.p}>Unlock your wallet first, so we know where to deliver.</p>;
+  if (!t.address) return <p className={s.p}>Unlock your wallet first, so we know where to deliver.</p>;
 
   // ---------- deposit screen ----------
   if (action) {

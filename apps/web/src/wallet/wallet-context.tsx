@@ -21,6 +21,16 @@ import { nearConnector } from "./near";
 initAppKit();
 const queryClient = new QueryClient();
 
+export type CreditTarget = { kind: "inference" } | { kind: "api"; address: string };
+
+export interface LoginProof {
+  challengeId: string;
+  chain: SourceChain;
+  address: string;
+  signature: string;
+  publicKey?: string;
+}
+
 export interface Source {
   chain: SourceChain;
   address: string;
@@ -40,6 +50,11 @@ interface WalletState {
   /** The Add credit dialog, openable from anywhere (menu, chat errors). */
   creditOpen: boolean;
   setCreditOpen: (open: boolean) => void;
+  /** Where Add credit delivers: the browser inference wallet (default) or the server API wallet. */
+  creditTarget: CreditTarget;
+  openCredit: (target?: CreditTarget) => void;
+  /** Sign a server login challenge with the connected wallet. */
+  signLogin: (c: { id: string; message: string; nonce: string }) => Promise<LoginProof>;
   connectEvmOrSolana: () => void;
   connectNear: () => Promise<void>;
   unlock: () => Promise<void>;
@@ -85,6 +100,7 @@ function WalletStateProvider({ children }: { children: React.ReactNode }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [creditOpen, setCreditOpen] = useState(false);
+  const [creditTarget, setCreditTarget] = useState<CreditTarget>({ kind: "inference" });
 
   // Restore a NEAR session if the connector auto-connected.
   useEffect(() => {
@@ -192,11 +208,38 @@ function WalletStateProvider({ children }: { children: React.ReactNode }) {
     return null; // NEAR funding: next step
   }, [source?.chain, source?.address, solProvider, solConnection]);
 
+  const toB64 = (b: Uint8Array) => btoa(String.fromCharCode(...b));
+  const signLogin = useCallback(
+    async (c: { id: string; message: string; nonce: string }): Promise<LoginProof> => {
+      if (!source) throw new Error("Connect a wallet first.");
+      const base = { challengeId: c.id, chain: source.chain, address: source.address };
+      if (source.chain === "evm") return { ...base, signature: await signMessageAsync({ message: c.message }) };
+      if (source.chain === "sol") {
+        if (!solProvider) throw new Error("Solana wallet not ready");
+        return { ...base, signature: toB64(await solProvider.signMessage(new TextEncoder().encode(c.message))) };
+      }
+      const wallet = await (await nearConnector()).wallet();
+      const nonce = Uint8Array.from(c.nonce.match(/../g)!.map((h) => parseInt(h, 16)));
+      const signed = await wallet.signMessage({ message: c.message, recipient: "api-keys", nonce });
+      return { ...base, signature: signed.signature, publicKey: signed.publicKey };
+    },
+    [source, signMessageAsync, solProvider],
+  );
+
   const value: WalletState = {
     source,
     sender,
     creditOpen,
-    setCreditOpen,
+    setCreditOpen: (open: boolean) => {
+      if (!open) setCreditTarget({ kind: "inference" });
+      setCreditOpen(open);
+    },
+    creditTarget,
+    openCredit: (target = { kind: "inference" }) => {
+      setCreditTarget(target);
+      setCreditOpen(true);
+    },
+    signLogin,
     inference,
     inferenceKey,
     busy,

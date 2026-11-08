@@ -143,7 +143,13 @@ function move(a: CreditAction, state: CreditState, patch: Partial<CreditAction> 
  */
 export async function runCredit(
   id: string,
-  deps: { send: DepositSender; inference: LocalAccount; onUpdate: (a: CreditAction) => void },
+  deps: {
+    send: DepositSender;
+    inference: LocalAccount | null;
+    onUpdate: (a: CreditAction) => void;
+    /** Override how the delivered USDC becomes credit (API wallet: server-side x402 sweep). */
+    topUp?: (id: string, usd: number) => Promise<void>;
+  },
 ): Promise<CreditAction> {
   let a = actions.get(id);
   if (!a) throw new Error("unknown credit action");
@@ -207,7 +213,8 @@ export async function runCredit(
       }
       case "TOPPING_UP": {
         try {
-          await veniceFor(deps.inference).topUp(`topup_${a.id}`, a.usd); // idempotent per id
+          if (deps.topUp) await deps.topUp(`topup_${a.id}`, a.usd);
+          else await veniceFor(deps.inference!).topUp(`topup_${a.id}`, a.usd); // idempotent per id
           a = emit(move(a, "DONE"));
         } catch (e) {
           a = emit({ ...a, error: friendly(e) }); // stay TOPPING_UP: retrying re-sends the same authorization

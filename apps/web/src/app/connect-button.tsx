@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useCredit } from "../wallet/use-credit";
 import { useWallet } from "../wallet/wallet-context";
 import { CreditDialog } from "./credit-dialog";
+import { ApiKeysDialog } from "./api-keys-dialog";
 import { EditorDialog } from "./editor-dialog";
 import s from "./connect-button.module.css";
 
@@ -15,6 +16,7 @@ export function ConnectButton() {
   const [open, setOpen] = useState(false);
   const { creditUsd, idleUsdc, refresh } = useCredit();
   const [editor, setEditor] = useState(false);
+  const [keysOpen, setKeysOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -91,10 +93,14 @@ export function ConnectButton() {
                   <span className={s.sub}>Pay with any token from your wallet</span>
                 </button>
               )}
+              <button role="menuitem" className={s.item} onClick={() => (setOpen(false), setKeysOpen(true))}>
+                <span>API keys</span>
+                <span className={s.sub}>Paste into opencode, Cursor, SillyTavern, any OpenAI-compatible tool</span>
+              </button>
               {w.inference && (
                 <button role="menuitem" className={s.item} onClick={() => (setOpen(false), setEditor(true))}>
-                  <span>Use in your editor</span>
-                  <span className={s.sub}>opencode, Cursor, SillyTavern, any OpenAI-compatible tool</span>
+                  <span>Local proxy (most private)</span>
+                  <span className={s.sub}>Run it on your computer; nothing passes through us</span>
                 </button>
               )}
               <p className={s.hint}>
@@ -118,6 +124,7 @@ export function ConnectButton() {
       )}
       {w.error && <p className={s.error}>{w.error}</p>}
       <EditorDialog open={editor} onClose={() => setEditor(false)} />
+      <ApiKeysDialog open={keysOpen} onClose={() => setKeysOpen(false)} />
       <CreditDialog open={w.creditOpen} onClose={() => w.setCreditOpen(false)} onCredited={refresh} />
     </div>
   );

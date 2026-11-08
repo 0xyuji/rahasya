@@ -157,7 +157,12 @@ export async function quoteAnywhere(p: {
  */
 export async function runAnywhere(
   id: string,
-  deps: { inference: LocalAccount | null; onUpdate: (a: AnywhereAction) => void; signal?: AbortSignal },
+  deps: {
+    inference: LocalAccount | null;
+    onUpdate: (a: AnywhereAction) => void;
+    signal?: AbortSignal;
+    topUp?: (id: string, usd: number) => Promise<void>;
+  },
 ): Promise<AnywhereAction> {
   let a = anywhereActions.get(id)!;
   const emit = (n: AnywhereAction) => (deps.onUpdate(n), n);
@@ -167,14 +172,15 @@ export async function runAnywhere(
 
   while (!ANYWHERE_FINAL.has(a.state) && !deps.signal?.aborted) {
     if (a.state === "SWAPPED" || a.state === "TOPPING_UP") {
-      if (!deps.inference) return emit(move(a, "IDLE"));
+      if (!deps.inference && !deps.topUp) return emit(move(a, "IDLE"));
       // Credit what actually arrived (rounded down to cents), up to the cap; any excess stays as idle USDC.
       const usd = Math.min(Math.floor(Number(a.delivered ?? "0") / 1e4) / 100, MAX_CREDIT_USD);
       if (usd < MIN_CREDIT_USD) return emit(move(a, "IDLE", { error: `Only $${usd.toFixed(2)} arrived; Venice's minimum top-up is $${MIN_CREDIT_USD}. It's waiting as idle USDC.` }));
       a = emit(move(a, "TOPPING_UP"));
       for (let i = 0; i < 30 && (await inferenceUsdc(a.inferenceAddress)) < BigInt(Math.round(usd * 1e6)); i++) await sleep(2_000);
       try {
-        await veniceFor(deps.inference).topUp(`topup_${a.id}`, usd);
+        if (deps.topUp) await deps.topUp(`topup_${a.id}`, usd);
+        else await veniceFor(deps.inference!).topUp(`topup_${a.id}`, usd);
         return emit(move(a, "DONE", { creditedUsd: usd }));
       } catch (e) {
         return emit({ ...a, error: (e as Error).message });

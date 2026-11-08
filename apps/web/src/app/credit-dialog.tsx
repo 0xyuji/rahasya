@@ -14,6 +14,7 @@ import {
   runCredit,
   type CreditAction,
 } from "../funding/flow";
+import { useCreditTarget } from "../funding/target";
 import { useWallet } from "../wallet/wallet-context";
 import { AnywherePanel } from "./anywhere-panel";
 import s from "./credit-dialog.module.css";
@@ -43,6 +44,7 @@ function steps(a: CreditAction): Step[] {
 
 export function CreditDialog({ open, onClose, onCredited }: { open: boolean; onClose: () => void; onCredited: () => void }) {
   const w = useWallet();
+  const t = useCreditTarget();
   const ref = useRef<HTMLDialogElement>(null);
   const options = w.source ? PAY_OPTIONS[w.source.chain] : [];
   const [usd, setUsd] = useState(5);
@@ -61,24 +63,24 @@ export function CreditDialog({ open, onClose, onCredited }: { open: boolean; onC
 
   // Resume an unfinished deposit for this wallet instead of starting a new one.
   useEffect(() => {
-    if (!open || !w.source || !w.inference) return;
+    if (!open || !w.source || !t.address) return;
     const pending = actions
       .all()
-      .filter((a) => a.source.address === w.source!.address && a.inferenceAddress === w.inference!.address && !CREDIT_FINAL.has(a.state) && a.state !== "QUOTED")
+      .filter((a) => a.source.address === w.source!.address && a.inferenceAddress === t.address && !CREDIT_FINAL.has(a.state) && a.state !== "QUOTED")
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
     if (pending) {
       setAction(pending);
       void drive(pending.id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, w.source?.address, w.inference?.address]);
+  }, [open, w.source?.address, t.address]);
 
   async function getQuote() {
-    if (!w.source || !w.inference) return;
+    if (!w.source || !t.address) return;
     setBusy(true);
     setErr(null);
     try {
-      setAction(await quoteCredit({ usd, payWith: options[pay]!, source: w.source, inferenceAddress: w.inference.address }));
+      setAction(await quoteCredit({ usd, payWith: options[pay]!, source: w.source, inferenceAddress: t.address }));
     } catch (e) {
       setErr(friendly(e));
     } finally {
@@ -87,11 +89,11 @@ export function CreditDialog({ open, onClose, onCredited }: { open: boolean; onC
   }
 
   async function drive(id: string) {
-    if (!w.sender || !w.inference) return;
+    if (!w.sender || (!w.inference && !t.topUp)) return;
     setBusy(true);
     setErr(null);
     try {
-      const done = await runCredit(id, { send: w.sender, inference: w.inference, onUpdate: setAction });
+      const done = await runCredit(id, { send: w.sender, inference: w.inference, onUpdate: setAction, topUp: t.topUp });
       setAction(done);
       if (done.error && !CREDIT_FINAL.has(done.state)) setErr(done.error);
       if (done.state === "DONE") onCredited();
@@ -113,7 +115,7 @@ export function CreditDialog({ open, onClose, onCredited }: { open: boolean; onC
   return (
     <dialog ref={ref} className={s.dialog} onClose={close} onCancel={close}>
       <div className={s.head}>
-        <h2 className={s.title}>Add credit</h2>
+        <h2 className={s.title}>{t.kind === "api" ? "Add credit to API wallet" : "Add credit"}</h2>
         <button className={s.x} onClick={close} aria-label="Close">
           ×
         </button>
@@ -134,7 +136,7 @@ export function CreditDialog({ open, onClose, onCredited }: { open: boolean; onC
         <AnywherePanel onCredited={onCredited} />
       ) : tab === "usdc" ? (
         <UsdcPanel onCredited={onCredited} />
-      ) : !w.source || !w.inference ? (
+      ) : !w.source || !t.address ? (
         <p className={s.p}>Connect and unlock your wallet first.</p>
       ) : !w.sender ? (
         <p className={s.p}>
@@ -200,7 +202,7 @@ export function CreditDialog({ open, onClose, onCredited }: { open: boolean; onC
             </dd>
             <dt>To</dt>
             <dd>
-              your inference wallet {short(action.inferenceAddress)} <span className={s.dim}>on Base</span>
+              {t.label} {short(action.inferenceAddress)} <span className={s.dim}>on Base</span>
             </dd>
           </dl>
           <p className={s.fine}>
