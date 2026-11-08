@@ -52,8 +52,8 @@ export async function POST(req: Request, ctx: Ctx) {
   const path = (await ctx.params).path.join("/");
   if (ALLOWED[path] !== "POST") return json(404, { message: "not allowed" });
   if (await limited(req, path)) return json(429, { message: "Too many requests. Wait a minute and try again." });
-  const text = await req.text();
-  if (text.length > 4_000) return json(413, { message: "body too large" });
+  const text = await readCapped(req, 4_000);
+  if (text === null) return json(413, { message: "body too large" });
 
   let body: Record<string, unknown>;
   try {
@@ -61,6 +61,7 @@ export async function POST(req: Request, ctx: Ctx) {
   } catch {
     return json(400, { message: "invalid json" });
   }
+  if (!body || typeof body !== "object" || Array.isArray(body)) return json(400, { message: "body must be a JSON object" });
 
   if (path === "v0/quote") {
     if (body.destinationAsset !== BASE_USDC || body.recipientType !== "DESTINATION_CHAIN" || body.depositType !== "ORIGIN_CHAIN") {
@@ -82,4 +83,27 @@ export async function POST(req: Request, ctx: Ctx) {
     signal: AbortSignal.timeout(30_000),
   });
   return new Response(res.body, { status: res.status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
+}
+
+/** Read at most `max` bytes of the body, stopping early instead of buffering an oversized one. */
+async function readCapped(req: Request, max: number): Promise<string | null> {
+  if (Number(req.headers.get("content-length") ?? 0) > max) return null;
+  if (!req.body) return "";
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > max) {
+      await reader.cancel().catch(() => {});
+      return null;
+    }
+    chunks.push(value);
+  }
+  const all = new Uint8Array(size);
+  let o = 0;
+  for (const c of chunks) all.set(c, (o += c.byteLength) - c.byteLength);
+  return new TextDecoder().decode(all);
 }

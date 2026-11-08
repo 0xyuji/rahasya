@@ -1,4 +1,4 @@
-import { MODELS, findModel, type ChatMessage, type PrivacyMode } from "@pay/rail/browser";
+import { findModel, type ChatMessage, type PrivacyMode } from "@pay/rail/browser";
 import { brand } from "../brand.ts";
 
 export interface Msg {
@@ -27,7 +27,7 @@ export interface Msg {
  */
 export function buildContext(history: Msg[], next: { text: string; mode: PrivacyMode; modelKey: string }): ChatMessage[] {
   const usable = history.filter((m) => m.status === "done" && m.text.trim() && (next.mode === "private" || m.mode === "anonymous"));
-  const e2ee = MODELS[next.modelKey]?.e2ee ?? false;
+  const e2ee = findModel(next.modelKey)?.e2ee ?? false;
   const id = identity(next.modelKey);
   const head: ChatMessage[] = id ? [{ role: "system", content: id }] : [];
 

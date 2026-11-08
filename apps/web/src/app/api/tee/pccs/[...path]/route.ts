@@ -50,7 +50,15 @@ function keysAre(q: URLSearchParams, keys: string[]): boolean {
 }
 
 type Cached = { at: number; status: number; body: ArrayBuffer; headers: Record<string, string> };
+// Keyed on the upstream URL (so query variants of the same request share one entry), and
+// bounded: oldest entries go first. Real traffic needs a handful (audit V2-06).
 const cache = new Map<string, Cached>();
+const MAX_ENTRIES = 32;
+function remember(key: string, v: Cached) {
+  cache.delete(key);
+  cache.set(key, v);
+  for (const [k, c] of cache) if (cache.size > MAX_ENTRIES || Date.now() - c.at > TTL_MS) cache.delete(k);
+}
 
 export async function GET(req: Request, ctx: { params: Promise<{ path: string[] }> }) {
   const path = (await ctx.params).path.join("/");
@@ -59,7 +67,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ path: string[] 
   if (!route) return new Response("not found", { status: 404 });
   if (!route.query(q)) return new Response("bad query", { status: 400 });
 
-  const key = `${path}?${q.toString()}`;
+  const key = route.upstream(q);
   let hit = cache.get(key);
   if (!hit || Date.now() - hit.at > TTL_MS) {
     // Each verification needs 4 of these; cached requests above don't count.
@@ -81,7 +89,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ path: string[] 
     }
     const body = route.hexBody ? new TextEncoder().encode(Array.from(new Uint8Array(raw), (b) => b.toString(16).padStart(2, "0")).join("")).buffer : raw;
     hit = { at: Date.now(), status: 200, body: body as ArrayBuffer, headers };
-    cache.set(key, hit);
+    remember(key, hit);
   }
   return new Response(hit.body, {
     status: hit.status,

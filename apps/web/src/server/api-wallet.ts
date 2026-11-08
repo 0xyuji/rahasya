@@ -1,5 +1,5 @@
 import "server-only";
-import { VeniceClient, type RecordStore, type TopUpAction } from "@pay/rail/browser";
+import { VeniceClient, planSweep, type RecordStore, type TopUpAction } from "@pay/rail/browser";
 import { createPublicClient, erc20Abi, type Hex } from "viem";
 import { generatePrivateKey, privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
 import { base } from "viem/chains";
@@ -88,9 +88,13 @@ export async function sweepToCredit(uid: string): Promise<{ toppedUpUsd: number 
     }
     const venice = veniceForApiWallet(account);
     const pending = await topupStore.get(sweepId(account.address, seq));
-    // A pending authorization is re-sent with its own amount; otherwise sign for what's there now.
-    const amount = pending ? pending.amountUsd : Math.min(usdc, MAX_TOPUP_USD);
-    const done = await venice.topUp(sweepId(account.address, seq), amount);
+    const plan = planSweep(pending, usdc, MAX_TOPUP_USD);
+    if (plan.kind === "wait") return { toppedUpUsd: 0 }; // a larger authorization is still live; retry after it expires
+    if (plan.kind === "fresh" && pending) {
+      seq += 1; // the old one can never settle now: new number for the real balance
+      await kv().set(seqKey, seq);
+    }
+    const done = await venice.topUp(sweepId(account.address, seq), plan.amountUsd);
     await kv().set(seqKey, seq + 1);
     return { toppedUpUsd: done.amountUsd };
   } finally {

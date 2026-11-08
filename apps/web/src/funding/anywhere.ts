@@ -2,6 +2,7 @@
 
 import {
   RailError,
+  planSweep,
   randomActionId,
   sleep,
   type ExecutionStatus,
@@ -245,7 +246,10 @@ export async function creditIdleUsdc(inference: LocalAccount): Promise<number> {
   const venice = veniceFor(inference);
   if ((await idleTopups.get(idFor(seq)))?.state === "SUCCESS") write(++seq);
   const pending = await idleTopups.get(idFor(seq));
-  const done = await venice.topUp(idFor(seq), pending ? pending.amountUsd : Math.min(usd, MAX_CREDIT_USD));
+  const plan = planSweep(pending, usd, MAX_CREDIT_USD);
+  if (plan.kind === "wait") throw new RailError("TOPUP_PENDING", "An earlier top-up for a larger amount is still pending. Try again in a few minutes.");
+  if (plan.kind === "fresh" && pending) write(++seq); // that one can never settle now
+  const done = await venice.topUp(idFor(seq), plan.amountUsd);
   write(seq + 1);
   return done.amountUsd;
 }

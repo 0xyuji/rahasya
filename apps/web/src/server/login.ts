@@ -2,10 +2,10 @@ import "server-only";
 import { ed25519 } from "@noble/curves/ed25519.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { getBase58Encoder } from "@solana/kit";
-import { createPublicClient, getAddress, type Hex } from "viem";
+import { getAddress } from "viem";
 import { base } from "viem/chains";
 import { createSiweMessage } from "viem/siwe";
-import { baseTransport, nearRpc } from "./rpc.ts";
+import { nearFullAccessKey, verifyEvmSignature } from "./rpc.ts";
 import { b64url, hex, randomBytes } from "./crypto.ts";
 import { kv } from "./kv.ts";
 
@@ -85,16 +85,15 @@ export async function verifyLogin(p: LoginProof): Promise<string> {
 
   let ok = false;
   if (p.chain === "evm") {
-    // publicClient.verifyMessage also handles smart-contract wallets (ERC-1271 / ERC-6492).
-    const client = createPublicClient({ chain: base, transport: baseTransport() });
-    ok = await client.verifyMessage({ address: p.address as Hex, message: chal.message, signature: p.signature as Hex });
+    // Local ECDSA first; smart-contract wallets (ERC-1271 / ERC-6492) need RPCs that agree (rpc.ts).
+    ok = await verifyEvmSignature(p.address, chal.message, p.signature);
   } else if (p.chain === "sol") {
     ok = ed25519.verify(b64(p.signature), new TextEncoder().encode(chal.message), b58(p.address));
   } else {
     if (!p.publicKey?.startsWith("ed25519:")) throw new Error("NEAR sign-in needs the signing public key.");
     const pub = b58(p.publicKey.slice(8));
     ok = ed25519.verify(b64(p.signature), nep413Hash(chal.message, hexToBytes(chal.nonce), chal.recipient ?? ""), pub);
-    if (ok) ok = await nearKeyBelongsTo(p.address, p.publicKey);
+    if (ok) ok = await nearFullAccessKey(p.address, p.publicKey);
   }
   if (!ok) throw new Error("Signature check failed.");
   return userId(p.chain, p.address);
@@ -127,17 +126,6 @@ export function nep413Hash(message: string, nonce: Uint8Array, recipient: string
     o += p.length;
   }
   return sha256(all);
-}
-
-/** The signing key must be a full-access key of the claimed NEAR account. */
-async function nearKeyBelongsTo(accountId: string, publicKey: string): Promise<boolean> {
-  const j = await nearRpc<{ result?: { permission?: unknown }; error?: unknown }>({
-    jsonrpc: "2.0",
-    id: 1,
-    method: "query",
-    params: { request_type: "view_access_key", finality: "final", account_id: accountId, public_key: publicKey },
-  });
-  return !!j.result && j.result.permission === "FullAccess";
 }
 
 // ---------- sessions ----------

@@ -113,7 +113,8 @@ export class VeniceChat {
     const body: Record<string, unknown> = {
       model: model.id,
       messages,
-      ...(req.maxTokens ? { max_tokens: req.maxTokens } : {}),
+      // Both fields, so the limit holds whichever one the upstream honours.
+      ...(req.maxTokens ? { max_tokens: req.maxTokens, max_completion_tokens: req.maxTokens } : {}),
       ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
       ...(req.reasoningEffort ? { reasoning_effort: req.reasoningEffort } : {}),
       venice_parameters: { include_venice_system_prompt: false, ...(req.noThinking ? { disable_thinking: true } : {}) },

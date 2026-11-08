@@ -29,7 +29,24 @@ export interface ModelDef {
   /** Who runs the enclave (TEE models only). */
   host?: string;
   fallbackPrice: { in: number; out: number };
+  /** Venice's maxCompletionTokens for the model (from /models, 2026-11-08). */
+  maxOutputTokens: number;
 }
+
+/** Venice's published output limits, by Venice id (GET /models model_spec.maxCompletionTokens). */
+const MAX_OUT: Record<string, number> = {
+  "abliteration-abliterated-model-large-flash": 131_072,
+  "abliteration-abliterated-model-large-v2": 32_768,
+  "qwen-3-6-plus": 65_536,
+  "deepseek-v4-1-flash-1017-uncensored": 131_072,
+  "deepseek-v4-1-flash-uncensored": 131_072,
+  "qwen-3-8-27b": 65_536,
+  "gemma-4-uncensored": 8_192,
+  "venice-uncensored-1-2": 8_192,
+  "venice-uncensored-role-play": 4_096,
+  "e2ee-deepseek-v4-1-flash-1017-abliterated": 131_072,
+  "e2ee-gemma-4-26b-a4b-uncensored-p": 4_096,
+};
 
 const m = (
   key: string,
@@ -41,7 +58,7 @@ const m = (
   outP: number,
   base = "",
   use: "general" | "roleplay" = "general",
-): ModelDef => ({ key, id, label, tier, structuredOutputs, e2ee: tier === "tee", use, base, fallbackPrice: { in: inP, out: outP } });
+): ModelDef => ({ key, id, label, tier, structuredOutputs, e2ee: tier === "tee", use, base, fallbackPrice: { in: inP, out: outP }, maxOutputTokens: MAX_OUT[id] ?? 4_096 });
 
 const extra: Record<string, Pick<ModelDef, "basedOn" | "host">> = {
   "large-flash": { basedOn: "DeepSeek V4.1 Flash" },

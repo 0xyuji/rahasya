@@ -16,7 +16,7 @@ export const VENICE_PAY_TO = "0x2670b922ef37c7df47158725c0cc407b5382293f";
  * later timestamp exists. Wait this much longer before signing a replacement, so
  * a late settlement of the old one can't land next to the new one.
  */
-const SETTLE_MARGIN_SEC = 120;
+export const SETTLE_MARGIN_SEC = 120;
 
 export interface VeniceBalance {
   canConsume: boolean;
@@ -43,6 +43,24 @@ export interface TopUpAction {
   validBefore: number;
   response?: unknown;
   error?: { code: string; message: string };
+}
+
+/**
+ * What a sweep should do with the wallet's idle USDC, given the top-up saved under
+ * the current sequence number (audit V2-03). Re-sending the saved authorization is
+ * right while it can still be honoured. But if it's for more than the wallet now
+ * holds (a lagging balance read signed it, or the funds moved), re-sending or
+ * re-signing the same amount would fail forever: wait until it can no longer
+ * settle, then start a new sequence number for the real balance.
+ */
+export type SweepPlan = { kind: "resend"; amountUsd: number } | { kind: "fresh"; amountUsd: number } | { kind: "wait" };
+
+export function planSweep(pending: TopUpAction | undefined, balanceUsd: number, maxUsd: number, nowSec = Math.floor(Date.now() / 1000)): SweepPlan {
+  const fresh = Math.min(balanceUsd, maxUsd);
+  if (!pending || pending.state === "SUCCESS") return { kind: "fresh", amountUsd: fresh };
+  if (pending.amountUsd <= balanceUsd + 0.005) return { kind: "resend", amountUsd: pending.amountUsd };
+  if (nowSec > pending.validBefore + SETTLE_MARGIN_SEC) return { kind: "fresh", amountUsd: fresh };
+  return { kind: "wait" };
 }
 
 export class VeniceInsufficientBalance extends RailError {

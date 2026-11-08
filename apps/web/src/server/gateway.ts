@@ -14,6 +14,7 @@ import {
 } from "@pay/rail/browser";
 import { apiWalletAccount, sweepToCredit, veniceForApiWallet } from "./api-wallet.ts";
 import { KeyError, authorize, recordSpend, type KeyRecord } from "./keys.ts";
+import { keepAliveForRequest } from "./runtime.ts";
 
 /**
  * Hosted OpenAI-compatible endpoint for API keys. Stateless per request:
@@ -130,52 +131,71 @@ export async function handleChat(req: Request): Promise<Response> {
 }
 
 /**
- * Up-front reservation for streamed requests: a client that aborts before the
- * final usage chunk must still be charged. Estimate = prompt size + max output
- * tokens (default 2048) at live prices; corrected to the real cost at the end.
+ * The one output limit for a request: what the client asked for (max_completion_tokens,
+ * else max_tokens), or else the model's own maximum, never above the model's maximum or
+ * MAX_OUTPUT_TOKENS. It sizes the reservation AND is what Venice receives (both fields),
+ * so the reservation is always an upper bound on what can be generated (audit V2-01).
  */
-export function reserve(def: ModelDef, body: Record<string, unknown>, live: LivePrices): number {
-  const inTok = Math.ceil(JSON.stringify(body.messages ?? []).length / 3);
-  const asked = Number(body.max_tokens ?? body.max_completion_tokens ?? 2048);
-  const outTok = Number.isFinite(asked) && asked >= 1 ? Math.min(asked, MAX_OUTPUT_TOKENS) : 2048;
-  return Math.max(0, costUsd(def, { prompt_tokens: inTok, completion_tokens: outTok }, live) ?? 0);
+export function outputLimit(def: ModelDef, body: Record<string, unknown>): number {
+  const asked = body.max_completion_tokens ?? body.max_tokens; // validated as 1..MAX_OUTPUT_TOKENS by checkBody
+  const cap = Math.min(def.maxOutputTokens, MAX_OUTPUT_TOKENS);
+  return typeof asked === "number" && Number.isInteger(asked) && asked >= 1 ? Math.min(asked, cap) : cap;
 }
 
 /**
- * Pass an OpenAI-style SSE stream through untouched and call `settle` once with
- * the first usage object seen, right after forwarding that chunk. It settles while
- * the stream is still flowing (the usage chunk comes right before [DONE]), not at the end: clients such as opencode
- * hang up right after [DONE], which cancels the pipe, and an end-of-stream hook
- * would never run, leaving the whole reservation charged. No usage at all keeps
- * the reservation.
+ * Up-front reservation: a client that aborts before the final usage chunk must still
+ * be charged. Estimate = prompt size + the request's output limit at live prices;
+ * corrected to the real cost when usage arrives.
  */
-export function meterStream(settle: (usage: unknown) => Promise<void>): TransformStream<Uint8Array, Uint8Array> {
+export function reserve(def: ModelDef, body: Record<string, unknown>, live: LivePrices): number {
+  const inTok = Math.ceil(JSON.stringify(body.messages ?? []).length / 3);
+  return Math.max(0, costUsd(def, { prompt_tokens: inTok, completion_tokens: outputLimit(def, body) }, live) ?? 0);
+}
+
+/**
+ * Pass an OpenAI-style SSE stream through untouched, reporting each usage object
+ * to `onUsage` as it goes by, with `final` set when it's the request's last word:
+ * a usage chunk with no choices (OpenAI's final shape) or a finish_reason, or
+ * [DONE] / the end of the stream after any usage. Reporting happens while the
+ * stream flows, right after forwarding the chunk, not at the end: clients such as
+ * opencode hang up right after [DONE], which cancels the pipe, so an end-of-stream
+ * hook alone would never run. No usage at all reports nothing (the reservation stays).
+ */
+export function meterStream(onUsage: (usage: unknown, final: boolean) => Promise<void>): TransformStream<Uint8Array, Uint8Array> {
   let buf = "";
-  let settled = false;
+  let last: unknown;
+  let finished = false;
   const decoder = new TextDecoder();
+  const report = async (usage: unknown, final: boolean) => {
+    if (finished) return;
+    if (final) finished = true;
+    await onUsage(usage, final).catch(() => {});
+  };
   return new TransformStream<Uint8Array, Uint8Array>({
     async transform(chunk, ctl) {
-      if (settled) return ctl.enqueue(chunk);
+      ctl.enqueue(chunk); // forward first so the client isn't kept waiting on our database write
+      if (finished) return;
       buf += decoder.decode(chunk, { stream: true });
-      let usage: unknown;
       let nl: number;
       while ((nl = buf.indexOf("\n")) >= 0) {
         const line = buf.slice(0, nl).trim();
         buf = buf.slice(nl + 1);
-        if (usage === undefined && line.startsWith("data:") && line.includes('"usage"')) {
-          try {
-            const u = (JSON.parse(line.slice(5)) as { usage?: unknown }).usage;
-            if (u && typeof u === "object") usage = u;
-          } catch {}
+        if (/^data:\s*\[DONE\]$/.test(line)) {
+          if (last !== undefined) await report(last, true);
+          continue;
         }
+        if (!line.startsWith("data:") || !line.includes('"usage"')) continue;
+        try {
+          const ev = JSON.parse(line.slice(5)) as { usage?: unknown; choices?: Array<{ finish_reason?: unknown }> };
+          if (!ev.usage || typeof ev.usage !== "object") continue; // "usage": null on ordinary chunks
+          last = ev.usage;
+          const final = !ev.choices?.length || ev.choices.some((c) => c?.finish_reason != null);
+          await report(ev.usage, final);
+        } catch {}
       }
-      // Forward first so the client isn't kept waiting on our database write.
-      ctl.enqueue(chunk);
-      if (usage !== undefined) {
-        settled = true;
-        buf = "";
-        await settle(usage).catch(() => {});
-      }
+    },
+    async flush() {
+      if (last !== undefined) await report(last, true); // the stream ran to the end
     },
   });
 }
@@ -187,14 +207,20 @@ async function withTopUp<T>(rec: KeyRecord, call: () => Promise<T>): Promise<T> 
   } catch (e) {
     if (!(e instanceof VeniceInsufficientBalance)) throw e;
     // If the top-up attempt itself fails (RPC down, etc.), report the real problem: out of credit.
-    const swept = await sweepToCredit(rec.uid).catch(() => ({ toppedUpUsd: 0 }));
+    const swept = await sweepToCredit(rec.uid).catch((err: unknown) => {
+      const x = err as { code?: unknown; status?: unknown; name?: unknown };
+      console.warn("auto top-up failed", { code: x?.code ?? x?.name, status: x?.status }); // no prompt, no message text
+      return { toppedUpUsd: 0 };
+    });
     if (swept.toppedUpUsd > 0) return call();
     throw e;
   }
 }
 
 async function passthrough(rec: KeyRecord, venice: VeniceClient, def: ModelDef, body: Record<string, unknown>, live: LivePrices): Promise<Response> {
-  const upstream: Record<string, unknown> = { ...body, model: def.id, venice_parameters: veniceParams(body) };
+  const keepAlive = keepAliveForRequest();
+  const limit = outputLimit(def, body);
+  const upstream: Record<string, unknown> = { ...body, model: def.id, venice_parameters: veniceParams(body), max_tokens: limit, max_completion_tokens: limit };
   // Every request reserves an estimate first, so a reply without usage (or an aborted stream) is still charged.
   const held = reserve(def, body, live);
   const day = await recordSpend(rec, held);
@@ -208,7 +234,8 @@ async function passthrough(rec: KeyRecord, venice: VeniceClient, def: ModelDef, 
       throw e;
     }
     const actual = costUsd(def, json.usage, live);
-    if (actual !== undefined) await recordSpend(rec, actual - held, day);
+    // The reply is already paid for: a failed correction keeps the reservation, never a 502.
+    if (actual !== undefined) await recordSpend(rec, actual - held, day).catch(() => {});
     return Response.json({ ...json, model: def.key });
   }
 
@@ -220,10 +247,17 @@ async function passthrough(rec: KeyRecord, venice: VeniceClient, def: ModelDef, 
     await recordSpend(rec, -held, day); // nothing was generated
     throw e;
   }
-  // Pass the SSE stream through untouched; charge the real cost as soon as the usage chunk goes by.
-  const tap = meterStream(async (usage) => {
+  // Pass the SSE stream through untouched. Running usage can only raise the charge above the
+  // reservation; the final usage sets it to the real cost (audit V2-05).
+  let charged = held;
+  const tap = meterStream(async (usage, final) => {
     const actual = costUsd(def, usage as Parameters<typeof costUsd>[1], live);
-    if (actual !== undefined) await recordSpend(rec, actual - held, day);
+    if (actual === undefined || (!final && actual <= charged)) return;
+    const delta = actual - charged;
+    charged = actual;
+    const write = recordSpend(rec, delta, day);
+    keepAlive(write); // a hang-up mustn't cancel the write (audit V2-07)
+    await write;
   });
   return new Response(res.body!.pipeThrough(tap), {
     headers: { "content-type": "text/event-stream", "cache-control": "no-cache, no-transform", connection: "keep-alive" },
@@ -232,6 +266,7 @@ async function passthrough(rec: KeyRecord, venice: VeniceClient, def: ModelDef, 
 
 /** TEE models: attested E2EE between our server and the enclave (server-side client; tools dropped). */
 async function e2ee(rec: KeyRecord, venice: VeniceClient, def: ModelDef, body: Record<string, unknown>, live: LivePrices): Promise<Response> {
+  const keepAlive = keepAliveForRequest();
   const chat = new VeniceChat({ venice });
   const messages = fold((body.messages as Array<{ role: string; content: unknown }>) ?? []);
   const held = reserve(def, body, live);
@@ -243,7 +278,7 @@ async function e2ee(rec: KeyRecord, venice: VeniceClient, def: ModelDef, body: R
         mode: "private",
         model: def.key,
         messages,
-        maxTokens: typeof body.max_tokens === "number" ? body.max_tokens : undefined,
+        maxTokens: outputLimit(def, body),
         temperature: typeof body.temperature === "number" ? body.temperature : undefined,
       }),
     ));
@@ -263,7 +298,7 @@ async function e2ee(rec: KeyRecord, venice: VeniceClient, def: ModelDef, body: R
       else if (d.type === "usage") (usage = d.usage), (cost = d.costUsd);
     }
     // Real cost replaces the reservation (a decryption failure mid-way throws above and keeps it).
-    if (cost !== undefined) await recordSpend(rec, cost - held, day);
+    if (cost !== undefined) await recordSpend(rec, cost - held, day).catch(() => {});
     return Response.json({ id, object: "chat.completion", created, model: def.key, choices: [{ index: 0, message: { role: "assistant", content: text }, finish_reason: "stop" }], usage });
   }
 
@@ -289,7 +324,11 @@ async function e2ee(rec: KeyRecord, venice: VeniceClient, def: ModelDef, body: R
         // Settle after the last bytes went out but before closing, so it runs even if the
         // client hangs up right after [DONE]. A stream that broke off earlier never gets here
         // and keeps the reservation.
-        if (cost !== undefined) await recordSpend(rec, cost - held, day).catch(() => {});
+        if (cost !== undefined) {
+          const write = recordSpend(rec, cost - held, day);
+          keepAlive(write);
+          await write.catch(() => {});
+        }
       } finally {
         try {
           ctl.close();

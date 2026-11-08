@@ -14,7 +14,7 @@ Working state of the project: what's done, what's left, and decisions made. Upda
 | API keys (hosted) | ✅ Mostly tested | curl, opencode, daily limit (429), model allowlist (403) verified. Open: deleted key (401), sign out everywhere, second same-amount top-up (F-02) |
 | opencode integration | ✅ Done | Generated config lists all non-TEE models, prices, `enabled_providers`. Needs `opencode.jsonc` + `--standalone` |
 | Local proxy (`rahasya serve`) | ✅ Done | Not re-tested since the rename |
-| Security audit | ✅ v1 findings F-01..F-13 fixed | Kit v2 built: `npm run audit:pack -- --folder` |
+| Security audit | ✅ Audit 1 (F-01..F-13) and audit 2 (V2-01..V2-08) fixed, with regression tests | Residual: two colluding NEAR RPCs (K10); set trusted `BASE_RPC_URL` / `NEAR_RPC_URL` for production |
 | Name / brand | ✅ **Rahasya**, `rahasya.chat` bought | `rahasya.ai` only if we win |
 | GitHub | ✅ Private repo `0xyuji/rahasya` | Must be **public** by the deadline (ask first) |
 | Cloudflare deploy | ✅ Live at **https://rahasya.chat** (+ www, + rahasya.itadori.workers.dev). 38/38 probe on workers.dev | Domain at Namecheap, DNS on Cloudflare (MX/TXT email forwarding kept) |
@@ -25,7 +25,7 @@ Working state of the project: what's done, what's left, and decisions made. Upda
 ## Next steps (in order)
 
 1. Probe `https://rahasya.chat` once the owner's Mac DNS cache clears (it still had the old parking IP); test wallet connect live (Reown domains added).
-2. Second audit with kit v2 (`dist/rahasya-audit-kit-v2-<commit>`); triage the report.
+2. Confirm on mainnet that Venice accepts `max_tokens` + `max_completion_tokens` together (one opencode or curl message through an API key).
 4. One real end-to-end run on the live site: pay with a non-USDC token, chat in both modes, use an API key. Check the fee lands in `rahasya.near`'s NEAR Intents balance.
 5. Finish the API checks: deleted key → 401, sign out everywhere, second same-amount top-up.
 6. Demo video (2–3 min): pay with any token → chat → Truly private with the Intel check → API key in opencode.

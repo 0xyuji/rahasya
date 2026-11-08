@@ -12,6 +12,10 @@ export function opencodeConfig({ baseURL, keyHint, allowed = [] }: { baseURL: st
   const models = Object.values(MODELS).filter((m) => !m.e2ee && (!allowed.length || allowed.includes(m.key)));
   const preferred = PRIVACY_MODES.anonymous.chatModel;
   const def = models.some((m) => m.key === preferred) ? preferred : (models[0]?.key ?? preferred);
+  if (!models.length) {
+    return `// This key only allows TEE models, which can't carry tool definitions through end-to-end
+// encryption, so coding agents like opencode can't use it. Create a key that allows a non-TEE model.`;
+  }
   const width = Math.max(...models.map((m) => m.key.length)) + 3;
   // cost is $ per 1M tokens (Venice's prices; we add no markup), so opencode can show what you've spent.
   const lines = models.map(
