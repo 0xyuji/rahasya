@@ -22,7 +22,10 @@ When you click **Unlock**, your wallet signs a fixed message (EVM `personal_sign
 key = HKDF-SHA256(ikm = signature, salt = "pay-anything/inference-wallet/v1", info = "<chain>:<address>")
 ```
 
-- **Same wallet + same message → same signature → same key**, on any device. Nothing is stored; you unlock again next time. EOA, ed25519 and NEP-413 signatures are deterministic. Smart-contract wallets, whose signatures aren't, are detected and refused.
+- **Same wallet + same message → same signature → same key**, on any device. Nothing is stored; you unlock again next time. EOA, ed25519 and NEP-413 signatures are deterministic. Smart-contract wallets, whose signatures aren't, are detected and refused. EVM signatures are normalized first (v = 27/28, low s), so wallets that encode the same signature differently still get the same key.
+- **What "same wallet" means.** It's the signing key, not the account name:
+  - **NEAR:** an account usually has one access key per device or wallet app, and each key unlocks a different inference wallet. Keep using the same wallet app to reach your credit. The browser warns you if a different key signs.
+  - **Solana:** a Ledger signs messages in a different format than a software wallet, so they give different inference wallets even for the same address.
 - The message contains neither the site's name nor its domain, so renaming or moving the site doesn't change anyone's wallet. The message itself warns you to sign it only on a site you trust.
 - The key only ever exists in browser memory.
 
@@ -79,6 +82,8 @@ For the two TEE models, the browser:
    - the TD debug bit is off
 
    Intel's signature chain and the GPU evidence are reported by Venice's verifier and shown as such.
+
+   **What this does and doesn't prove.** The checks above make the attestation fresh (no replay), bind it to the exact key we encrypt to, and confirm a non-debug TDX quote. What they can't do on their own is prove the quote was signed by genuine Intel hardware: that signature, and the certificate chain behind it, are verified by Venice's verifier, and we don't pin the enclave's software measurements yet. So Truly private mode protects your messages from us, your network and the model host's operators; against Venice itself, it relies on Venice's verifier being honest. Verifying the Intel signature and pinning measurements in the browser is on the roadmap.
 2. **Encrypts:** ECDH on secp256k1 with the enclave key → HKDF-SHA256 → AES-256-GCM, a fresh ephemeral key per message. Only the user and system roles are encrypted (that's Venice's E2EE), so the conversation history is folded into one encrypted message rather than sent as plaintext assistant turns.
 3. **Decrypts** the streamed reply, and counts any chunk that arrives unencrypted (the UI flags it).
 
@@ -108,10 +113,12 @@ Code: `apps/web/src/server/` (`keys.ts`, `api-wallet.ts`, `gateway.ts`, `login.t
 | | Website, Anonymous | Website, Truly private | API key | Local proxy |
 |---|---|---|---|---|
 | **Our server** | no prompts (chat goes browser → Venice); only 1Click quote requests (addresses, amounts) | same | prompts in transit (not stored), key hashes, spend, 1Click quote requests | nothing |
-| **Venice** | your inference wallet address + prompts | address + **ciphertext** | API wallet address + prompts (TEE models: ciphertext) | inference wallet address + prompts (TEE: ciphertext) |
+| **Venice** | your inference wallet address + prompts | address + **ciphertext**\* | API wallet address + prompts (TEE models: ciphertext\*) | inference wallet address + prompts (TEE: ciphertext\*) |
 | **Model host** | prompts (anonymized: third party; private: Venice) | only the attested enclave | same as Anonymous (TEE models: enclave) | same as website |
 | **1Click solver** | deposit and delivery addresses and amounts | same | same | — |
 | **Anyone on-chain** | your deposit to 1Click, USDC to your wallet, x402 settlement | same | same | — |
+
+\* Assuming Venice's attestation verifier reports honestly; see "What this does and doesn't prove" in section 5.
 
 Nothing here links your connected wallet to your inference wallet on-chain unless you fund one from the other.
 

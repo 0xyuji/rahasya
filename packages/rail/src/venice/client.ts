@@ -9,6 +9,14 @@ import { createSiwxHeader } from "./siwx.ts";
 
 const BASE_NETWORK = "eip155:8453";
 const BASE_USDC = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913";
+/** Venice's x402 receiving address on Base (seen on every top-up so far). Payments to anything else are refused. */
+export const VENICE_PAY_TO = "0x2670b922ef37c7df47158725c0cc407b5382293f";
+/**
+ * After `validBefore`, an EIP-3009 authorization can't settle once a block with a
+ * later timestamp exists. Wait this much longer before signing a replacement, so
+ * a late settlement of the old one can't land next to the new one.
+ */
+const SETTLE_MARGIN_SEC = 120;
 
 export interface VeniceBalance {
   canConsume: boolean;
@@ -53,6 +61,8 @@ export interface VeniceClientOptions {
   log?: Logger;
   fetch?: typeof fetch;
   timeoutMs?: number;
+  /** Expected x402 payTo (default VENICE_PAY_TO). */
+  payTo?: string;
 }
 
 export class VeniceClient {
@@ -131,8 +141,11 @@ export class VeniceClient {
 
   /**
    * Add `amountUsd` of credit, paid in USDC from this wallet on Base via x402.
-   * Idempotent per `id`: a retry re-sends the same signed authorization while
-   * it is still valid; once expired it provably can't settle, so we re-sign.
+   * Idempotent per `id`: until the signed authorization has provably expired
+   * (validBefore + a settlement margin), every call re-sends that same
+   * authorization, even after a rejection (e.g. the USDC hadn't arrived yet).
+   * Only then is a replacement signed. So at most one authorization per id can
+   * ever settle.
    */
   async topUp(id: string, amountUsd: number): Promise<TopUpAction> {
     if (this.o.isKilled?.()) throw new RailError("KILLED", "kill switch is on; no top-up");
@@ -142,13 +155,12 @@ export class VeniceClient {
 
     let action = await this.o.topups.get(id);
     if (action?.state === "SUCCESS") return action;
-    if (action?.state === "FAILED") throw new RailError(action.error?.code ?? "TOPUP_FAILED", action.error?.message ?? "top-up failed");
 
     const nowSec = Math.floor(Date.now() / 1000);
-    if (!action || action.validBefore - 30 < nowSec) {
+    if (!action || nowSec > action.validBefore + SETTLE_MARGIN_SEC) {
       action = await this.signTopUp(id, amountUsd);
     } else {
-      this.log.info("re-sending persisted top-up authorization", { id });
+      this.log.info("re-sending persisted top-up authorization", { id, previous: action.state });
     }
 
     const url = `${this.base}/x402/top-up`;
@@ -168,6 +180,8 @@ export class VeniceClient {
       // Unknown outcome: keep SIGNED so the next call re-sends the same authorization.
       throw new HttpError(res.status, text, url);
     }
+    // Rejected. Recorded as FAILED, but not final: the next call re-sends this same
+    // authorization while it's valid, then signs a fresh one after it expires.
     const failed = await this.o.topups.put({
       ...action,
       state: "FAILED",
@@ -187,6 +201,10 @@ export class VeniceClient {
     const http = new x402HTTPClient(this.buildX402Client(amountUsd));
     const required = http.getPaymentRequiredResponse((n) => init.headers.get(n), safeJson(initText));
     const req = pickBaseUsdc(required);
+    const payTo = (this.o.payTo ?? VENICE_PAY_TO).toLowerCase();
+    if (req.payTo.toLowerCase() !== payTo) {
+      throw new RailError("UNEXPECTED_PAY_TO", `Venice asked for payment to ${req.payTo}, not its known address ${payTo}. Refusing to sign.`);
+    }
 
     const atomic = BigInt(Math.round(amountUsd * 1e6));
     if (atomic < BigInt(req.amount)) {

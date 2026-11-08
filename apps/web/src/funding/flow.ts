@@ -5,6 +5,7 @@ import {
   RailError,
   TERMINAL_STATUSES,
   VeniceClient,
+  checkMaxInput,
   randomActionId,
   resolveAsset,
   sleep,
@@ -76,7 +77,7 @@ export interface CreditAction {
 
 export const oneclick = new OneClickClient({ baseUrl: "/api/oneclick" });
 export const actions = new LocalStore<CreditAction>("credit");
-const topups = new LocalStore<TopUpAction>("topup");
+export const topups = new LocalStore<TopUpAction>("topup");
 const baseClient = createPublicClient({ chain: base, transport: http(process.env.NEXT_PUBLIC_BASE_RPC_URL) });
 
 export function veniceFor(account: LocalAccount) {
@@ -117,6 +118,7 @@ export async function quoteCredit(p: {
   };
   const quote = await oneclick.quote(req);
   validateQuote(req, quote); // code decides: the quote must echo exactly what we asked for
+  checkMaxInput(origin, quote.quote.amountIn, p.usd); // ...and must not ask for more than ~the credit is worth
   const now = new Date().toISOString();
   return actions.put({
     id: randomActionId("credit"),
@@ -162,6 +164,16 @@ export async function runCredit(
         const left = Date.parse(a.quote.quote.deadline ?? a.quoteRequest.deadline) - Date.now();
         if (left < 5 * 60_000) {
           a = emit(move(a, "EXPIRED"));
+          break;
+        }
+        // Re-check the saved quote right before money moves (it may have been resumed from storage).
+        try {
+          validateQuote(a.quoteRequest, a.quote);
+          if (a.quoteRequest.recipient.toLowerCase() !== a.inferenceAddress.toLowerCase()) throw new Error("Saved quote's recipient isn't your wallet.");
+          if (a.quote.quote.depositAddress !== depositAddress) throw new Error("Saved quote changed.");
+          checkMaxInput(a.origin, a.quote.quote.amountIn, a.usd);
+        } catch (e) {
+          a = emit(move(a, "FAILED", { error: `Refusing to send: ${friendly(e)}` }));
           break;
         }
         a = emit(move(a, "SENDING"));

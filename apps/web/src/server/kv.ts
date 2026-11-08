@@ -7,6 +7,8 @@ import { Redis } from "@upstash/redis";
  */
 export interface KV {
   get<T>(key: string): Promise<T | null>;
+  /** Atomic get + delete (single-use tokens). */
+  getdel<T>(key: string): Promise<T | null>;
   set(key: string, value: unknown, opts?: { ex?: number; nx?: boolean }): Promise<unknown>;
   del(...keys: string[]): Promise<number>;
   incrbyfloat(key: string, by: number): Promise<number | string>;

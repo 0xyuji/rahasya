@@ -1,8 +1,10 @@
 import { json, sameOrigin } from "../../../../server/http";
-import { endSession } from "../../../../server/login";
+import { clearSessionCookie, endSession } from "../../../../server/login";
 
+/** POST /api/auth/logout ends this session; ?everywhere=1 ends all of this wallet's sessions. */
 export async function POST(req: Request) {
   if (!sameOrigin(req)) return json(403, { message: "Cross-site request refused." });
-  await endSession(req);
-  return json(200, { ok: true }, { "set-cookie": "sid=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0" });
+  const url = new URL(req.url);
+  await endSession(req, url.searchParams.get("everywhere") === "1");
+  return json(200, { ok: true }, { "set-cookie": clearSessionCookie(url.protocol === "https:") });
 }

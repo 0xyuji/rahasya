@@ -12,14 +12,14 @@ Breaking any of them is **High or worse**. For each, the right column says where
 | **I4** | Truly private mode never sends user/system content in plaintext, never falls back to a non-TEE model, and refuses if any attestation check fails | `rail/inference/chat.ts`, `rail/inference/models.ts` (`resolveModel`), `rail/venice/e2ee.ts` (`newSession`) | `models.test.ts`, `e2ee.test.ts` |
 | **I5** | Anonymous requests never include messages exchanged in Truly private mode; E2EE requests carry no plaintext-role history | `web/chat/conversation.ts`, `proxy/server.ts` (`foldForE2ee`), `web/server/gateway.ts` (`fold`) | `conversation.test.ts`, `proxy/server.test.ts` |
 | **I6** | An attestation passes only if: the nonce is echoed, the model matches, keccak(enclave key) = signing address, it's a TDX v4 quote, REPORTDATA binds our nonce and that address, and the debug bit is off | `rail/venice/e2ee.ts` (`evaluateAttestation`) | `e2ee.test.ts` (replay, swapped key, debug) |
-| **I7** | An x402 authorization is persisted before sending; a retry re-sends the same one; a new one is signed only after the old `validBefore` | `rail/venice/client.ts` (`topUp`) | Review |
+| **I7** | An x402 authorization is persisted before sending; a retry re-sends the same one; a new one is signed only after the old `validBefore` + 120 s; payment only to Venice's known `payTo` | `rail/venice/client.ts` (`topUp`) | Review |
 | **I8** | API key plaintext is never stored; `authorize` checks existence, expiry, model allowlist, daily/total limits and rate **before** any upstream call | `web/server/keys.ts` | `server.test.ts`, probe |
 | **I9** | Key create/edit/delete only with a valid session, from our own origin, on keys owned by that user | `web/server/http.ts`, `web/server/keys.ts` (`own`) | `server.test.ts`, probe |
 | **I10** | Login challenges are single-use, expire in 5 minutes, and are bound to chain + address; signatures verified per chain (EVM incl. ERC-1271/6492, Solana ed25519, NEAR NEP-413 + full-access key check) | `web/server/login.ts` | `server.test.ts` (Solana), probe (EVM) |
 | **I11** | API wallet keys decrypt only for their own user (AAD), and at most one API wallet is created per user | `web/server/crypto.ts`, `web/server/api-wallet.ts` (`set NX`) | `server.test.ts` |
 | **I12** | Gateway and proxy never log or store prompts or replies | `web/server/gateway.ts`, `proxy/server.ts` | Review |
-| **I13** | `/api/oneclick` forwards only 4 routes and only quotes delivering USDC on Base to `DESTINATION_CHAIN` | `web/app/api/oneclick/[...path]/route.ts` | Probe |
-| **I14** | The local proxy listens only on 127.0.0.1, requires its token (constant-time compare), and refuses requests with an `Origin` header | `proxy/server.ts`, `proxy/cli.ts` | `proxy/server.test.ts` |
+| **I13** | `/api/oneclick` forwards only 4 routes, only quotes delivering USDC on Base to `DESTINATION_CHAIN`, never the caller's `appFees`, within per-IP rate limits | `web/app/api/oneclick/[...path]/route.ts` | Probe |
+| **I14** | The local proxy listens only on 127.0.0.1, requires a token of ≥ 32 chars (constant-time compare), refuses requests with an `Origin` header, and only accepts a localhost `Host` | `proxy/server.ts`, `proxy/cli.ts` | `proxy/server.test.ts` |
 | **I15** | Pages can't be framed (wallet prompts can't be clickjacked) | `web/next.config.ts` | Probe |
 
 ## B. Attack checklist (highest value first)
@@ -65,7 +65,7 @@ Breaking any of them is **High or worse**. For each, the right column says where
 - [ ] NEP-413 nonce/recipient constants; EVM "sign twice" check; smart-wallet detection
 
 ### Local proxy (Medium)
-- [ ] DNS rebinding: `Host` isn't checked (only `Origin`). Is the token alone sufficient?
+- [ ] DNS rebinding: `Host` must be localhost/127.0.0.1 and `Origin` is refused. Any way around both?
 - [ ] Token generation, storage, rotation; key file permissions
 
 ### Web app / supply chain (Medium/Low)

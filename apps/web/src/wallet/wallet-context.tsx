@@ -4,6 +4,7 @@ import {
   DERIVATION_MESSAGE,
   NEP413_PARAMS,
   deriveInferenceKey,
+  canonicalEvmSignature,
   isReproducibleEvmSignature,
   type SourceChain,
 } from "@pay/rail/browser";
@@ -54,7 +55,7 @@ interface WalletState {
   creditTarget: CreditTarget;
   openCredit: (target?: CreditTarget) => void;
   /** Sign a server login challenge with the connected wallet. */
-  signLogin: (c: { id: string; message: string; nonce: string }) => Promise<LoginProof>;
+  signLogin: (c: { id: string; message: string; nonce: string; recipient: string }) => Promise<LoginProof>;
   connectEvmOrSolana: () => void;
   connectNear: () => Promise<void>;
   unlock: () => Promise<void>;
@@ -82,6 +83,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
 const b64ToBytes = (b64: string) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 const evmVerifiedKey = (a: string) => `iw:evm-reproducible:${a.toLowerCase()}`;
+const short = (k: string) => `${k.slice(0, 14)}…${k.slice(-4)}`;
 
 function WalletStateProvider({ children }: { children: React.ReactNode }) {
   const { open } = useAppKit();
@@ -151,7 +153,7 @@ function WalletStateProvider({ children }: { children: React.ReactNode }) {
         if (again !== sig) throw new Error("This wallet signed the same message differently twice, so it can't safely recreate the inference wallet.");
         localStorage.setItem(evmVerifiedKey(s.address), "1");
       }
-      return hexToBytes(sig);
+      return canonicalEvmSignature(hexToBytes(sig)); // same key whatever encoding the wallet returns
     }
     if (s.chain === "sol") {
       if (!solProvider) throw new Error("Solana wallet not ready");
@@ -159,6 +161,23 @@ function WalletStateProvider({ children }: { children: React.ReactNode }) {
     }
     const wallet = await (await nearConnector()).wallet();
     const signed = await wallet.signMessage({ ...NEP413_PARAMS, nonce: new Uint8Array(NEP413_PARAMS.nonce) });
+    // A NEAR account has one key per device/wallet app, and each key gives a different inference
+    // wallet. Remember which key unlocked last time and warn before switching to another one.
+    const seenKey = `naisho:near-signer:${s.address}`;
+    let seen: string | null = null;
+    try {
+      seen = localStorage.getItem(seenKey);
+    } catch {}
+    if (seen && seen !== signed.publicKey) {
+      const ok = window.confirm(
+        `This NEAR account signed with a different key than last time on this browser (${short(signed.publicKey)} instead of ${short(seen)}).\n\n` +
+          "Each key unlocks a different inference wallet, so credit on the previous one is only reachable by signing with the previous key (the same wallet app or device). Continue with this key?",
+      );
+      if (!ok) throw new Error("Cancelled. Sign with the wallet app you used before to reach your existing credit.");
+    }
+    try {
+      localStorage.setItem(seenKey, signed.publicKey);
+    } catch {}
     return b64ToBytes(signed.signature);
   }, [signMessageAsync, solProvider]);
 
@@ -210,7 +229,7 @@ function WalletStateProvider({ children }: { children: React.ReactNode }) {
 
   const toB64 = (b: Uint8Array) => btoa(String.fromCharCode(...b));
   const signLogin = useCallback(
-    async (c: { id: string; message: string; nonce: string }): Promise<LoginProof> => {
+    async (c: { id: string; message: string; nonce: string; recipient: string }): Promise<LoginProof> => {
       if (!source) throw new Error("Connect a wallet first.");
       const base = { challengeId: c.id, chain: source.chain, address: source.address };
       if (source.chain === "evm") return { ...base, signature: await signMessageAsync({ message: c.message }) };
@@ -220,7 +239,7 @@ function WalletStateProvider({ children }: { children: React.ReactNode }) {
       }
       const wallet = await (await nearConnector()).wallet();
       const nonce = Uint8Array.from(c.nonce.match(/../g)!.map((h) => parseInt(h, 16)));
-      const signed = await wallet.signMessage({ message: c.message, recipient: "api-keys", nonce });
+      const signed = await wallet.signMessage({ message: c.message, recipient: c.recipient, nonce });
       return { ...base, signature: signed.signature, publicKey: signed.publicKey };
     },
     [source, signMessageAsync, solProvider],

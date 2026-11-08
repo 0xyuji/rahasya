@@ -2,6 +2,7 @@ import "server-only";
 import {
   MODELS,
   RailError,
+  findModel,
   VeniceChat,
   VeniceInsufficientBalance,
   costUsd,
@@ -29,9 +30,53 @@ function bearer(req: Request): string {
   return (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
 }
 
-export function resolveModel(model: unknown): ModelDef | undefined {
-  if (typeof model !== "string") return undefined;
-  return MODELS[model] ?? Object.values(MODELS).find((m) => m.id === model);
+export const resolveModel = (model: unknown): ModelDef | undefined => findModel(model, true);
+
+const MAX_OUTPUT_TOKENS = 32_768;
+/** Venice parameters a key holder may set. Everything else (web search, scraping, ...) is billed per request, not per token, so we can't meter it. */
+const ALLOWED_VENICE_PARAMS = ["disable_thinking", "strip_thinking_response"] as const;
+
+/** Read the body with a hard cap, without buffering more than MAX_BODY. */
+async function readBody(req: Request): Promise<string | null> {
+  const declared = Number(req.headers.get("content-length") ?? "0");
+  if (declared > MAX_BODY) return null;
+  if (!req.body) return "";
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > MAX_BODY) {
+      await reader.cancel().catch(() => {});
+      return null;
+    }
+    chunks.push(value);
+  }
+  const all = new Uint8Array(size);
+  let o = 0;
+  for (const c of chunks) all.set(c, o), (o += c.byteLength);
+  return new TextDecoder().decode(all);
+}
+
+/** Validates and normalizes the fields we meter or override. Returns an error message, or null. */
+export function checkBody(body: Record<string, unknown>): string | null {
+  for (const k of ["max_tokens", "max_completion_tokens"] as const) {
+    const v = body[k];
+    if (v === undefined || v === null) continue;
+    if (!(typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= MAX_OUTPUT_TOKENS)) return `${k} must be an integer from 1 to ${MAX_OUTPUT_TOKENS}.`;
+  }
+  if (body.n !== undefined && body.n !== 1) return "Only n = 1 is supported.";
+  if (body.messages !== undefined && !Array.isArray(body.messages)) return "messages must be an array.";
+  return null;
+}
+
+export function veniceParams(body: Record<string, unknown>): Record<string, unknown> {
+  const vp = body.venice_parameters && typeof body.venice_parameters === "object" ? (body.venice_parameters as Record<string, unknown>) : {};
+  const out: Record<string, unknown> = { include_venice_system_prompt: false };
+  for (const k of ALLOWED_VENICE_PARAMS) if (typeof vp[k] === "boolean") out[k] = vp[k];
+  return out;
 }
 
 let prices: { at: number; map: LivePrices } | undefined;
@@ -60,16 +105,19 @@ export async function handleModels(req: Request): Promise<Response> {
 
 export async function handleChat(req: Request): Promise<Response> {
   try {
-    const text = await req.text();
-    if (text.length > MAX_BODY) return oaiError(413, "Request body too large.", "too_large");
+    const text = await readBody(req);
+    if (text === null) return oaiError(413, "Request body too large.", "too_large");
     let body: Record<string, unknown>;
     try {
       body = JSON.parse(text);
     } catch {
       return oaiError(400, "Request body is not valid JSON.", "bad_json");
     }
+    if (!body || typeof body !== "object" || Array.isArray(body)) return oaiError(400, "Request body must be a JSON object.", "bad_json");
     const def = resolveModel(body.model);
-    if (!def) return oaiError(400, `Unknown model "${String(body.model)}". GET /v1/models lists the allowed ones.`, "unknown_model");
+    if (!def) return oaiError(400, `Unknown model "${String(body.model).slice(0, 80)}". GET /v1/models lists the allowed ones.`, "unknown_model");
+    const bad = checkBody(body);
+    if (bad) return oaiError(400, bad, "bad_request");
 
     const rec = await authorize(bearer(req), def.key);
     const venice = veniceForApiWallet(await apiWalletAccount(rec.uid));
@@ -86,10 +134,11 @@ export async function handleChat(req: Request): Promise<Response> {
  * final usage chunk must still be charged. Estimate = prompt size + max output
  * tokens (default 2048) at live prices; corrected to the real cost at the end.
  */
-function reserve(def: ModelDef, body: Record<string, unknown>, live: LivePrices): number {
+export function reserve(def: ModelDef, body: Record<string, unknown>, live: LivePrices): number {
   const inTok = Math.ceil(JSON.stringify(body.messages ?? []).length / 3);
-  const outTok = Number(body.max_tokens ?? body.max_completion_tokens ?? 2048) || 2048;
-  return costUsd(def, { prompt_tokens: inTok, completion_tokens: Math.min(outTok, 32_768) }, live) ?? 0;
+  const asked = Number(body.max_tokens ?? body.max_completion_tokens ?? 2048);
+  const outTok = Number.isFinite(asked) && asked >= 1 ? Math.min(asked, MAX_OUTPUT_TOKENS) : 2048;
+  return Math.max(0, costUsd(def, { prompt_tokens: inTok, completion_tokens: outTok }, live) ?? 0);
 }
 
 /** Call Venice; if credit ran out but USDC sits on the API wallet, top it up and retry once. */
@@ -103,23 +152,30 @@ async function withTopUp<T>(rec: KeyRecord, call: () => Promise<T>): Promise<T> 
 }
 
 async function passthrough(rec: KeyRecord, venice: VeniceClient, def: ModelDef, body: Record<string, unknown>, live: LivePrices): Promise<Response> {
-  const vp = (body.venice_parameters as Record<string, unknown> | undefined) ?? {};
-  const upstream: Record<string, unknown> = { ...body, model: def.id, venice_parameters: { ...vp, include_venice_system_prompt: false } };
+  const upstream: Record<string, unknown> = { ...body, model: def.id, venice_parameters: veniceParams(body) };
+  // Every request reserves an estimate first, so a reply without usage (or an aborted stream) is still charged.
+  const held = reserve(def, body, live);
+  const day = await recordSpend(rec, held);
 
   if (!body.stream) {
-    const json = (await withTopUp(rec, () => venice.chat({ ...upstream, stream: false }))) as { usage?: Parameters<typeof costUsd>[1] };
-    await recordSpend(rec, costUsd(def, json.usage, live) ?? 0);
+    let json: { usage?: Parameters<typeof costUsd>[1] };
+    try {
+      json = (await withTopUp(rec, () => venice.chat({ ...upstream, stream: false }))) as typeof json;
+    } catch (e) {
+      await recordSpend(rec, -held, day); // nothing was generated
+      throw e;
+    }
+    const actual = costUsd(def, json.usage, live);
+    if (actual !== undefined) await recordSpend(rec, actual - held, day);
     return Response.json({ ...json, model: def.key });
   }
 
-  upstream.stream_options = { ...((body.stream_options as object) ?? {}), include_usage: true };
-  const held = reserve(def, body, live);
-  await recordSpend(rec, held);
+  upstream.stream_options = { include_usage: true };
   let res: Response;
   try {
     res = await withTopUp(rec, () => venice.chatStream(upstream));
   } catch (e) {
-    await recordSpend(rec, -held); // nothing was generated
+    await recordSpend(rec, -held, day); // nothing was generated
     throw e;
   }
   // Pass the SSE stream through untouched, watching for the final usage chunk to charge the key.
@@ -144,7 +200,7 @@ async function passthrough(rec: KeyRecord, venice: VeniceClient, def: ModelDef, 
     async flush() {
       // Replace the reservation with the real cost (if usage never arrived, keep the reservation).
       const actual = costUsd(def, usage, live);
-      if (actual !== undefined) await recordSpend(rec, actual - held);
+      if (actual !== undefined) await recordSpend(rec, actual - held, day);
     },
   });
   return new Response(res.body!.pipeThrough(tap), {
@@ -156,33 +212,40 @@ async function passthrough(rec: KeyRecord, venice: VeniceClient, def: ModelDef, 
 async function e2ee(rec: KeyRecord, venice: VeniceClient, def: ModelDef, body: Record<string, unknown>, live: LivePrices): Promise<Response> {
   const chat = new VeniceChat({ venice });
   const messages = fold((body.messages as Array<{ role: string; content: unknown }>) ?? []);
-  const { deltas } = await withTopUp(rec, () =>
-    chat.stream({
-      mode: "private",
-      model: def.key,
-      messages,
-      maxTokens: typeof body.max_tokens === "number" ? body.max_tokens : undefined,
-      temperature: typeof body.temperature === "number" ? body.temperature : undefined,
-    }),
-  );
+  const held = reserve(def, body, live);
+  const day = await recordSpend(rec, held);
+  let deltas: Awaited<ReturnType<VeniceChat["stream"]>>["deltas"];
+  try {
+    ({ deltas } = await withTopUp(rec, () =>
+      chat.stream({
+        mode: "private",
+        model: def.key,
+        messages,
+        maxTokens: typeof body.max_tokens === "number" ? body.max_tokens : undefined,
+        temperature: typeof body.temperature === "number" ? body.temperature : undefined,
+      }),
+    ));
+  } catch (e) {
+    await recordSpend(rec, -held, day); // nothing was generated
+    throw e;
+  }
   const id = `chatcmpl-${Date.now().toString(36)}`;
   const created = Math.floor(Date.now() / 1000);
 
   if (!body.stream) {
     let text = "";
-    let cost = 0;
+    let cost: number | undefined;
     let usage: unknown;
     for await (const d of deltas) {
       if (d.type === "text") text += d.text;
-      else if (d.type === "usage") (usage = d.usage), (cost = d.costUsd ?? 0);
+      else if (d.type === "usage") (usage = d.usage), (cost = d.costUsd);
     }
-    await recordSpend(rec, cost);
+    // Real cost replaces the reservation (a decryption failure mid-way throws above and keeps it).
+    if (cost !== undefined) await recordSpend(rec, cost - held, day);
     return Response.json({ id, object: "chat.completion", created, model: def.key, choices: [{ index: 0, message: { role: "assistant", content: text }, finish_reason: "stop" }], usage });
   }
 
   const enc = new TextEncoder();
-  const held = reserve(def, body, live);
-  await recordSpend(rec, held);
   let finished = false;
   const stream = new ReadableStream<Uint8Array>({
     async start(ctl) {
@@ -201,7 +264,7 @@ async function e2ee(rec: KeyRecord, venice: VeniceClient, def: ModelDef, body: R
         finished = true;
       } finally {
         // Real cost replaces the reservation; an aborted stream keeps the reservation.
-        if (finished && cost !== undefined) await recordSpend(rec, cost - held);
+        if (finished && cost !== undefined) await recordSpend(rec, cost - held, day);
         ctl.close();
       }
     },

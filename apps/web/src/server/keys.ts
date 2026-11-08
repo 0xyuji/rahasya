@@ -1,5 +1,5 @@
 import "server-only";
-import { MODELS } from "@pay/rail/browser";
+import { findModel } from "@pay/rail/browser";
 import { b64url, randomBytes, sha256Hex } from "./crypto.ts";
 import { kv } from "./kv.ts";
 
@@ -56,7 +56,7 @@ export function validateInput(input: { name?: unknown; limits?: unknown; models?
     if (v !== undefined && !(Number.isFinite(v) && v > 0 && v <= 10_000)) throw new KeyError(400, "bad_limit", "Limits must be positive dollar amounts.");
   }
   const models = Array.isArray(input.models) ? input.models.filter((m): m is string => typeof m === "string") : [];
-  const unknown = models.filter((m) => !MODELS[m]);
+  const unknown = models.filter((m) => !findModel(m));
   if (unknown.length) throw new KeyError(400, "bad_model", `Unknown models: ${unknown.join(", ")}`);
   const expiresAt = num(input.expiresAt);
   if (expiresAt !== undefined && !(expiresAt > Date.now())) throw new KeyError(400, "bad_expiry", "Expiry must be in the future.");
@@ -65,6 +65,17 @@ export function validateInput(input: { name?: unknown; limits?: unknown; models?
 
 export async function createKey(uid: string, input: Parameters<typeof validateInput>[0]): Promise<{ token: string; key: KeyView }> {
   const v = validateInput(input);
+  // One create at a time per user, so concurrent requests can't race past the cap.
+  const lock = `keylock:${uid}`;
+  if (!(await kv().set(lock, 1, { nx: true, ex: 10 }))) throw new KeyError(409, "busy", "Another key is being created. Try again.");
+  try {
+    return await insertKey(uid, v);
+  } finally {
+    await kv().del(lock);
+  }
+}
+
+async function insertKey(uid: string, v: ReturnType<typeof validateInput>): Promise<{ token: string; key: KeyView }> {
   if ((await kv().smembers(`ukeys:${uid}`)).length >= MAX_KEYS) throw new KeyError(400, "too_many", `At most ${MAX_KEYS} keys.`);
   const token = `nsk_${b64url(randomBytes(30))}`;
   const rec: KeyRecord = {
@@ -99,8 +110,16 @@ export async function listKeys(uid: string): Promise<KeyView[]> {
 
 export async function updateKey(uid: string, id: string, input: Parameters<typeof validateInput>[0]): Promise<void> {
   const rec = await own(uid, id);
-  const v = validateInput({ ...rec, ...input, limits: input.limits ?? rec.limits, models: input.models ?? rec.models });
-  await kv().set(`key:${id}`, { ...rec, ...v, expiresAt: input.expiresAt === null ? undefined : v.expiresAt } satisfies KeyRecord);
+  // Only re-validate the expiry if the caller is changing it (an expired key can still be renamed or re-limited).
+  const changingExpiry = input.expiresAt !== undefined && input.expiresAt !== null;
+  const v = validateInput({
+    name: input.name ?? rec.name,
+    limits: input.limits ?? rec.limits,
+    models: input.models ?? rec.models,
+    expiresAt: changingExpiry ? input.expiresAt : undefined,
+  });
+  const expiresAt = input.expiresAt === null ? undefined : changingExpiry ? v.expiresAt : rec.expiresAt;
+  await kv().set(`key:${id}`, { ...rec, name: v.name, limits: v.limits, models: v.models, expiresAt } satisfies KeyRecord);
 }
 
 export async function deleteKey(uid: string, id: string): Promise<void> {
@@ -122,12 +141,14 @@ function view(r: KeyRecord, spentTodayUsd: number, spentTotalUsd: number): KeyVi
 
 /** Resolve a bearer token and enforce expiry, model allowlist, spend limits and rate. */
 export async function authorize(token: string, modelKey: string | null): Promise<KeyRecord> {
+  // null = "no model" (the models list); anything else must be one of our model keys.
+  if (modelKey !== null && !findModel(modelKey)) throw new KeyError(400, "unknown_model", "Unknown model.");
   if (!/^nsk_[A-Za-z0-9_-]{30,60}$/.test(token)) throw new KeyError(401, "invalid_key", "Invalid API key.");
   const id = await kv().get<string>(`keyhash:${await sha256Hex(token)}`);
   const rec = id ? await kv().get<KeyRecord>(`key:${id}`) : null;
   if (!rec) throw new KeyError(401, "invalid_key", "Invalid or deleted API key.");
   if (rec.expiresAt && Date.now() > rec.expiresAt) throw new KeyError(401, "expired_key", "This API key has expired.");
-  if (modelKey && rec.models.length && !rec.models.includes(modelKey)) {
+  if (modelKey !== null && rec.models.length && !rec.models.includes(modelKey)) {
     throw new KeyError(403, "model_not_allowed", `This key isn't allowed to use ${modelKey}. Allowed: ${rec.models.join(", ")}`);
   }
   const [day, total] = await kv().mget<number | string>(`spend:${rec.id}:${today()}`, `spend:${rec.id}:total`);
@@ -137,23 +158,26 @@ export async function authorize(token: string, modelKey: string | null): Promise
   if (rec.limits.totalUsd !== undefined && Number(total ?? 0) >= rec.limits.totalUsd) {
     throw new KeyError(429, "total_limit", `Total limit of $${rec.limits.totalUsd} reached for this key.`);
   }
+  // Fixed window; the key name carries the minute, so a missed expire can't stretch the window.
   const rl = `rl:${rec.id}:${Math.floor(Date.now() / 60_000)}`;
   const n = await kv().incr(rl);
-  if (n === 1) await kv().expire(rl, 120);
+  await kv().expire(rl, 120);
   if (n > RATE_PER_MIN) throw new KeyError(429, "rate_limited", `More than ${RATE_PER_MIN} requests per minute on this key.`);
   return rec;
 }
 
 /**
- * Add to a key's spend. Positive = charge; negative = refund a reservation
- * that turned out too high. (Requests already in flight when a limit is
- * crossed can still overshoot it; the next request is refused.)
+ * Add to a key's spend. Positive = charge; negative = correct a reservation
+ * that turned out too high. Pass the `day` returned by the reservation so the
+ * correction lands on the same UTC day, even after midnight. (Requests already
+ * in flight when a limit is crossed can still overshoot it; the next one is refused.)
  */
-export async function recordSpend(rec: KeyRecord, usd: number): Promise<void> {
-  if (!Number.isFinite(usd) || usd === 0) return;
-  const dayKey = `spend:${rec.id}:${today()}`;
+export async function recordSpend(rec: KeyRecord, usd: number, day = today()): Promise<string> {
+  if (!Number.isFinite(usd) || usd === 0) return day;
+  const dayKey = `spend:${rec.id}:${day}`;
   await kv().incrbyfloat(dayKey, usd);
   await kv().expire(dayKey, 3 * 24 * 3600);
   await kv().incrbyfloat(`spend:${rec.id}:total`, usd);
   await kv().set(`lastused:${rec.id}`, Date.now());
+  return day;
 }

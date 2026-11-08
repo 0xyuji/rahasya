@@ -4,8 +4,8 @@
 You are a security auditor. Scope (run inside the source folder):
 (a) The local proxy CLI (packages/proxy): an OpenAI-compatible server on 127.0.0.1 that signs
     Venice requests with the user's inference key from ~/.naisho/inference-key (0600). It requires
-    a local bearer token (~/.naisho/proxy-token, constant-time compare) and refuses any request
-    carrying an Origin header. Host is NOT checked (known K14).
+    a local bearer token (~/.naisho/proxy-token, ≥ 32 chars, constant-time compare), refuses any
+    request carrying an Origin header, and only accepts a localhost Host header.
 (b) The Next.js web app's client-side surface: rendering of model output (react-markdown, no raw
     HTML), dangerouslySetInnerHTML (only for QR SVGs we generate), wallet connection, localStorage
     usage, security headers in next.config.ts, the docs pages (Markdown rendered at build time).

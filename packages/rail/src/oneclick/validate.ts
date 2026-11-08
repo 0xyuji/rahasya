@@ -25,3 +25,26 @@ export function validateQuote(req: QuoteRequest, res: QuoteResponse): void {
     });
   }
 }
+
+/**
+ * Upper bound on what we'll send for a quote, priced independently of the
+ * quote itself (token list price x amountIn), so an inflated `amountIn` with a
+ * matching fake `amountInUsd` is still refused. Allows `maxOverPct` for
+ * slippage + fees, plus a small fixed allowance for network fees on tiny swaps.
+ */
+export function checkMaxInput(
+  origin: { decimals: number; priceUsd: number; symbol?: string },
+  amountIn: string,
+  usdWanted: number,
+  maxOverPct = 0.05,
+): void {
+  const units = Number(BigInt(amountIn)) / 10 ** origin.decimals;
+  const valueUsd = units * origin.priceUsd;
+  const ceiling = usdWanted * (1 + maxOverPct) + 0.5;
+  if (!(origin.priceUsd > 0) || !Number.isFinite(valueUsd) || valueUsd > ceiling) {
+    throw new RailError(
+      "QUOTE_TOO_EXPENSIVE",
+      `The quote asks for ${units} ${origin.symbol ?? ""} (~$${valueUsd.toFixed(2)}) for $${usdWanted} of credit; refusing to send more than ~$${ceiling.toFixed(2)}.`,
+    );
+  }
+}

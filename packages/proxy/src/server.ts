@@ -1,6 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { MODELS, RailError, VeniceChat, VeniceInsufficientBalance, type ChatMessage, type ModelDef, type VeniceClient } from "@pay/rail";
+import { MODELS, RailError, VeniceChat, findModel, VeniceInsufficientBalance, type ChatMessage, type ModelDef, type VeniceClient } from "@pay/rail";
 
 /**
  * Local OpenAI-compatible proxy. Binds to 127.0.0.1, requires a local bearer
@@ -20,8 +20,15 @@ export interface ProxyOptions {
 }
 
 const MAX_BODY = 4 * 1024 * 1024;
+export const MIN_TOKEN_LENGTH = 32;
+/** DNS rebinding: a hostile site's name pointed at 127.0.0.1 still sends its own Host header. */
+const LOCAL_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
+const localHost = (host: string | undefined) => !!host && LOCAL_HOSTS.has(host.replace(/:\d+$/, "").toLowerCase());
 
 export function createProxy(o: ProxyOptions): Server {
+  if (typeof o.token !== "string" || o.token.length < MIN_TOKEN_LENGTH) {
+    throw new Error(`The proxy token must be at least ${MIN_TOKEN_LENGTH} characters. Run \`naisho token --rotate\`.`);
+  }
   const chat = new VeniceChat({ venice: o.venice });
   const log = o.log ?? (() => {});
   const want = Buffer.from(o.token);
@@ -32,6 +39,7 @@ export function createProxy(o: ProxyOptions): Server {
       // Browsers attach Origin; editor tools and SDKs don't. Refusing it blocks
       // any website from driving this localhost proxy with your credit.
       if (req.headers.origin) return send(res, 403, err("Browser requests are not allowed. Use this from your editor or CLI tools."));
+      if (!localHost(req.headers.host)) return send(res, 403, err("Use http://127.0.0.1 or http://localhost to reach this proxy."));
       const got = Buffer.from((req.headers.authorization ?? "").replace(/^Bearer\s+/i, ""));
       if (got.length !== want.length || !timingSafeEqual(got, want)) {
         return send(res, 401, err("Missing or wrong token. Use the token printed by `naisho serve` as the API key."));
@@ -56,17 +64,15 @@ export function createProxy(o: ProxyOptions): Server {
         return send(res, 402, err(`Out of credit.${o.creditUrl ? ` Add credit at ${o.creditUrl}` : ""}`, "insufficient_credit"));
       }
       const status = e instanceof RailError ? 400 : (e as { status?: number }).status ?? 502;
-      log(`error ${status}: ${(e as Error).message?.slice(0, 160)}`);
+      // Status and error code only: upstream error bodies can echo request content.
+      log(`error ${status}${e instanceof RailError ? ` ${e.code}` : ""}`);
       if (!res.headersSent) return send(res, status >= 400 && status < 600 ? status : 502, err((e as Error).message ?? "upstream error"));
       res.end();
     }
   });
 }
 
-function resolve(model: unknown): ModelDef | undefined {
-  if (typeof model !== "string") return undefined;
-  return MODELS[model] ?? Object.values(MODELS).find((m) => m.id === model);
-}
+const resolve = (model: unknown): ModelDef | undefined => findModel(model, true);
 
 function toOpenAiModel(m: ModelDef) {
   return { id: m.key, object: "model", created: 0, owned_by: "venice", name: m.label, venice_id: m.id, privacy: m.tier, e2ee: m.e2ee };

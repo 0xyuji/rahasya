@@ -65,7 +65,7 @@ export function ApiKeysDialog({ open, onClose }: { open: boolean; onClose: () =>
   const load = useCallback(async () => {
     setErr(null);
     try {
-      const [a, ks] = await Promise.all([api<Account>("/api/account"), api<{ keys: KeyView[] }>("/api/keys")]);
+      const [a, ks] = await Promise.all([api<Account>("/api/account", { method: "POST" }), api<{ keys: KeyView[] }>("/api/keys")]);
       setAccount(a);
       setKeys(ks.keys);
       setNeedsLogin(false);
@@ -84,7 +84,7 @@ export function ApiKeysDialog({ open, onClose }: { open: boolean; onClose: () =>
     setBusy(true);
     setErr(null);
     try {
-      const chal = await api<{ id: string; message: string; nonce: string }>("/api/auth/challenge", {
+      const chal = await api<{ id: string; message: string; nonce: string; recipient: string }>("/api/auth/challenge", {
         method: "POST",
         body: JSON.stringify({ chain: w.source.chain, address: w.source.address }),
       });
@@ -137,8 +137,8 @@ export function ApiKeysDialog({ open, onClose }: { open: boolean; onClose: () =>
     }
   }
 
-  async function signOut() {
-    await api("/api/auth/logout", { method: "POST" }).catch(() => {});
+  async function signOut(everywhere = false) {
+    await api(`/api/auth/logout${everywhere ? "?everywhere=1" : ""}`, { method: "POST" }).catch(() => {});
     setAccount(null);
     setKeys([]);
     setNeedsLogin(true);
@@ -198,8 +198,11 @@ export function ApiKeysDialog({ open, onClose }: { open: boolean; onClose: () =>
               <button className={s.secondary} onClick={() => w.openCredit({ kind: "api", address: account.apiWallet })}>
                 Add credit
               </button>
-              <button className={k.link} onClick={signOut}>
+              <button className={k.link} onClick={() => signOut()}>
                 Sign out
+              </button>
+              <button className={k.link} onClick={() => signOut(true)} title="End every signed-in session for this wallet, on all devices">
+                Sign out everywhere
               </button>
             </div>
           </div>

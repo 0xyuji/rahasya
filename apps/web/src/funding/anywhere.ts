@@ -11,7 +11,7 @@ import {
 } from "@pay/rail/browser";
 import type { LocalAccount } from "viem";
 import { LocalStore } from "./local-store";
-import { MAX_CREDIT_USD, MIN_CREDIT_USD, inferenceUsdc, oneclick, veniceFor } from "./flow";
+import { MAX_CREDIT_USD, MIN_CREDIT_USD, inferenceUsdc, oneclick, topups as idleTopups, veniceFor } from "./flow";
 
 /**
  * "Send from anywhere": deposit any 1Click-supported token from any source
@@ -223,8 +223,28 @@ export async function creditIdleUsdc(inference: LocalAccount): Promise<number> {
   const bal = await inferenceUsdc(inference.address);
   const usd = Math.floor(Number(bal) / 1e4) / 100;
   if (usd < MIN_CREDIT_USD) throw new RailError("TOO_SMALL", `You have $${usd.toFixed(2)} of idle USDC; Venice's minimum top-up is $${MIN_CREDIT_USD}.`);
-  // One id per (wallet, balance): a retry re-sends the same authorization; a second sweep can't
-  // double-spend because the USDC is gone after the first one settles.
-  await veniceFor(inference).topUp(`idle_${inference.address}_${bal}`, Math.min(usd, MAX_CREDIT_USD));
-  return usd;
+  // Sequence per wallet (same scheme as the server's API-wallet sweep): a pending
+  // authorization is re-sent; once one succeeded, new idle USDC gets a new id, so a
+  // repeat of the same balance is never mistaken for an old, finished top-up.
+  const seqKey = `naisho:idle-seq:${inference.address.toLowerCase()}`;
+  const read = () => {
+    try {
+      return Number(localStorage.getItem(seqKey) ?? "0") || 0;
+    } catch {
+      return 0;
+    }
+  };
+  const write = (n: number) => {
+    try {
+      localStorage.setItem(seqKey, String(n));
+    } catch {}
+  };
+  const idFor = (n: number) => `idle_${inference.address.toLowerCase()}_${n}`;
+  let seq = read();
+  const venice = veniceFor(inference);
+  if ((await idleTopups.get(idFor(seq)))?.state === "SUCCESS") write(++seq);
+  const pending = await idleTopups.get(idFor(seq));
+  const done = await venice.topUp(idFor(seq), pending ? pending.amountUsd : Math.min(usd, MAX_CREDIT_USD));
+  write(seq + 1);
+  return done.amountUsd;
 }

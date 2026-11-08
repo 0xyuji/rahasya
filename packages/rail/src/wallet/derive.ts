@@ -57,6 +57,29 @@ function isValidScalar(k: Uint8Array): boolean {
 }
 
 /**
+ * The same EOA signature can come back in different encodings depending on the
+ * wallet stack: v as 0/1 or 27/28, and (rarely) the high-s twin of the same
+ * signature. Map all of them to one form (low s, v = 27/28) before deriving, so
+ * the same wallet always gets the same inference key. Wallets that already
+ * return the canonical form (MetaMask, Rabby, Coinbase, ...) are unaffected.
+ */
+export function canonicalEvmSignature(sig: Uint8Array): Uint8Array {
+  if (sig.length !== 65) return sig;
+  const out = Uint8Array.from(sig);
+  let v = out[64]!;
+  if (v === 0 || v === 1) v += 27;
+  const N = (secp256k1 as unknown as { CURVE: { n: bigint } }).CURVE.n;
+  const s = BigInt(`0x${bytesToHex(out.subarray(32, 64))}`);
+  if (s > N / 2n) {
+    const low = (N - s).toString(16).padStart(64, "0");
+    for (let i = 0; i < 32; i++) out[32 + i] = parseInt(low.slice(2 * i, 2 * i + 2), 16);
+    if (v === 27 || v === 28) v = v === 27 ? 28 : 27;
+  }
+  out[64] = v;
+  return out;
+}
+
+/**
  * EVM smart-contract wallets (ERC-1271/6492) return wrapped, non-deterministic
  * signatures. Only plain 65-byte ECDSA signatures from EOAs are reproducible.
  */

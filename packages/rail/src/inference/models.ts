@@ -91,9 +91,19 @@ export function modelsForMode(mode: PrivacyMode): ModelDef[] {
 }
 
 /** Resolve a model for a mode; throws instead of ever downgrading privacy. */
+/**
+ * Look up a model by our key (or, with `alsoVeniceId`, by Venice's id). Own
+ * properties only: `MODELS["constructor"]` must not resolve to Object's.
+ */
+export function findModel(key: unknown, alsoVeniceId = false): ModelDef | undefined {
+  if (typeof key !== "string") return undefined;
+  if (Object.hasOwn(MODELS, key)) return MODELS[key];
+  return alsoVeniceId ? Object.values(MODELS).find((m) => m.id === key) : undefined;
+}
+
 export function resolveModel(mode: PrivacyMode, key?: string): ModelDef {
   const k = key ?? PRIVACY_MODES[mode].chatModel;
-  const d = MODELS[k];
+  const d = findModel(k);
   if (!d) throw new Error(`model "${k}" is not in the allowed list`);
   if (tierRank(d.tier) < tierRank(PRIVACY_MODES[mode].minTier)) {
     throw new Error(`${d.label} is not allowed in ${PRIVACY_MODES[mode].label} mode`);
@@ -122,5 +132,7 @@ export function priceOf(d: ModelDef, live?: LivePrices) {
 export function costUsd(d: ModelDef, usage: { prompt_tokens?: number; completion_tokens?: number } | undefined, live?: LivePrices) {
   if (usage?.prompt_tokens === undefined || usage?.completion_tokens === undefined) return undefined;
   const p = priceOf(d, live);
-  return (usage.prompt_tokens * p.in + usage.completion_tokens * p.out) / 1e6;
+  // Never negative: a cost can only charge, not credit.
+  const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : 0);
+  return (n(usage.prompt_tokens) * p.in + n(usage.completion_tokens) * p.out) / 1e6;
 }

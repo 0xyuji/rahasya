@@ -11,7 +11,7 @@ npm install
 ## No keys, no money (start here)
 
 ```sh
-npm test               # 44 offline tests: rail 27, web 11, proxy 6. No network, no keys.
+npm test               # 66 offline tests: rail 35, web 22, proxy 9. No network, no keys.
 npm run typecheck      # all packages
 npm run verify:tee     # live TEE attestation with a throwaway in-memory wallet: 10 checks, prints PASS/FAIL
 npm run quote:dry      # live NEAR Intents dry quotes (nothing is created or sent)
@@ -42,7 +42,7 @@ npm run audit:probe                     # against http://localhost:3000
 npm run audit:probe -- https://<site>   # against a deployment (only one we gave you permission for)
 ```
 
-It signs in with throwaway in-memory wallets (no funds) and runs 31 checks:
+It signs in with throwaway in-memory wallets (no funds) and runs 37 checks:
 - security headers
 - login replay and forged signatures
 - requests from another origin
@@ -53,10 +53,11 @@ It signs in with throwaway in-memory wallets (no funds) and runs 31 checks:
 - 402 when out of credit
 - the 4 MB body limit
 - the rate limit
-- 1Click proxy restrictions
-- deleted keys and logout
+- 1Click proxy restrictions and its per-IP rate limit
+- read-only `GET /api/account`
+- deleted keys, logout and "sign out everywhere"
 
-It prints PASS/FAIL and exits non-zero on any failure. Our last run: **31/31**.
+It prints PASS/FAIL and exits non-zero on any failure. Our last run: **37/37**. Note it uses up your IP's 1Click quote allowance for a minute.
 
 Side effect: a couple of throwaway users and their empty API wallets are created in that deployment's Redis. Their keys are deleted at the end.
 

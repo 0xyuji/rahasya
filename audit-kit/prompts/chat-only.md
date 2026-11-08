@@ -23,7 +23,7 @@ Things that must always hold:
 
 Accepted / known: limits can overshoot by in-flight requests; the server holds API wallet keys;
 API-key prompts are plaintext on our server in transit; no strict CSP; the DCAP chain is not verified
-locally; the local proxy doesn't check Host.
+locally, so Truly private mode trusts Venice's verifier against Venice itself.
 
 For each batch I paste: list concrete issues with file + line, why it's exploitable, a minimal proof
 idea, severity (Critical/High/Medium/Low), and a fix. Say "nothing found" when that's the case.

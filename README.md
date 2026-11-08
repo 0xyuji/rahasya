@@ -37,7 +37,7 @@ npm install
 
 | Do | See |
 |---|---|
-| `npm test` | **37 tests pass** offline: swap state machine (crash-resume never double-sends, dropped deposits re-signed once, refunds, kill switch, spend cap, tampered quotes refused), E2EE round trip, attestation checks against a real captured quote (replayed nonce, swapped key and debug enclave all rejected), wallet derivation golden vector, privacy-mode context rules, proxy auth/origin guards. |
+| `npm test` | **66 tests pass** offline: swap state machine (crash-resume never double-sends, dropped deposits re-signed once, refunds, kill switch, spend cap, tampered quotes refused), E2EE round trip, attestation checks against a real captured quote (replayed nonce, swapped key and debug enclave all rejected), wallet derivation golden vector, x402 top-up idempotency, API-key limits and login, privacy-mode context rules, proxy auth/origin/Host guards, plus a regression test for every audit finding. |
 | `npm run verify:tee` | A live attestation of the NEAR AI enclave model with a fresh nonce: 7 checks done locally from the raw Intel TDX quote, 3 reported by Venice. Uses a throwaway in-memory wallet. |
 | `npm run quote:dry` | Live dry quotes from NEAR Intents for $5 of USDC on Base from SOL, ETH and NEAR. |
 
@@ -86,11 +86,13 @@ On the site at **`/docs`** (rendered from `apps/web/content/docs/`):
 | Party | Anonymous mode | Truly private mode |
 |---|---|---|
 | Our server | 1Click quote requests (addresses, amounts) through `/api/oneclick`, which only adds the partner key. No prompts, no keys, no balances. Chat goes browser → Venice directly. | same |
-| Venice | Your inference wallet address and your prompts | Your inference wallet address and **ciphertext only** |
+| Venice | Your inference wallet address and your prompts | Your inference wallet address and **ciphertext only**\* |
 | Model host | Prompts (Venice strips identity; "private" tier = Venice-hosted, not retained; "anonymized" tier = third-party host) | Only the attested enclave can decrypt |
 | 1Click solver | Deposit and delivery addresses and amounts | same |
 | Anyone on-chain | Deposit from your wallet to a 1Click address, USDC arriving at your inference wallet, x402 payment to Venice | same |
 | Reown relay | Connection metadata, only when using WalletConnect QR / mobile wallets | same |
+
+\* The browser checks that the attestation is fresh, bound to the key it encrypts to, and from a non-debug Intel TDX enclave. Intel's signature on it is checked by Venice's verifier, not locally, so against Venice itself this relies on Venice reporting honestly.
 
 Conversations live in browser memory only. Switching from Truly private back to Anonymous never sends private-mode messages to a non-enclave model. In E2EE mode the history is folded into one encrypted message, because Venice only encrypts user/system roles.
 
@@ -130,7 +132,7 @@ audit-kit         security audit brief, auditor prompts, findings template
 ## Known limitations
 
 - Abliterated Large Flash / Large V2 are only available as Venice "anonymized" models (third-party host). Use Truly private mode when the content matters.
-- The Intel DCAP signature chain and NVIDIA GPU evidence are reported by Venice's verifier, not re-verified locally (shown as such in the UI).
+- The Intel DCAP signature chain and NVIDIA GPU evidence are reported by Venice's verifier, not re-verified locally (shown as such in the UI), and enclave measurements aren't pinned yet. Until both are done, Truly private mode protects you from everyone except Venice itself, where it relies on Venice's verifier being honest.
 - One-click funding from a connected NEAR wallet isn't built yet; NEAR tokens work through *Any token, anywhere*.
 - Venice credit can't be withdrawn. Top up in small amounts.
 - On exact-output swaps the small slippage buffer (0.5%) may not be refunded.

@@ -18,8 +18,7 @@ const rows: Row[] = [];
 const expect = (check: string, expected: number | string, got: number | string) =>
   rows.push({ check, expected: String(expected), got: String(got), ok: String(expected) === String(got) });
 
-async function login() {
-  const acct = privateKeyToAccount(generatePrivateKey());
+async function login(acct = privateKeyToAccount(generatePrivateKey())) {
   const chal = await (await fetch(`${BASE}/api/auth/challenge`, { method: "POST", headers: ORIGIN, body: JSON.stringify({ chain: "evm", address: acct.address }) })).json();
   const signature = await acct.signMessage({ message: chal.message });
   const r = await fetch(`${BASE}/api/auth/verify`, { method: "POST", headers: ORIGIN, body: JSON.stringify({ challengeId: chal.id, chain: "evm", address: acct.address, signature }) });
@@ -69,6 +68,12 @@ expect("key list never contains the token or its hash", false, JSON.stringify(li
 // --- another user can't touch alice's key ---
 const bob = await login();
 const B = { ...ORIGIN, cookie: bob.cookie };
+{
+  const before = await (await fetch(`${BASE}/api/account`, { headers: B })).json();
+  expect("GET /api/account is read-only (no wallet created)", "null", String(before.apiWallet));
+  const opened = await (await fetch(`${BASE}/api/account`, { method: "POST", headers: B })).json();
+  expect("POST /api/account opens the API wallet", true, /^0x[0-9a-fA-F]{40}$/.test(String(opened.apiWallet)));
+}
 expect("other user can't delete the key", 404, (await fetch(`${BASE}/api/keys/${created.key.id}`, { method: "DELETE", headers: B })).status);
 expect("other user can't edit the key", 404, (await fetch(`${BASE}/api/keys/${created.key.id}`, { method: "PATCH", headers: B, body: JSON.stringify({ name: "pwned" }) })).status);
 
@@ -81,6 +86,8 @@ expect("/v1/models lists only the allowlisted model", "gemma-4-uncensored", mode
 const chat = (body: unknown, h = K) => fetch(`${BASE}/api/v1/chat/completions`, { method: "POST", headers: h, body: typeof body === "string" ? body : JSON.stringify(body) });
 expect("chat: invalid JSON", 400, (await chat("{nope")).status);
 expect("chat: unknown model", 400, (await chat({ model: "gpt-4o", messages: [] })).status);
+expect("chat: Object.prototype name as model (F-01)", 400, (await chat({ model: "constructor", messages: [{ role: "user", content: "x" }] })).status);
+expect("chat: negative max_tokens (F-04)", 400, (await chat({ model: "gemma-4-uncensored", messages: [{ role: "user", content: "x" }], max_tokens: -1000000 })).status);
 expect("chat: model outside the allowlist", 403, (await chat({ model: "large-v2", messages: [{ role: "user", content: "x" }] })).status);
 expect("chat: unfunded API wallet", 402, (await chat({ model: "gemma-4-uncensored", messages: [{ role: "user", content: "x" }], max_tokens: 1 })).status);
 expect("chat: body over 4 MB", 413, (await chat({ model: "gemma-4-uncensored", messages: [{ role: "user", content: "x".repeat(4.2 * 1024 * 1024) }] })).status);
@@ -104,10 +111,25 @@ expect(
   (await fetch(`${BASE}/api/oneclick/v0/quote`, { method: "POST", headers: ORIGIN, body: JSON.stringify({ destinationAsset: "nep141:sol.omft.near", recipientType: "DESTINATION_CHAIN", depositType: "ORIGIN_CHAIN" }) })).status,
 );
 
+{
+  // Rate limit per IP (20 quotes/min). These quotes fail local validation, so nothing reaches 1Click.
+  const bad = { destinationAsset: "nep141:sol.omft.near", recipientType: "DESTINATION_CHAIN", depositType: "ORIGIN_CHAIN" };
+  const statuses = await Promise.all(Array.from({ length: 25 }, () => fetch(`${BASE}/api/oneclick/v0/quote`, { method: "POST", headers: ORIGIN, body: JSON.stringify(bad) }).then((r) => r.status)));
+  expect("1Click proxy: quotes are rate limited per IP (K5)", true, statuses.includes(429));
+}
+
 // --- cleanup + deleted key ---
 expect("delete own key", 200, (await fetch(`${BASE}/api/keys/${created.key.id}`, { method: "DELETE", headers: A })).status);
 expect("deleted key stops working", 401, (await fetch(`${BASE}/api/v1/models`, { headers: K })).status);
 await fetch(`${BASE}/api/auth/logout`, { method: "POST", headers: A });
+{
+  // Two sessions of one wallet; "sign out everywhere" from one ends both.
+  const carol = privateKeyToAccount(generatePrivateKey());
+  const s1 = await login(carol);
+  const s2 = await login(carol);
+  await fetch(`${BASE}/api/auth/logout?everywhere=1`, { method: "POST", headers: { ...ORIGIN, cookie: s1.cookie } });
+  expect("sign out everywhere ends the wallet's other sessions", 401, (await fetch(`${BASE}/api/keys`, { headers: { cookie: s2.cookie } })).status);
+}
 await fetch(`${BASE}/api/auth/logout`, { method: "POST", headers: B });
 expect("session gone after logout", 401, (await fetch(`${BASE}/api/keys`, { headers: A })).status);
 

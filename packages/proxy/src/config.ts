@@ -33,11 +33,10 @@ export function loadInferenceKey(): `0x${string}` | null {
 
 /** Local access token tools must send as `Authorization: Bearer <token>`. Created once, reused. */
 export function loadOrCreateToken(): string {
-  if (process.env.NAISHO_PROXY_TOKEN) return process.env.NAISHO_PROXY_TOKEN;
-  if (existsSync(tokenFile())) return readFileSync(tokenFile(), "utf8").trim();
-  const t = `nsk-${randomBytes(24).toString("base64url")}`;
-  writePrivate(tokenFile(), t);
-  return t;
+  if (process.env.NAISHO_PROXY_TOKEN) return process.env.NAISHO_PROXY_TOKEN; // length checked by createProxy
+  const saved = existsSync(tokenFile()) ? readFileSync(tokenFile(), "utf8").trim() : "";
+  if (saved.length >= 32) return saved;
+  return rotateToken(); // missing, empty or too short: never run with a weak token
 }
 
 export function rotateToken(): string {

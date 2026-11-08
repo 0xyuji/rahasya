@@ -20,6 +20,7 @@ export async function withUser(req: Request, fn: (uid: string) => Promise<Respon
     return await fn(uid);
   } catch (e) {
     if (e instanceof KeyError) return json(e.status, { message: e.message, code: e.code });
-    return json(500, { message: (e as Error).message?.slice(0, 300) ?? "Server error" });
+    const status = (e as { status?: number }).status;
+    return json(status && status >= 400 && status < 500 ? status : 500, { message: (e as Error).message?.slice(0, 300) ?? "Server error" });
   }
 }

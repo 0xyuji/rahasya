@@ -95,7 +95,7 @@ function Proof({ a, plaintextChunks }: { a: AttestationReport; plaintextChunks: 
   return (
     <div className={s.proof}>
       <p className={s.proofLead}>
-        Your message was encrypted in this browser to a key that lives only inside a hardware enclave ({a.teeHardware ?? "TEE"}
+        Your message was encrypted in this browser to a key that, according to its attestation, lives only inside a hardware enclave ({a.teeHardware ?? "TEE"}
         {a.gpu ? ` + NVIDIA ${a.gpu}` : ""}, run by {a.teeProvider ?? "the provider"}). Before sending, we checked:
       </p>
       <div className={s.proofGroup}>Checked in your browser</div>
@@ -132,6 +132,11 @@ function Proof({ a, plaintextChunks }: { a: AttestationReport; plaintextChunks: 
           </li>
         ))}
       </ul>
+      <p className={s.proofLead}>
+        <strong>What this means.</strong> Nobody between you and that key can read your messages: not us, not your network, not the model
+        host&apos;s operators. Intel&apos;s signature on the attestation is checked by Venice&apos;s verifier, not in your browser, so against
+        Venice itself this relies on Venice reporting honestly.
+      </p>
       <dl className={s.proofFacts}>
         <dt>Enclave key</dt>
         <dd>{a.signingAddress}</dd>

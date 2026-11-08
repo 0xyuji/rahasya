@@ -21,6 +21,12 @@ export async function apiWalletAddress(uid: string): Promise<string> {
   return (await getOrCreate(uid)).address;
 }
 
+/** The user's API wallet, or null if they never opened one (no side effects). */
+export async function existingApiWallet(uid: string): Promise<PrivateKeyAccount | null> {
+  const rec = await kv().get<Stored>(`aw:${uid}`);
+  return rec ? privateKeyToAccount((await open(rec.sealed, `aw:${uid}`)) as Hex) : null;
+}
+
 async function getOrCreate(uid: string): Promise<Stored> {
   const existing = await kv().get<Stored>(`aw:${uid}`);
   if (existing) return existing;
@@ -54,15 +60,41 @@ export async function idleUsdc(address: string): Promise<number> {
 }
 
 /**
- * Turn idle USDC on the API wallet into Venice credit (x402). Idempotent per
- * (wallet, balance): a retry re-sends the same authorization; once it settles
- * the USDC is gone, so nothing can be charged twice.
+ * Turn idle USDC on the API wallet into Venice credit (x402).
+ *
+ * Each sweep has a sequence number. While the current sweep's authorization
+ * hasn't settled, every call re-sends it (same id, same signature). Once it
+ * succeeded, the next deposit gets the next number, so repeat purchases of
+ * the same amount are never mistaken for an old, finished top-up. A short
+ * lock keeps two concurrent sweeps from signing two authorizations at once.
  */
 export async function sweepToCredit(uid: string): Promise<{ toppedUpUsd: number }> {
   const account = await apiWalletAccount(uid);
   const usdc = Math.floor((await idleUsdc(account.address)) * 100) / 100;
   if (usdc < MIN_TOPUP_USD) return { toppedUpUsd: 0 };
-  const amount = Math.min(usdc, MAX_TOPUP_USD);
-  await veniceForApiWallet(account).topUp(`sweep_${account.address}_${Math.round(usdc * 100)}`, amount);
-  return { toppedUpUsd: amount };
+
+  const lock = `sweeplock:${uid}`;
+  if (!(await kv().set(lock, Date.now(), { nx: true, ex: 90 }))) {
+    throw Object.assign(new Error("A top-up for this wallet is already in progress. Try again in a minute."), { status: 409 });
+  }
+  try {
+    const seqKey = `sweepseq:${uid}`;
+    let seq = Number((await kv().get<number>(seqKey)) ?? 0);
+    const current = await topupStore.get(sweepId(account.address, seq));
+    if (current?.state === "SUCCESS") {
+      seq += 1; // that one is done; this USDC is a new deposit
+      await kv().set(seqKey, seq);
+    }
+    const venice = veniceForApiWallet(account);
+    const pending = await topupStore.get(sweepId(account.address, seq));
+    // A pending authorization is re-sent with its own amount; otherwise sign for what's there now.
+    const amount = pending ? pending.amountUsd : Math.min(usdc, MAX_TOPUP_USD);
+    const done = await venice.topUp(sweepId(account.address, seq), amount);
+    await kv().set(seqKey, seq + 1);
+    return { toppedUpUsd: done.amountUsd };
+  } finally {
+    await kv().del(lock);
+  }
 }
+
+const sweepId = (address: string, seq: number) => `sweep_${address.toLowerCase()}_${seq}`;
