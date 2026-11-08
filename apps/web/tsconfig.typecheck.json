@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.json",
+  "include": ["typecheck.d.ts", "src", ".next/types/**/*.ts"],
+  "exclude": ["node_modules", ".next/dev"]
+}

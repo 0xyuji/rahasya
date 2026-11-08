@@ -81,6 +81,17 @@ export async function handleChat(req: Request): Promise<Response> {
   }
 }
 
+/**
+ * Up-front reservation for streamed requests: a client that aborts before the
+ * final usage chunk must still be charged. Estimate = prompt size + max output
+ * tokens (default 2048) at live prices; corrected to the real cost at the end.
+ */
+function reserve(def: ModelDef, body: Record<string, unknown>, live: LivePrices): number {
+  const inTok = Math.ceil(JSON.stringify(body.messages ?? []).length / 3);
+  const outTok = Number(body.max_tokens ?? body.max_completion_tokens ?? 2048) || 2048;
+  return costUsd(def, { prompt_tokens: inTok, completion_tokens: Math.min(outTok, 32_768) }, live) ?? 0;
+}
+
 /** Call Venice; if credit ran out but USDC sits on the API wallet, top it up and retry once. */
 async function withTopUp<T>(rec: KeyRecord, call: () => Promise<T>): Promise<T> {
   try {
@@ -102,7 +113,15 @@ async function passthrough(rec: KeyRecord, venice: VeniceClient, def: ModelDef, 
   }
 
   upstream.stream_options = { ...((body.stream_options as object) ?? {}), include_usage: true };
-  const res = await withTopUp(rec, () => venice.chatStream(upstream));
+  const held = reserve(def, body, live);
+  await recordSpend(rec, held);
+  let res: Response;
+  try {
+    res = await withTopUp(rec, () => venice.chatStream(upstream));
+  } catch (e) {
+    await recordSpend(rec, -held); // nothing was generated
+    throw e;
+  }
   // Pass the SSE stream through untouched, watching for the final usage chunk to charge the key.
   let buf = "";
   let usage: Parameters<typeof costUsd>[1];
@@ -123,7 +142,9 @@ async function passthrough(rec: KeyRecord, venice: VeniceClient, def: ModelDef, 
       }
     },
     async flush() {
-      await recordSpend(rec, costUsd(def, usage, live) ?? 0);
+      // Replace the reservation with the real cost (if usage never arrived, keep the reservation).
+      const actual = costUsd(def, usage, live);
+      if (actual !== undefined) await recordSpend(rec, actual - held);
     },
   });
   return new Response(res.body!.pipeThrough(tap), {
@@ -160,22 +181,27 @@ async function e2ee(rec: KeyRecord, venice: VeniceClient, def: ModelDef, body: R
   }
 
   const enc = new TextEncoder();
+  const held = reserve(def, body, live);
+  await recordSpend(rec, held);
+  let finished = false;
   const stream = new ReadableStream<Uint8Array>({
     async start(ctl) {
       const send = (delta: Record<string, unknown>, finish: string | null = null) =>
         ctl.enqueue(enc.encode(`data: ${JSON.stringify({ id, object: "chat.completion.chunk", created, model: def.key, choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`));
-      let cost = 0;
+      let cost: number | undefined;
       send({ role: "assistant" });
       try {
         for await (const d of deltas) {
           if (d.type === "text") send({ content: d.text });
           else if (d.type === "reasoning") send({ reasoning_content: d.text });
-          else if (d.type === "usage") cost = d.costUsd ?? 0;
+          else if (d.type === "usage") cost = d.costUsd;
         }
         send({}, "stop");
         ctl.enqueue(enc.encode("data: [DONE]\n\n"));
+        finished = true;
       } finally {
-        await recordSpend(rec, cost);
+        // Real cost replaces the reservation; an aborted stream keeps the reservation.
+        if (finished && cost !== undefined) await recordSpend(rec, cost - held);
         ctl.close();
       }
     },

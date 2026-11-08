@@ -144,9 +144,13 @@ export async function authorize(token: string, modelKey: string | null): Promise
   return rec;
 }
 
-/** Record real cost after a request. (A single request can overshoot a limit; the next one is refused.) */
+/**
+ * Add to a key's spend. Positive = charge; negative = refund a reservation
+ * that turned out too high. (Requests already in flight when a limit is
+ * crossed can still overshoot it; the next request is refused.)
+ */
 export async function recordSpend(rec: KeyRecord, usd: number): Promise<void> {
-  if (!(usd > 0)) return;
+  if (!Number.isFinite(usd) || usd === 0) return;
   const dayKey = `spend:${rec.id}:${today()}`;
   await kv().incrbyfloat(dayKey, usd);
   await kv().expire(dayKey, 3 * 24 * 3600);

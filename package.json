@@ -14,7 +14,8 @@
     "verify:tee": "node packages/rail/scripts/verify-tee.ts",
     "quote:dry": "node packages/rail/scripts/dry-quote.ts",
     "dev": "npm run dev -w @pay/web",
-    "build": "npm run build -w @pay/web"
+    "build": "npm run build -w @pay/web",
+    "audit:probe": "node scripts/audit/probe.ts"
   },
   "engines": {
     "node": ">=22"
