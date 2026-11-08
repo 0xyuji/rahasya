@@ -19,7 +19,7 @@ export interface ProxyOptions {
   log?: (line: string) => void;
 }
 
-const MAX_BODY = 4 * 1024 * 1024;
+const MAX_BODY = 8 * 1024 * 1024; // same as the hosted API
 export const MIN_TOKEN_LENGTH = 32;
 /** DNS rebinding: a hostile site's name pointed at 127.0.0.1 still sends its own Host header. */
 const LOCAL_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);

@@ -65,7 +65,7 @@ It signs in with throwaway in-memory wallets (no funds) and runs 40 checks:
 - key auth on the gateway
 - the model allowlist
 - 402 when out of credit
-- the 4 MB body limit
+- the 8 MB body limit
 - the rate limit
 - 1Click proxy restrictions, client fees/referral being replaced (one dry quote), and its per-IP rate limit
 - read-only `GET /api/account`

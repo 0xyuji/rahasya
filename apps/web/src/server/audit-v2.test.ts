@@ -372,3 +372,10 @@ test("T-02: fromOurPage needs our header, our origin, and a fetch (not a module/
   assert.equal(fromOurPage(r({ "x-app-request": "1", origin: "https://evil.example" }, "POST")), false, "cross-site");
   assert.equal(fromOurPage(r({ "x-app-request": "0" })), false);
 });
+
+test("promptTokenBound counts UTF-8 bytes exactly (emoji, CJK, Yi, accents) without copying the body", () => {
+  const messages = [{ role: "user", content: "héllo 世界 ꀀ 👋🏽 𝄞 plain" }];
+  const tools = [{ type: "function", function: { name: "x", description: "ünïcödé 🚀" } }];
+  const expected = new TextEncoder().encode(JSON.stringify(messages) + JSON.stringify(tools)).length;
+  assert.equal(promptTokenBound({ messages, tools }), expected);
+});

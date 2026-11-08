@@ -96,7 +96,7 @@ expect("chat: Object.prototype name as model (F-01)", 400, (await chat({ model: 
 expect("chat: negative max_tokens (F-04)", 400, (await chat({ model: "gemma-4-uncensored", messages: [{ role: "user", content: "x" }], max_tokens: -1000000 })).status);
 expect("chat: model outside the allowlist", 403, (await chat({ model: "large-v2", messages: [{ role: "user", content: "x" }] })).status);
 expect("chat: unfunded API wallet", 402, (await chat({ model: "gemma-4-uncensored", messages: [{ role: "user", content: "x" }], max_tokens: 1 })).status);
-expect("chat: body over 4 MB", 413, (await chat({ model: "gemma-4-uncensored", messages: [{ role: "user", content: "x".repeat(4.2 * 1024 * 1024) }] })).status);
+expect("chat: body over 8 MB", 413, (await chat({ model: "gemma-4-uncensored", messages: [{ role: "user", content: "x".repeat(8.2 * 1024 * 1024) }] })).status);
 
 // --- rate limit: 60/min per key, fixed window (models endpoint doesn't call Venice) ---
 // Fired in parallel so all requests land in the same minute window.
@@ -135,9 +135,10 @@ expect(
 }
 
 {
-  // Rate limit per IP (20 quotes/min). These quotes fail local validation, so nothing reaches 1Click.
+  // Rate limit per IP (20 quotes/min). 45 at once: even split across a minute boundary, one window
+  // goes over 20. These quotes fail local validation, so nothing reaches 1Click.
   const bad = { destinationAsset: "nep141:sol.omft.near", recipientType: "DESTINATION_CHAIN", depositType: "ORIGIN_CHAIN" };
-  const statuses = await Promise.all(Array.from({ length: 25 }, () => fetch(`${BASE}/api/oneclick/v0/quote`, { method: "POST", headers: ORIGIN, body: JSON.stringify(bad) }).then((r) => r.status)));
+  const statuses = await Promise.all(Array.from({ length: 45 }, () => fetch(`${BASE}/api/oneclick/v0/quote`, { method: "POST", headers: ORIGIN, body: JSON.stringify(bad) }).then((r) => r.status)));
   expect("1Click proxy: quotes are rate limited per IP (K5)", true, statuses.includes(429));
 }
 

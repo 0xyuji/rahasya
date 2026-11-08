@@ -21,7 +21,8 @@ import { keepAliveForRequest } from "./runtime.ts";
  * check key + limits -> sign with the user's API wallet (SIWX) -> forward to
  * Venice -> meter real usage -> charge the key. Prompts are never stored or logged.
  */
-const MAX_BODY = 4 * 1024 * 1024;
+// Room for a few base64 screenshots; well inside a Worker's memory (the body is parsed and measured once more).
+const MAX_BODY = 8 * 1024 * 1024;
 
 export function oaiError(status: number, message: string, code: string): Response {
   return Response.json({ error: { message, type: code, code } }, { status, headers: { "cache-control": "no-store" } });
@@ -144,7 +145,15 @@ export function outputLimit(def: ModelDef, body: Record<string, unknown>): numbe
 
 /** Tokens charged per image part in the estimate (remote image URLs are short but cost a lot). */
 const IMAGE_TOKENS = 4_096;
-const utf8Length = (s: string) => new TextEncoder().encode(s).length;
+/** UTF-8 byte length without allocating a copy (bodies can be several MB). */
+function utf8Length(s: string): number {
+  let n = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    n += c < 0x80 ? 1 : c < 0x800 ? 2 : c >= 0xd800 && c <= 0xdbff ? 4 : c >= 0xdc00 && c <= 0xdfff ? 0 : 3;
+  }
+  return n;
+}
 
 /**
  * Upper bound on prompt tokens, from what we send: the UTF-8 byte length of the

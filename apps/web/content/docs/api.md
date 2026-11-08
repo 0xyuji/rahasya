@@ -110,7 +110,7 @@ Errors use the OpenAI shape: `{ "error": { "message": "...", "type": "<code>", "
 | 401 | `expired_key` | Key passed its expiry |
 | 402 | `insufficient_credit` | API wallet is out of credit. Add credit on the site |
 | 403 | `model_not_allowed` | The key's allowlist excludes this model |
-| 413 | `too_large` | Request body over 4 MB |
+| 413 | `too_large` | Request body over 8 MB (images are sent base64-encoded, so send a few at a time) |
 | 429 | `daily_limit` / `total_limit` | The key hit a spend limit |
 | 429 | `rate_limited` | More than 60 requests in a minute on this key |
 | 502 | `upstream_error` | Venice or the network failed; safe to retry |
