@@ -10,8 +10,10 @@
   // Run near our Upstash database instead of near each visitor (most requests make several Redis calls).
   "placement": { "mode": "smart" },
   "observability": { "enabled": true },
-  "routes": [
-    { "pattern": "rahasya.chat", "custom_domain": true },
-    { "pattern": "www.rahasya.chat", "custom_domain": true }
-  ]
+  "workers_dev": true
+  // Once rahasya.chat is a zone in this Cloudflare account, add:
+  // "routes": [
+  //   { "pattern": "rahasya.chat", "custom_domain": true },
+  //   { "pattern": "www.rahasya.chat", "custom_domain": true }
+  // ]
 }
