@@ -212,6 +212,10 @@
   margin: 0 0 10px;
   color: var(--paper-dim);
 }
+/* The explanation after the check lists: same rhythm as a group heading. */
+.checks + .proofLead {
+  margin-top: 14px;
+}
 .proofGroup {
   margin: 12px 0 6px;
   font-size: 11px;
