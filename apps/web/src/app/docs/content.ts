@@ -1,8 +1,7 @@
 import "server-only";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { DOCS } from "./docs.generated.ts";
 
-/** Docs live as Markdown in apps/web/content/docs and are read at build time (static pages). */
+/** Docs live as Markdown in apps/web/content/docs, baked into docs.generated.ts at build time. */
 export const PAGES = [
   { slug: "", file: "index.md", title: "Overview" },
   { slug: "integrations", file: "integrations.md", title: "Integrations" },
@@ -11,5 +10,7 @@ export const PAGES = [
 ] as const;
 
 export function readDoc(file: string): string {
-  return readFileSync(join(process.cwd(), "content", "docs", file), "utf8");
+  const md = DOCS[file];
+  if (md === undefined) throw new Error(`Missing doc ${file}: run npm run docs:gen`);
+  return md;
 }

@@ -66,7 +66,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ path: string[] 
     if (await overLimit(req, "pccs", 40)) return new Response("too many requests", { status: 429 });
     let res: Response;
     try {
-      res = await fetch(route.upstream(q), { signal: AbortSignal.timeout(10_000), redirect: "error" });
+      // "manual", not "error" (Cloudflare Workers don't support it): a redirect is then a non-OK response, refused below.
+      res = await fetch(route.upstream(q), { signal: AbortSignal.timeout(10_000), redirect: "manual" });
     } catch {
       return new Response("Intel's collateral service didn't answer", { status: 502 });
     }

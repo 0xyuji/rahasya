@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "rahasya",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-11-01",
+  // nodejs_compat: Next.js and viem need parts of the Node API.
+  // global_fetch_strictly_public: server-side fetch can't reach private/internal addresses.
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
+  // Run near our Upstash database instead of near each visitor (most requests make several Redis calls).
+  "placement": { "mode": "smart" },
+  "observability": { "enabled": true },
+  "routes": [
+    { "pattern": "rahasya.chat", "custom_domain": true },
+    { "pattern": "www.rahasya.chat", "custom_domain": true }
+  ]
+}

@@ -11,3 +11,8 @@ next-env.d.ts
 
 # audit kit zips
 dist/
+
+# Cloudflare (OpenNext / wrangler)
+.open-next/
+.wrangler/
+.dev.vars
