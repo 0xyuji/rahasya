@@ -20,6 +20,7 @@ Tested with opencode 2.1.3. Add a provider to `~/.config/opencode/opencode.jsonc
 {
   "$schema": "https://opencode.ai/config.json",
   "model": "naisho/large-v2",
+  "enabled_providers": ["naisho"],
   "providers": {
     "naisho": {
       "name": "Naisho",
@@ -27,15 +28,15 @@ Tested with opencode 2.1.3. Add a provider to `~/.config/opencode/opencode.jsonc
       "package": "@opencode/ai/providers/openai-compatible",
       "settings": { "baseURL": "https://<your-deployment>/api/v1" },
       "models": {
-        "large-flash":              { "name": "Abliterated Large Flash" },
-        "large-v2":                 { "name": "Abliterated Large V2" },
-        "qwen-3.6-plus":            { "name": "Qwen 3.6 Plus Uncensored" },
-        "deepseek-1017-uncensored": { "name": "DeepSeek V4.1 Flash 1017 Uncensored" },
-        "deepseek-uncensored":      { "name": "DeepSeek V4.1 Flash Uncensored" },
-        "qwen-3.8-27b":             { "name": "Qwen 3.8 27B Uncensored" },
-        "gemma-4-uncensored":       { "name": "Gemma 4 Uncensored" },
-        "venice-uncensored":        { "name": "Venice Uncensored 1.2" },
-        "venice-roleplay":          { "name": "Venice Role Play Uncensored" }
+        "large-flash":              { "name": "Abliterated Large Flash", "cost": { "input": 1.25, "output": 2.5 } },
+        "large-v2":                 { "name": "Abliterated Large V2", "cost": { "input": 3, "output": 5 } },
+        "qwen-3.6-plus":            { "name": "Qwen 3.6 Plus Uncensored", "cost": { "input": 0.625, "output": 3.75 } },
+        "deepseek-1017-uncensored": { "name": "DeepSeek V4.1 Flash 1017 Uncensored", "cost": { "input": 0.33, "output": 1.32 } },
+        "deepseek-uncensored":      { "name": "DeepSeek V4.1 Flash Uncensored", "cost": { "input": 0.33, "output": 1.32 } },
+        "qwen-3.8-27b":             { "name": "Qwen 3.8 27B Uncensored", "cost": { "input": 0.45, "output": 3.2 } },
+        "gemma-4-uncensored":       { "name": "Gemma 4 Uncensored", "cost": { "input": 0.1625, "output": 0.5 } },
+        "venice-uncensored":        { "name": "Venice Uncensored 1.2", "cost": { "input": 0.2, "output": 0.9 } },
+        "venice-roleplay":          { "name": "Venice Role Play Uncensored", "cost": { "input": 0.5, "output": 2 } }
       }
     }
   }
@@ -51,6 +52,8 @@ Things that trip people up:
 
 - **File name.** opencode only reads `opencode.json` or `opencode.jsonc`. A file called `config.json` is ignored, and opencode quietly falls back to its built-in providers.
 - **The key isn't picked up.** opencode 2 runs a background service, and that service doesn't see variables you `export` after it started. Start with `--standalone` from the terminal where you exported the key. If you get "Invalid API key." straight away, this is why.
+- **Other providers in the model list.** `enabled_providers` limits opencode to this provider. Delete that line if you also want opencode's own providers.
+- **Spend in the sidebar.** opencode works this out from each model's `cost` (dollars per million tokens, Venice's list prices). It's an estimate. What your key was actually charged is in the API keys dialog.
 - **Only some models show up.** opencode lists just the models named under `models`. The config above has every model that works with coding agents. The two TEE models are left out because they can't carry tool definitions.
 
 The website shows this exact config, with your key and URL filled in, when you create a key. If the key has a model allowlist, the config lists only those models.
