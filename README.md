@@ -56,9 +56,11 @@ npm run dev                                    # http://localhost:3000
 | Type a message in **Anonymous** mode | Streaming reply; footer shows model, privacy tier and cost |
 | Switch to **Truly private**, send a message | Reply footer shows **Verified enclave**; click it to see every check, the enclave key, our nonce and the gateway source commit |
 
-### 3. Use it from an editor
+### 3. Use it from opencode, Cursor and other tools
 
-Account menu → **Use in your editor** (shows the key behind a warning and setup for opencode, Cursor, SillyTavern, the OpenAI SDK), then:
+**API keys (hosted):** account menu → **API keys** → sign in with your wallet → **Add credit** to your API wallet → **New key** (optional daily/total limit, model allowlist, expiry). Paste the key into any OpenAI-compatible tool with base URL `https://<deployment>/api/v1`. The dialog shows a ready-made opencode config. Full reference: [docs/api.md](docs/api.md); per-tool setup: [docs/integrations.md](docs/integrations.md).
+
+**Local proxy (most private):** account menu → **Local proxy**, then:
 
 ```sh
 npm run proxy -- login    # paste the inference key (hidden input), saved 0600 in ~/.naisho
@@ -70,6 +72,12 @@ npm run proxy -- serve    # http://127.0.0.1:8787/v1 + a local API key
 `docs/demo-runs/2026-11-07-sol-to-venice.md`: a recorded run with explorer links (SOL → 5.0 USDC on Base via 1Click in 94 s → x402 top-up credited $5 → chat), plus live E2EE runs on both TEE models.
 
 To reproduce it with your own throwaway wallets: `cp .env.example .env`, fund the Solana key with about $6 of SOL, then `npm run e2e -- quote` (prints the quote, sends nothing) and `npm run e2e -- run`.
+
+## Docs
+
+- [docs/api.md](docs/api.md): API reference (keys, endpoints, models, limits, errors)
+- [docs/integrations.md](docs/integrations.md): opencode, Cursor, Continue, Cline, Aider, Zed, SillyTavern, Open WebUI, LiteLLM, SDKs
+- [docs/protocol.md](docs/protocol.md): how it works (wallets, NEAR Intents funding, x402, SIWX, attestation + E2EE, API keys)
 
 ## Who can see what
 
