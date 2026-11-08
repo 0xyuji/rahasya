@@ -3,7 +3,7 @@
 Working state of the project: what's done, what's left, and decisions made. Update this file whenever something changes; it's the first thing to read when picking the work back up.
 
 **Deadline:** 2026-11-14 23:59 UTC (NEAR hackathon, submit once). Judging 2026-11-16, results by 2026-11-18.
-**Last updated:** 2026-11-08 (evening)
+**Last updated:** 2026-11-09 (end of day; pick up from "Next steps")
 
 ## Status
 
@@ -14,18 +14,21 @@ Working state of the project: what's done, what's left, and decisions made. Upda
 | API keys (hosted) | ✅ Mostly tested | curl, opencode, daily limit (429), model allowlist (403) verified. Open: deleted key (401), sign out everywhere, second same-amount top-up (F-02) |
 | opencode integration | ✅ Done | Generated config lists all non-TEE models, prices, `enabled_providers`. Needs `opencode.jsonc` + `--standalone` |
 | Local proxy | ✅ One-file download: `curl -fsSLO https://rahasya.chat/rahasya.mjs && node rahasya.mjs` (Node 22+). First run asks for the key | Tested from the live site with a throwaway key. npm: account made with passkey 2FA (11-08); package `packages/proxy/npm` + workflow `.github/workflows/publish-proxy.yml` ready, first publish after the repo is public (see "npm release") |
-| Security audit | ✅ Audit 1 (F-01..F-13), audit 2 (V2-01..V2-08) and the fix review (R-01, R-02, T-01, T-02, notes) fixed, with regression tests. 112 tests | Residual: two colluding NEAR RPCs (K10); set trusted `BASE_RPC_URL` / `NEAR_RPC_URL` for production |
+| Security audit | ✅ Audit 1 (F-01..F-13), audit 2 (V2-01..V2-08) and the fix review (R-01, R-02, T-01, T-02, notes) fixed, with regression tests. 113 tests (rail 40, web 64, proxy 9) | Residual: two colluding NEAR RPCs (K10); set trusted `BASE_RPC_URL` / `NEAR_RPC_URL` for production |
 | Name / brand | ✅ **Rahasya**, `rahasya.chat` bought | `rahasya.ai` only if we win |
 | GitHub | ✅ Private repo `0xyuji/rahasya` | Must be **public** by the deadline (ask first) |
-| Cloudflare deploy | ✅ Live at **https://rahasya.chat** (+ www, + rahasya.itadori.workers.dev). 38/38 probe on workers.dev | Domain at Namecheap, DNS on Cloudflare (MX/TXT email forwarding kept) |
-| Demo video | ⬜ Not started | |
+| Cloudflare deploy | ✅ Live at **https://rahasya.chat** (+ www, + rahasya.itadori.workers.dev). Probe 40/40 on rahasya.chat (11-09) | Domain at Namecheap, DNS on Cloudflare (MX/TXT email forwarding kept) |
+| Landing page | ✅ 11-09: header has API · Local proxy · Docs; a line under the prompt (Chat here · API keys · Local proxy); both dialogs open before connecting, with Connect/Unlock buttons | Not yet clicked end to end with a real wallet. Header tool links hidden under 640px (the row covers mobile) |
+| Body limit | ✅ 8 MB (gateway + proxy), raised from 4 MB after a 413 | Owner hasn't said what they were doing when it hit; ask if it recurs |
+| Demo video | ⬜ Script + narration lines written (in chat, 11-08); owner records, ElevenLabs voice | Show the new header links |
 | X post | ⬜ Not started | Tag @NEARProtocol #NEARHackathon, with the video |
 | Hackathon submission | ⬜ Not started | Print the payload and get an explicit yes first |
 
 ## Next steps (in order)
 
-1. Probe `https://rahasya.chat` once the owner's Mac DNS cache clears (it still had the old parking IP); test wallet connect live (Reown domains added).
-2. ~~Confirm Venice accepts `max_tokens` + `max_completion_tokens` together~~ ✅ 11-08: curl through an API key on rahasya.chat answered (26 tokens, $0.000008).
+1. Owner reviews the new landing page on rahasya.chat; adjust if wanted. Click the dialogs' Connect wallet / NEAR wallet / Unlock buttons with a real wallet.
+2. Pick tracks (unanswered). Suggested: privacy (primary), agents, maybe security.
+3. ~~Probe rahasya.chat~~ ✅ 40/40. ~~Venice accepts both output-limit fields~~ ✅.
 4. One real end-to-end run on the live site: pay with a non-USDC token, chat in both modes, use an API key. Check the fee lands in `rahasya.near`'s NEAR Intents balance.
 5. Finish the API checks: deleted key → 401, sign out everywhere, second same-amount top-up.
 6. Demo video (2–3 min): pay with any token → chat → Truly private with the Intel check → API key in opencode.
