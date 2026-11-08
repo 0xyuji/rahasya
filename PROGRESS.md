@@ -59,6 +59,11 @@ Trusted publisher set up on npmjs.com (11-08): GitHub Actions, 0xyuji/rahasya, `
 4. Docs then say `npx rahasya@<version>` (pinned).
 5. If npm refuses to stage the very first version (package doesn't exist yet), publish 0.1.0 once by hand: `cd packages/proxy && npm run bundle && cp dist/rahasya.mjs ../../LICENSE npm/ && cd npm && npm login && npm publish --access public`.
 
+## Submission facts (collected from the owner)
+
+- Only project this person submits to the hackathon (11-08): no Q-015 disclosure needed.
+- Still to collect before submitting: tracks, team lead name, contact email, team size, demo post link, consent. Payout account: ask explicitly (don't assume `rahasya.near`, the fee recipient).
+
 ## Decisions
 
 | Date | Decision | Why |
