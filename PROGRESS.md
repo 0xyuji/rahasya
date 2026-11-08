@@ -25,7 +25,7 @@ Working state of the project: what's done, what's left, and decisions made. Upda
 ## Next steps (in order)
 
 1. Probe `https://rahasya.chat` once the owner's Mac DNS cache clears (it still had the old parking IP); test wallet connect live (Reown domains added).
-2. Confirm on mainnet that Venice accepts `max_tokens` + `max_completion_tokens` together (one opencode or curl message through an API key).
+2. ~~Confirm Venice accepts `max_tokens` + `max_completion_tokens` together~~ ✅ 11-08: curl through an API key on rahasya.chat answered (26 tokens, $0.000008).
 4. One real end-to-end run on the live site: pay with a non-USDC token, chat in both modes, use an API key. Check the fee lands in `rahasya.near`'s NEAR Intents balance.
 5. Finish the API checks: deleted key → 401, sign out everywhere, second same-amount top-up.
 6. Demo video (2–3 min): pay with any token → chat → Truly private with the Intel check → API key in opencode.
