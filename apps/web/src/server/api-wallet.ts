@@ -1,8 +1,9 @@
 import "server-only";
 import { VeniceClient, type RecordStore, type TopUpAction } from "@pay/rail/browser";
-import { createPublicClient, erc20Abi, http, type Hex } from "viem";
+import { createPublicClient, erc20Abi, type Hex } from "viem";
 import { generatePrivateKey, privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
 import { base } from "viem/chains";
+import { baseTransport } from "./rpc.ts";
 import { open, seal } from "./crypto.ts";
 import { kv } from "./kv.ts";
 
@@ -52,7 +53,7 @@ export function veniceForApiWallet(account: PrivateKeyAccount): VeniceClient {
   return new VeniceClient({ account, topups: topupStore, maxTopUpUsd: MAX_TOPUP_USD });
 }
 
-const baseClient = () => createPublicClient({ chain: base, transport: http(process.env.BASE_RPC_URL) });
+const baseClient = () => createPublicClient({ chain: base, transport: baseTransport() });
 
 export async function idleUsdc(address: string): Promise<number> {
   const bal = await baseClient().readContract({ address: BASE_USDC, abi: erc20Abi, functionName: "balanceOf", args: [address as Hex] });

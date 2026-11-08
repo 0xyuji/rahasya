@@ -185,7 +185,10 @@ async function withTopUp<T>(rec: KeyRecord, call: () => Promise<T>): Promise<T> 
   try {
     return await call();
   } catch (e) {
-    if (e instanceof VeniceInsufficientBalance && (await sweepToCredit(rec.uid)).toppedUpUsd > 0) return call();
+    if (!(e instanceof VeniceInsufficientBalance)) throw e;
+    // If the top-up attempt itself fails (RPC down, etc.), report the real problem: out of credit.
+    const swept = await sweepToCredit(rec.uid).catch(() => ({ toppedUpUsd: 0 }));
+    if (swept.toppedUpUsd > 0) return call();
     throw e;
   }
 }

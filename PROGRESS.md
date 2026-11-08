@@ -17,16 +17,16 @@ Working state of the project: what's done, what's left, and decisions made. Upda
 | Security audit | ✅ v1 findings F-01..F-13 fixed | Kit v2 built: `npm run audit:pack -- --folder` |
 | Name / brand | ✅ **Rahasya**, `rahasya.chat` bought | `rahasya.ai` only if we win |
 | GitHub | ✅ Private repo `0xyuji/rahasya` | Must be **public** by the deadline (ask first) |
-| Cloudflare deploy | 🟡 Built and tested locally (38/38 probe), **not deployed** | See "Deploy" below |
+| Cloudflare deploy | ✅ Live at https://rahasya.itadori.workers.dev (38/38 probe) | `rahasya.chat` waits on DNS: domain is at Namecheap, nameservers must point to Cloudflare |
 | Demo video | ⬜ Not started | |
 | X post | ⬜ Not started | Tag @NEARProtocol #NEARHackathon, with the video |
 | Hackathon submission | ⬜ Not started | Print the payload and get an explicit yes first |
 
 ## Next steps (in order)
 
-1. **Deploy to Cloudflare** (needs the owner's login; see below).
-2. Run `npm run audit:probe -- https://rahasya.chat` against the live site.
-3. Add `rahasya.chat` to Reown's allowed domains; test wallet connect live.
+1. **Attach rahasya.chat:** owner adds the domain in Cloudflare (Free plan) and sets Namecheap → Custom DNS to Cloudflare's two nameservers. When Cloudflare says "active", put the `routes` back in `apps/web/wrangler.jsonc`, `npm run cf:deploy`, probe `https://rahasya.chat`.
+2. Add `rahasya.itadori.workers.dev` and `rahasya.chat` to Reown's allowed domains; test wallet connect live.
+3. Update the audit kit's live URL if it changes.
 4. One real end-to-end run on the live site: pay with a non-USDC token, chat in both modes, use an API key. Check the fee lands in `rahasya.near`'s NEAR Intents balance.
 5. Finish the API checks: deleted key → 401, sign out everywhere, second same-amount top-up.
 6. Demo video (2–3 min): pay with any token → chat → Truly private with the Intel check → API key in opencode.
@@ -39,20 +39,22 @@ Config: `apps/web/wrangler.jsonc` (routes for `rahasya.chat` and `www`, Smart Pl
 
 ```sh
 cd apps/web
-npx wrangler login                     # owner, in a browser
-npx wrangler secret bulk .dev.vars     # Upstash, API_WALLET_ENC_KEY, ONECLICK_* (file is gitignored)
-npm run cf:deploy                      # builds and deploys
+npx wrangler login                     # owner, in a browser (done 11-08)
+npx wrangler secret bulk .dev.vars     # Upstash, API_WALLET_ENC_KEY, ONECLICK_* (done 11-08; owner runs it: auto mode blocks secret writes)
+npm run cf:deploy                      # builds, then deploys (plain `opennextjs-cloudflare deploy` does NOT rebuild)
 ```
 
 - `rahasya.chat` must be a zone in the same Cloudflare account.
 - `NEXT_PUBLIC_*` values come from `apps/web/.env.local` at build time.
 - `API_WALLET_ENC_KEY` must stay the same everywhere: the funded API wallet is encrypted with it, and local and production share one Upstash database.
+- Server-side RPCs: free endpoints rate-limit Cloudflare (mainnet.base.org → 429), so `src/server/rpc.ts` falls back across publicnode, drpc and mainnet.base.org (Base) and fastnear, rpc.mainnet.near.org (NEAR). Set `BASE_RPC_URL` / `NEAR_RPC_URL` secrets for a paid RPC.
 - Bundle: about 2.9 MB gzipped. The free plan limit is 3 MB; the paid plan ($5/month) allows 10 MB.
 
 ## Decisions
 
 | Date | Decision | Why |
 |---|---|---|
+| 11-08 | Domain stays registered at Namecheap; DNS moves to Cloudflare | Workers custom domains need a Cloudflare zone |
 | 11-08 | Host on Cloudflare Workers, not Vercel | Owner's choice; the domain is there. Server code was kept fetch-only for this |
 | 11-08 | Name: Rahasya, "Private AI, kept in confidence" | Domain bought |
 | 11-08 | Swap fee 1% total (1Click keeps half). Mentioned in the docs only, not in the UI | Owner's choice. 1Click charges 0.2% even with no app fee, and a partner key doesn't change that |

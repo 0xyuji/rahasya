@@ -11,7 +11,7 @@
     "test": "node --conditions=react-server --test \"src/**/*.test.ts\"",
     "cf:build": "opennextjs-cloudflare build",
     "cf:preview": "opennextjs-cloudflare preview",
-    "cf:deploy": "opennextjs-cloudflare deploy",
+    "cf:deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "docs:gen": "node scripts/gen-docs.mjs"
   },
   "devDependencies": {

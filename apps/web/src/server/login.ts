@@ -2,9 +2,10 @@ import "server-only";
 import { ed25519 } from "@noble/curves/ed25519.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { getBase58Encoder } from "@solana/kit";
-import { createPublicClient, getAddress, http, type Hex } from "viem";
+import { createPublicClient, getAddress, type Hex } from "viem";
 import { base } from "viem/chains";
 import { createSiweMessage } from "viem/siwe";
+import { baseTransport, nearRpc } from "./rpc.ts";
 import { b64url, hex, randomBytes } from "./crypto.ts";
 import { kv } from "./kv.ts";
 
@@ -85,7 +86,7 @@ export async function verifyLogin(p: LoginProof): Promise<string> {
   let ok = false;
   if (p.chain === "evm") {
     // publicClient.verifyMessage also handles smart-contract wallets (ERC-1271 / ERC-6492).
-    const client = createPublicClient({ chain: base, transport: http(process.env.BASE_RPC_URL) });
+    const client = createPublicClient({ chain: base, transport: baseTransport() });
     ok = await client.verifyMessage({ address: p.address as Hex, message: chal.message, signature: p.signature as Hex });
   } else if (p.chain === "sol") {
     ok = ed25519.verify(b64(p.signature), new TextEncoder().encode(chal.message), b58(p.address));
@@ -130,18 +131,12 @@ export function nep413Hash(message: string, nonce: Uint8Array, recipient: string
 
 /** The signing key must be a full-access key of the claimed NEAR account. */
 async function nearKeyBelongsTo(accountId: string, publicKey: string): Promise<boolean> {
-  const res = await fetch(process.env.NEAR_RPC_URL ?? "https://rpc.mainnet.near.org", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "query",
-      params: { request_type: "view_access_key", finality: "final", account_id: accountId, public_key: publicKey },
-    }),
-    signal: AbortSignal.timeout(10_000),
+  const j = await nearRpc<{ result?: { permission?: unknown }; error?: unknown }>({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "query",
+    params: { request_type: "view_access_key", finality: "final", account_id: accountId, public_key: publicKey },
   });
-  const j = (await res.json()) as { result?: { permission?: unknown }; error?: unknown };
   return !!j.result && j.result.permission === "FullAccess";
 }
 
