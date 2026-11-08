@@ -1,15 +1,18 @@
 /**
  * Thin, stateless proxy to NEAR Intents 1Click. It exists only to attach the
- * partner API key (server-side secret) and an optional integrator fee.
+ * partner API key (server-side secret), our app fee and referral tag.
  * It holds no funds, stores nothing, and only allows the four routes the site
  * uses, with quotes restricted to "deliver USDC on Base to the caller's own
  * address" so it can't be used as an open relay.
  *
  * Uses only fetch/Request/Response so it runs on Vercel and Cloudflare Workers.
  */
+import { brand } from "../../../../brand";
 import { overLimit } from "../../../../server/ratelimit";
 
 const UPSTREAM = process.env.ONECLICK_BASE_URL ?? "https://1click.chaindefuser.com";
+// Tags our volume in NEAR Intents' stats; pays nothing by itself.
+const REFERRAL = brand.repo;
 const BASE_USDC = "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near";
 
 const ALLOWED: Record<string, "GET" | "POST"> = {
@@ -63,9 +66,10 @@ export async function POST(req: Request, ctx: Ctx) {
     if (body.destinationAsset !== BASE_USDC || body.recipientType !== "DESTINATION_CHAIN" || body.depositType !== "ORIGIN_CHAIN") {
       return json(400, { message: "this proxy only quotes deposits that deliver USDC on Base" });
     }
-    // Fees are ours to set, never the caller's.
+    // Fees and attribution are ours to set, never the caller's.
     delete body.appFees;
-    const bps = Number(process.env.ONECLICK_APP_FEE_BPS ?? 0);
+    body.referral = REFERRAL;
+    const bps = Math.floor(Number(process.env.ONECLICK_APP_FEE_BPS ?? 0));
     if (bps > 0 && process.env.ONECLICK_FEE_RECIPIENT) {
       body.appFees = [{ recipient: process.env.ONECLICK_FEE_RECIPIENT, fee: Math.min(bps, 100) }];
     }

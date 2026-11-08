@@ -41,7 +41,12 @@ Code: `packages/rail/src/wallet/derive.ts` (with a golden test vector).
 
 Every quote must echo back exactly what we asked for (assets, amount, recipient, refund address) or it's refused. Progress is tracked through 1Click's status API (`PENDING_DEPOSIT → PROCESSING → SUCCESS | REFUNDED | FAILED`) and saved locally, so a reload resumes instead of starting over.
 
-Our server proxies 1Click only to attach the partner key. It holds no funds and only allows quotes that deliver USDC on Base.
+Our server proxies 1Click only to attach the partner key, our app fee and a referral tag. It holds no funds and only allows quotes that deliver USDC on Base.
+
+**Fees.** Swaps through NEAR Intents carry a **0.5% app fee** that goes to us. It's already included in the amount the quote asks you to send, so the credit you get is exactly what you asked for. (NEAR Intents may add its own small fee as well; it shows up the same way.) Our fee is set on our server, and a client can't change or add one. There is no fee on:
+
+- funding with **USDC on Base** directly (no swap);
+- **inference**: you pay Venice's own per-token prices, with no markup, including through API keys.
 
 Code: `apps/web/src/funding/`, `packages/rail/src/oneclick/`, `packages/rail/src/swap/engine.ts`.
 
