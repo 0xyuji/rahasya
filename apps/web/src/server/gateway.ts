@@ -143,8 +143,8 @@ export function reserve(def: ModelDef, body: Record<string, unknown>, live: Live
 
 /**
  * Pass an OpenAI-style SSE stream through untouched and call `settle` once with
- * the first usage object seen. It settles while the stream is still flowing (the
- * usage chunk comes right before [DONE]), not at the end: clients such as opencode
+ * the first usage object seen, right after forwarding that chunk. It settles while
+ * the stream is still flowing (the usage chunk comes right before [DONE]), not at the end: clients such as opencode
  * hang up right after [DONE], which cancels the pipe, and an end-of-stream hook
  * would never run, leaving the whole reservation charged. No usage at all keeps
  * the reservation.
@@ -169,12 +169,13 @@ export function meterStream(settle: (usage: unknown) => Promise<void>): Transfor
           } catch {}
         }
       }
+      // Forward first so the client isn't kept waiting on our database write.
+      ctl.enqueue(chunk);
       if (usage !== undefined) {
         settled = true;
         buf = "";
         await settle(usage).catch(() => {});
       }
-      ctl.enqueue(chunk);
     },
   });
 }
@@ -276,11 +277,16 @@ async function e2ee(rec: KeyRecord, venice: VeniceClient, def: ModelDef, body: R
           else if (d.type === "reasoning") send({ reasoning_content: d.text });
           else if (d.type === "usage") cost = d.costUsd;
         }
-        // Settle before the last bytes go out: a client may hang up right after [DONE].
-        // An aborted or failed stream never gets here and keeps the reservation.
+        try {
+          send({}, "stop");
+          ctl.enqueue(enc.encode("data: [DONE]\n\n"));
+        } catch {
+          // the client hung up at the very end; the reply was generated, so still charge it
+        }
+        // Settle after the last bytes went out but before closing, so it runs even if the
+        // client hangs up right after [DONE]. A stream that broke off earlier never gets here
+        // and keeps the reservation.
         if (cost !== undefined) await recordSpend(rec, cost - held, day).catch(() => {});
-        send({}, "stop");
-        ctl.enqueue(enc.encode("data: [DONE]\n\n"));
       } finally {
         try {
           ctl.close();

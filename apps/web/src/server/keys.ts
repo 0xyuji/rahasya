@@ -151,7 +151,13 @@ export async function authorize(token: string, modelKey: string | null): Promise
   if (modelKey !== null && rec.models.length && !rec.models.includes(modelKey)) {
     throw new KeyError(403, "model_not_allowed", `This key isn't allowed to use ${modelKey}. Allowed: ${rec.models.join(", ")}`);
   }
-  const [day, total] = await kv().mget<number | string>(`spend:${rec.id}:${today()}`, `spend:${rec.id}:total`);
+  // Spend counters and the rate-limit counter in one round trip.
+  const rl = `rl:${rec.id}:${Math.floor(Date.now() / 60_000)}`;
+  const [[day, total], n] = await Promise.all([
+    kv().mget<number | string>(`spend:${rec.id}:${today()}`, `spend:${rec.id}:total`),
+    kv().incr(rl),
+    kv().expire(rl, 120),
+  ]);
   if (rec.limits.dailyUsd !== undefined && Number(day ?? 0) >= rec.limits.dailyUsd) {
     throw new KeyError(429, "daily_limit", `Daily limit of $${rec.limits.dailyUsd} reached for this key.`);
   }
@@ -159,9 +165,6 @@ export async function authorize(token: string, modelKey: string | null): Promise
     throw new KeyError(429, "total_limit", `Total limit of $${rec.limits.totalUsd} reached for this key.`);
   }
   // Fixed window; the key name carries the minute, so a missed expire can't stretch the window.
-  const rl = `rl:${rec.id}:${Math.floor(Date.now() / 60_000)}`;
-  const n = await kv().incr(rl);
-  await kv().expire(rl, 120);
   if (n > RATE_PER_MIN) throw new KeyError(429, "rate_limited", `More than ${RATE_PER_MIN} requests per minute on this key.`);
   return rec;
 }
@@ -175,9 +178,12 @@ export async function authorize(token: string, modelKey: string | null): Promise
 export async function recordSpend(rec: KeyRecord, usd: number, day = today()): Promise<string> {
   if (!Number.isFinite(usd) || usd === 0) return day;
   const dayKey = `spend:${rec.id}:${day}`;
-  await kv().incrbyfloat(dayKey, usd);
-  await kv().expire(dayKey, 3 * 24 * 3600);
-  await kv().incrbyfloat(`spend:${rec.id}:total`, usd);
-  await kv().set(`lastused:${rec.id}`, Date.now());
+  // Independent writes: one round trip instead of four (each is ~ms on Vercel, but adds up from far away).
+  await Promise.all([
+    kv().incrbyfloat(dayKey, usd),
+    kv().expire(dayKey, 3 * 24 * 3600),
+    kv().incrbyfloat(`spend:${rec.id}:total`, usd),
+    kv().set(`lastused:${rec.id}`, Date.now()),
+  ]);
   return day;
 }
