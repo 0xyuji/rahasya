@@ -51,7 +51,7 @@ npm run cf:deploy                      # builds, then deploys (plain `opennextjs
 
 ## npm release (after the repo is public)
 
-Trusted publisher set up on npmjs.com (11-08): GitHub Actions, 0xyuji/rahasya, `publish-proxy.yml`, **stage only** (both "Allow" boxes unchecked).
+Trusted publisher set up on npmjs.com (11-08): GitHub Actions, 0xyuji/rahasya, `publish-proxy.yml`, **stage only** (both "Allow" boxes unchecked). Status: pending validation until 2026-11-10 16:32 UTC. Owner chose to release later, once fully confident; if it expires, delete it on npmjs.com and add it again (same values).
 
 1. Release: bump `packages/proxy/npm/package.json` version, commit, `git tag proxy-v<version> && git push --tags`. GitHub builds, tests and **stages** it.
 2. Approve with your passkey: npmjs.com (package `rahasya` → staged versions), or `npm stage list rahasya` then `npm stage approve <id>`.
