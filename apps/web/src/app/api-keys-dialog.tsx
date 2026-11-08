@@ -52,6 +52,7 @@ export function ApiKeysDialog({ open, onClose }: { open: boolean; onClose: () =>
   const [draft, setDraft] = useState<Draft | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [fresh, setFresh] = useState<{ token: string; name: string; models: string[] } | null>(null);
+  const [configFor, setConfigFor] = useState<string | null>(null);
   const [confirmDel, setConfirmDel] = useState<string | null>(null);
 
   useEffect(() => {
@@ -299,6 +300,9 @@ export function ApiKeysDialog({ open, onClose }: { open: boolean; onClose: () =>
                     {key.expiresAt && <span>{key.expiresAt < Date.now() ? "expired" : `expires ${new Date(key.expiresAt).toLocaleDateString()}`}</span>}
                   </div>
                   <div className={k.actions}>
+                    <button className={k.link} onClick={() => setConfigFor(configFor === key.id ? null : key.id)}>
+                      {configFor === key.id ? "Hide config" : "opencode config"}
+                    </button>
                     <button
                       className={k.link}
                       onClick={() => {
@@ -313,6 +317,14 @@ export function ApiKeysDialog({ open, onClose }: { open: boolean; onClose: () =>
                       {confirmDel === key.id ? "Click again to delete" : "Delete"}
                     </button>
                   </div>
+                  {configFor === key.id && (
+                    <div className={k.fresh}>
+                      <pre className={s.code}>{opencode({ token: `${key.prefix}…(your full key)`, models: key.models })}</pre>
+                      <button className={s.copyBtn} onClick={() => navigator.clipboard.writeText(opencode({ token: `${key.prefix}…(your full key)`, models: key.models }))}>
+                        Copy config
+                      </button>
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>
