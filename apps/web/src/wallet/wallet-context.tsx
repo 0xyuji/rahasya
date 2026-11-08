@@ -163,6 +163,7 @@ function WalletStateProvider({ children }: { children: React.ReactNode }) {
     const signed = await wallet.signMessage({ ...NEP413_PARAMS, nonce: new Uint8Array(NEP413_PARAMS.nonce) });
     // A NEAR account has one key per device/wallet app, and each key gives a different inference
     // wallet. Remember which key unlocked last time and warn before switching to another one.
+    // Storage key predates the rename; kept so existing users arent warned again.
     const seenKey = `naisho:near-signer:${s.address}`;
     let seen: string | null = null;
     try {

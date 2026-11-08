@@ -49,7 +49,7 @@ Full user-facing explanation: `source/apps/web/content/docs/protocol.md`. API re
 | Asset | Where it lives | Impact if compromised |
 |---|---|---|
 | User's wallet key | Wallet app; never in our code | (out of scope) |
-| Inference wallet key | Browser memory; optionally `~/.naisho/inference-key` (0600) | Venice credit spent + any idle USDC on it stolen |
+| Inference wallet key | Browser memory; optionally `~/.rahasya/inference-key` (0600) | Venice credit spent + any idle USDC on it stolen |
 | API wallet keys | Redis, AES-256-GCM, AAD `aw:<uid>`, key in env `API_WALLET_ENC_KEY` | Users' API credit spent (can't be withdrawn); USDC not yet swept stolen |
 | API keys `nsk_…` | Only SHA-256 hashes in Redis | Spend up to the key's limits |
 | Sessions | Redis + httpOnly cookie (7 days) | Manage that user's keys |

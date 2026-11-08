@@ -1,22 +1,22 @@
 #!/usr/bin/env node
 /**
- * naisho login   — save your inference wallet key (hidden input) to ~/.naisho
- * naisho serve   — run the local OpenAI-compatible proxy on 127.0.0.1
- * naisho token   — print (or --rotate) the local access token
- * naisho balance — show your credit
+ * rahasya login   — save your inference wallet key (hidden input) to ~/.rahasya
+ * rahasya serve   — run the local OpenAI-compatible proxy on 127.0.0.1
+ * rahasya token   — print (or --rotate) the local access token
+ * rahasya balance — show your credit
  */
 import { JsonStore, VeniceClient, type TopUpAction } from "@pay/rail";
 import { privateKeyToAccount } from "viem/accounts";
 import { home, loadInferenceKey, loadOrCreateToken, rotateToken, saveInferenceKey } from "./config.ts";
 import { createProxy } from "./server.ts";
 
-const CREDIT_URL = process.env.NAISHO_SITE_URL ?? "the website (account menu → Add credit)";
+const CREDIT_URL = process.env.RAHASYA_SITE_URL ?? "the website (account menu → Add credit)";
 const [cmd = "help", ...args] = process.argv.slice(2);
 
 function venice(): VeniceClient {
   const key = loadInferenceKey();
   if (!key) {
-    console.error("No inference key yet. Run `naisho login` first (copy the key from the website: account menu → Use in your editor).");
+    console.error("No inference key yet. Run `rahasya login` first (copy the key from the website: account menu → Use in your editor).");
     process.exit(1);
   }
   return new VeniceClient({ account: privateKeyToAccount(key), topups: new JsonStore<TopUpAction>(home(), "topups"), maxTopUpUsd: 0.01 });
@@ -65,7 +65,7 @@ if (cmd === "login") {
   const b = await venice().balance();
   console.log(`Credit: $${b.balanceUsd.toFixed(4)}${b.canConsume ? "" : " (add credit to use it)"}`);
 } else if (cmd === "serve") {
-  const port = Number(args[args.indexOf("--port") + 1]) || Number(process.env.NAISHO_PORT) || 8787;
+  const port = Number(args[args.indexOf("--port") + 1]) || Number(process.env.RAHASYA_PORT) || 8787;
   const v = venice();
   const token = loadOrCreateToken();
   const server = createProxy({
@@ -75,7 +75,7 @@ if (cmd === "login") {
     log: (l) => console.log(`${new Date().toISOString().slice(11, 19)} ${l}`),
   });
   server.on("error", (e: NodeJS.ErrnoException) => {
-    if (e.code === "EADDRINUSE") console.error(`Port ${port} is already in use by another program. Try: naisho serve --port ${port + 1}`);
+    if (e.code === "EADDRINUSE") console.error(`Port ${port} is already in use by another program. Try: rahasya serve --port ${port + 1}`);
     else console.error(e.message);
     process.exit(1);
   });
@@ -99,8 +99,8 @@ if (cmd === "login") {
   });
 } else {
   console.log(`usage:
-  naisho login            save your inference wallet key (from the website: account menu → Use in your editor)
-  naisho serve [--port N] run the local OpenAI-compatible proxy (default port 8787)
-  naisho token [--rotate] print or rotate the local access token
-  naisho balance          show your credit`);
+  rahasya login            save your inference wallet key (from the website: account menu → Use in your editor)
+  rahasya serve [--port N] run the local OpenAI-compatible proxy (default port 8787)
+  rahasya token [--rotate] print or rotate the local access token
+  rahasya balance          show your credit`);
 }

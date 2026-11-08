@@ -11,10 +11,10 @@ function personalize(md: string, origin: string): string {
   return md
     .replaceAll("https://<your-deployment>", origin)
     .replaceAll("https://<deployment>", origin)
-    .replaceAll("NAISHO_API_KEY", `${brand.repo.toUpperCase()}_API_KEY`)
-    .replaceAll('"naisho', `"${brand.repo}`)
-    .replaceAll("naisho/", `${brand.repo}/`)
-    .replaceAll('"Naisho"', `"${brand.name}"`);
+    .replaceAll("RAHASYA_API_KEY", `${brand.repo.toUpperCase()}_API_KEY`)
+    .replaceAll('"rahasya', `"${brand.repo}`)
+    .replaceAll("rahasya/", `${brand.repo}/`)
+    .replaceAll('"Rahasya"', `"${brand.name}"`);
 }
 
 const text = (n: ReactNode): string =>

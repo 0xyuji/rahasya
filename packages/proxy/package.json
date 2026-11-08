@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "description": "Local OpenAI-compatible proxy: use your inference wallet's credit from opencode, Cursor, SillyTavern and other tools.",
-  "bin": { "naisho": "./src/cli.ts" },
+  "bin": { "rahasya": "./src/cli.ts" },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "node --test \"src/**/*.test.ts\"",

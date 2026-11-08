@@ -10,7 +10,7 @@ export interface Brand {
   tagline: string;
   /** One-line meaning of the name, for the README / about text. */
   meaning: string;
-  /** Planned domain (not purchased yet). */
+  /** Domain (rahasya.chat is registered; the others are only planned). */
   domain: string;
   repo: string;
 }
@@ -42,6 +42,6 @@ const BRANDS: Record<string, Brand> = {
   },
 };
 
-const DEFAULT_BRAND = "naisho";
+const DEFAULT_BRAND = "rahasya";
 
 export const brand: Brand = BRANDS[process.env.NEXT_PUBLIC_BRAND ?? DEFAULT_BRAND] ?? BRANDS[DEFAULT_BRAND]!;

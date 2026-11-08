@@ -81,9 +81,9 @@ test("F-08: an empty token file is replaced with a strong one", async () => {
   const { mkdtempSync, writeFileSync, readFileSync, rmSync } = await import("node:fs");
   const { tmpdir } = await import("node:os");
   const { join } = await import("node:path");
-  const dir = mkdtempSync(join(tmpdir(), "naisho-test-"));
-  const prev = process.env.NAISHO_HOME;
-  process.env.NAISHO_HOME = dir;
+  const dir = mkdtempSync(join(tmpdir(), "rahasya-test-"));
+  const prev = process.env.RAHASYA_HOME;
+  process.env.RAHASYA_HOME = dir;
   try {
     writeFileSync(join(dir, "proxy-token"), "\n");
     const { loadOrCreateToken } = await import("./config.ts");
@@ -91,7 +91,7 @@ test("F-08: an empty token file is replaced with a strong one", async () => {
     assert.ok(t.length >= 32);
     assert.equal(readFileSync(join(dir, "proxy-token"), "utf8").trim(), t);
   } finally {
-    process.env.NAISHO_HOME = prev;
+    process.env.RAHASYA_HOME = prev;
     rmSync(dir, { recursive: true, force: true });
   }
 });

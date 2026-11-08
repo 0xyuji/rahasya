@@ -1,4 +1,4 @@
-# Security audit kit: Naisho
+# Security audit kit: Rahasya
 
 Thanks for reviewing this. This folder has everything you need: what the system does, what must never break, what to attack first, what we already know is weak, how to run it without spending money, ready-made prompts for AI agents, and the report format.
 

@@ -1,5 +1,5 @@
 /**
- * Builds dist/naisho-audit-kit-<commit>.zip: the audit-kit/ docs at the top level plus a
+ * Builds dist/rahasya-audit-kit-<commit>.zip: the audit-kit/ docs at the top level plus a
  * source/ snapshot made with `git archive` (tracked files only, so .env files, data/ and
  * node_modules can't end up in it). Refuses to run with uncommitted changes, so the
  * snapshot always matches COMMIT.txt. Then scans the result for anything secret-shaped.
@@ -18,7 +18,7 @@ if (run("git", ["status", "--porcelain"]).trim()) {
   process.exit(1);
 }
 const commit = run("git", ["rev-parse", "--short", "HEAD"]).trim();
-const name = `naisho-audit-kit-${commit}`;
+const name = `rahasya-audit-kit-${commit}`;
 const dist = join(root, "dist");
 const stage = join(dist, name);
 rmSync(stage, { recursive: true, force: true });

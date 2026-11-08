@@ -226,6 +226,7 @@ export async function creditIdleUsdc(inference: LocalAccount): Promise<number> {
   // Sequence per wallet (same scheme as the server's API-wallet sweep): a pending
   // authorization is re-sent; once one succeeded, new idle USDC gets a new id, so a
   // repeat of the same balance is never mistaken for an old, finished top-up.
+  // Storage key predates the rename; never change it (a reset sequence could reuse an old top-up id).
   const seqKey = `naisho:idle-seq:${inference.address.toLowerCase()}`;
   const read = () => {
     try {

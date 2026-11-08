@@ -3,8 +3,8 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "n
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-/** ~/.naisho (override with NAISHO_HOME). Files are 0600, the dir 0700. */
-export const home = () => process.env.NAISHO_HOME ?? join(homedir(), ".naisho");
+/** ~/.rahasya (override with RAHASYA_HOME). Files are 0600, the dir 0700. */
+export const home = () => process.env.RAHASYA_HOME ?? join(homedir(), ".rahasya");
 
 const keyFile = () => join(home(), "inference-key");
 const tokenFile = () => join(home(), "proxy-token");
@@ -26,14 +26,14 @@ export function saveInferenceKey(hex: string) {
 }
 
 export function loadInferenceKey(): `0x${string}` | null {
-  const env = process.env.NAISHO_INFERENCE_KEY;
+  const env = process.env.RAHASYA_INFERENCE_KEY;
   if (env) return env as `0x${string}`;
   return existsSync(keyFile()) ? (readFileSync(keyFile(), "utf8").trim() as `0x${string}`) : null;
 }
 
 /** Local access token tools must send as `Authorization: Bearer <token>`. Created once, reused. */
 export function loadOrCreateToken(): string {
-  if (process.env.NAISHO_PROXY_TOKEN) return process.env.NAISHO_PROXY_TOKEN; // length checked by createProxy
+  if (process.env.RAHASYA_PROXY_TOKEN) return process.env.RAHASYA_PROXY_TOKEN; // length checked by createProxy
   const saved = existsSync(tokenFile()) ? readFileSync(tokenFile(), "utf8").trim() : "";
   if (saved.length >= 32) return saved;
   return rotateToken(); // missing, empty or too short: never run with a weak token

@@ -19,12 +19,12 @@ Tested with opencode 2.1.3. Add a provider to `~/.config/opencode/opencode.jsonc
 ```jsonc
 {
   "$schema": "https://opencode.ai/config.json",
-  "model": "naisho/large-v2",
-  "enabled_providers": ["naisho"],
+  "model": "rahasya/large-v2",
+  "enabled_providers": ["rahasya"],
   "providers": {
-    "naisho": {
-      "name": "Naisho",
-      "env": ["NAISHO_API_KEY"],
+    "rahasya": {
+      "name": "Rahasya",
+      "env": ["RAHASYA_API_KEY"],
       "package": "@opencode/ai/providers/openai-compatible",
       "settings": { "baseURL": "https://<your-deployment>/api/v1" },
       "models": {
@@ -44,8 +44,8 @@ Tested with opencode 2.1.3. Add a provider to `~/.config/opencode/opencode.jsonc
 ```
 
 ```sh
-export NAISHO_API_KEY=nsk_…
-opencode --standalone                     # or: opencode run --standalone -m naisho/large-v2 "explain this repo"
+export RAHASYA_API_KEY=nsk_…
+opencode --standalone                     # or: opencode run --standalone -m rahasya/large-v2 "explain this repo"
 ```
 
 Things that trip people up:
@@ -106,7 +106,7 @@ The `openai/` prefix tells Aider (via LiteLLM) to use the OpenAI-compatible rout
 {
   "language_models": {
     "openai_compatible": {
-      "Naisho": {
+      "Rahasya": {
         "api_url": "https://<your-deployment>/api/v1",
         "available_models": [{ "name": "large-v2", "display_name": "Abliterated Large V2", "max_tokens": 128000 }]
       }
@@ -142,7 +142,7 @@ model_list:
     litellm_params:
       model: openai/large-v2
       api_base: https://<your-deployment>/api/v1
-      api_key: os.environ/NAISHO_API_KEY
+      api_key: os.environ/RAHASYA_API_KEY
 ```
 
 ## OpenAI SDK
@@ -162,7 +162,7 @@ JavaScript / TypeScript:
 ```ts
 import OpenAI from "openai";
 
-const client = new OpenAI({ baseURL: "https://<your-deployment>/api/v1", apiKey: process.env.NAISHO_API_KEY });
+const client = new OpenAI({ baseURL: "https://<your-deployment>/api/v1", apiKey: process.env.RAHASYA_API_KEY });
 const stream = await client.chat.completions.create({
   model: "large-flash",
   messages: [{ role: "user", content: "Hello" }],

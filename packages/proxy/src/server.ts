@@ -27,7 +27,7 @@ const localHost = (host: string | undefined) => !!host && LOCAL_HOSTS.has(host.r
 
 export function createProxy(o: ProxyOptions): Server {
   if (typeof o.token !== "string" || o.token.length < MIN_TOKEN_LENGTH) {
-    throw new Error(`The proxy token must be at least ${MIN_TOKEN_LENGTH} characters. Run \`naisho token --rotate\`.`);
+    throw new Error(`The proxy token must be at least ${MIN_TOKEN_LENGTH} characters. Run \`rahasya token --rotate\`.`);
   }
   const chat = new VeniceChat({ venice: o.venice });
   const log = o.log ?? (() => {});
@@ -42,7 +42,7 @@ export function createProxy(o: ProxyOptions): Server {
       if (!localHost(req.headers.host)) return send(res, 403, err("Use http://127.0.0.1 or http://localhost to reach this proxy."));
       const got = Buffer.from((req.headers.authorization ?? "").replace(/^Bearer\s+/i, ""));
       if (got.length !== want.length || !timingSafeEqual(got, want)) {
-        return send(res, 401, err("Missing or wrong token. Use the token printed by `naisho serve` as the API key."));
+        return send(res, 401, err("Missing or wrong token. Use the token printed by `rahasya serve` as the API key."));
       }
 
       const url = new URL(req.url ?? "/", "http://127.0.0.1");
