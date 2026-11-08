@@ -141,6 +141,44 @@ export function reserve(def: ModelDef, body: Record<string, unknown>, live: Live
   return Math.max(0, costUsd(def, { prompt_tokens: inTok, completion_tokens: outTok }, live) ?? 0);
 }
 
+/**
+ * Pass an OpenAI-style SSE stream through untouched and call `settle` once with
+ * the first usage object seen. It settles while the stream is still flowing (the
+ * usage chunk comes right before [DONE]), not at the end: clients such as opencode
+ * hang up right after [DONE], which cancels the pipe, and an end-of-stream hook
+ * would never run, leaving the whole reservation charged. No usage at all keeps
+ * the reservation.
+ */
+export function meterStream(settle: (usage: unknown) => Promise<void>): TransformStream<Uint8Array, Uint8Array> {
+  let buf = "";
+  let settled = false;
+  const decoder = new TextDecoder();
+  return new TransformStream<Uint8Array, Uint8Array>({
+    async transform(chunk, ctl) {
+      if (settled) return ctl.enqueue(chunk);
+      buf += decoder.decode(chunk, { stream: true });
+      let usage: unknown;
+      let nl: number;
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (usage === undefined && line.startsWith("data:") && line.includes('"usage"')) {
+          try {
+            const u = (JSON.parse(line.slice(5)) as { usage?: unknown }).usage;
+            if (u && typeof u === "object") usage = u;
+          } catch {}
+        }
+      }
+      if (usage !== undefined) {
+        settled = true;
+        buf = "";
+        await settle(usage).catch(() => {});
+      }
+      ctl.enqueue(chunk);
+    },
+  });
+}
+
 /** Call Venice; if credit ran out but USDC sits on the API wallet, top it up and retry once. */
 async function withTopUp<T>(rec: KeyRecord, call: () => Promise<T>): Promise<T> {
   try {
@@ -178,30 +216,10 @@ async function passthrough(rec: KeyRecord, venice: VeniceClient, def: ModelDef, 
     await recordSpend(rec, -held, day); // nothing was generated
     throw e;
   }
-  // Pass the SSE stream through untouched, watching for the final usage chunk to charge the key.
-  let buf = "";
-  let usage: Parameters<typeof costUsd>[1];
-  const decoder = new TextDecoder();
-  const tap = new TransformStream<Uint8Array, Uint8Array>({
-    transform(chunk, ctl) {
-      ctl.enqueue(chunk);
-      buf += decoder.decode(chunk, { stream: true });
-      let nl: number;
-      while ((nl = buf.indexOf("\n")) >= 0) {
-        const line = buf.slice(0, nl).trim();
-        buf = buf.slice(nl + 1);
-        if (line.startsWith("data:") && line.includes('"usage"')) {
-          try {
-            usage = (JSON.parse(line.slice(5)) as { usage?: typeof usage }).usage ?? usage;
-          } catch {}
-        }
-      }
-    },
-    async flush() {
-      // Replace the reservation with the real cost (if usage never arrived, keep the reservation).
-      const actual = costUsd(def, usage, live);
-      if (actual !== undefined) await recordSpend(rec, actual - held, day);
-    },
+  // Pass the SSE stream through untouched; charge the real cost as soon as the usage chunk goes by.
+  const tap = meterStream(async (usage) => {
+    const actual = costUsd(def, usage as Parameters<typeof costUsd>[1], live);
+    if (actual !== undefined) await recordSpend(rec, actual - held, day);
   });
   return new Response(res.body!.pipeThrough(tap), {
     headers: { "content-type": "text/event-stream", "cache-control": "no-cache, no-transform", connection: "keep-alive" },
@@ -246,26 +264,27 @@ async function e2ee(rec: KeyRecord, venice: VeniceClient, def: ModelDef, body: R
   }
 
   const enc = new TextEncoder();
-  let finished = false;
   const stream = new ReadableStream<Uint8Array>({
     async start(ctl) {
       const send = (delta: Record<string, unknown>, finish: string | null = null) =>
         ctl.enqueue(enc.encode(`data: ${JSON.stringify({ id, object: "chat.completion.chunk", created, model: def.key, choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`));
       let cost: number | undefined;
-      send({ role: "assistant" });
       try {
+        send({ role: "assistant" });
         for await (const d of deltas) {
           if (d.type === "text") send({ content: d.text });
           else if (d.type === "reasoning") send({ reasoning_content: d.text });
           else if (d.type === "usage") cost = d.costUsd;
         }
+        // Settle before the last bytes go out: a client may hang up right after [DONE].
+        // An aborted or failed stream never gets here and keeps the reservation.
+        if (cost !== undefined) await recordSpend(rec, cost - held, day).catch(() => {});
         send({}, "stop");
         ctl.enqueue(enc.encode("data: [DONE]\n\n"));
-        finished = true;
       } finally {
-        // Real cost replaces the reservation; an aborted stream keeps the reservation.
-        if (finished && cost !== undefined) await recordSpend(rec, cost - held, day);
-        ctl.close();
+        try {
+          ctl.close();
+        } catch {}
       }
     },
   });

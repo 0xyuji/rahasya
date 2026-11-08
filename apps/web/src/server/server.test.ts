@@ -6,7 +6,7 @@ import { open, seal } from "./crypto.ts";
 import { setKvForTests, type KV } from "./kv.ts";
 import { KeyError, authorize, createKey, deleteKey, listKeys, recordSpend, updateKey } from "./keys.ts";
 import { createChallenge, createSession, endSession, nep413Hash, sessionCookie, sessionUser, verifyLogin } from "./login.ts";
-import { checkBody, reserve, resolveModel as resolveGatewayModel, veniceParams } from "./gateway.ts";
+import { checkBody, meterStream, reserve, resolveModel as resolveGatewayModel, veniceParams } from "./gateway.ts";
 import { sweepToCredit } from "./api-wallet.ts";
 import { VENICE_PAY_TO } from "@pay/rail/browser";
 import { encodePaymentRequiredHeader } from "@x402/core/http";
@@ -294,4 +294,38 @@ test("F-02: a second deposit of the same amount is credited again (sweep ids nev
   } finally {
     globalThis.fetch = realFetch;
   }
+});
+
+test("streamed spend settles on the usage chunk, even if the client hangs up right after [DONE]", async () => {
+  const enc = new TextEncoder();
+  const settled: unknown[] = [];
+  // Upstream sends content, usage and [DONE], then stays open (as a slow upstream close would look).
+  const upstream = new ReadableStream<Uint8Array>({
+    start(ctl) {
+      ctl.enqueue(enc.encode('data: {"choices":[{"delta":{"content":"hi"}}]}\n\n'));
+      // usage split across two chunks, to exercise line buffering
+      ctl.enqueue(enc.encode('data: {"choices":[],"usage":{"prompt_tokens":12,'));
+      ctl.enqueue(enc.encode('"completion_tokens":3}}\n\ndata: [DONE]\n\n'));
+    },
+  });
+  const reader = upstream.pipeThrough(meterStream(async (u) => void settled.push(u))).getReader();
+  let text = "";
+  const dec = new TextDecoder();
+  while (!text.includes("[DONE]")) text += dec.decode((await reader.read()).value);
+  await reader.cancel(); // opencode-style hang-up: no end-of-stream ever happens
+  assert.deepEqual(settled, [{ prompt_tokens: 12, completion_tokens: 3 }]);
+  assert.ok(text.includes('"content":"hi"'), "stream passes through untouched");
+});
+
+test("a stream without usage never settles (the reservation stays charged)", async () => {
+  const enc = new TextEncoder();
+  let calls = 0;
+  const upstream = new ReadableStream<Uint8Array>({
+    start(ctl) {
+      ctl.enqueue(enc.encode('data: {"choices":[{"delta":{"content":"usage"}}]}\n\ndata: [DONE]\n\n'));
+      ctl.close();
+    },
+  });
+  await new Response(upstream.pipeThrough(meterStream(async () => void calls++))).text();
+  assert.equal(calls, 0);
 });
