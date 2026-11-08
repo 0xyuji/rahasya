@@ -4,8 +4,8 @@ import { bigintReplacer } from "./log.ts";
 
 /** Minimal record store; JsonStore (Node) and a localStorage store (browser) implement it. */
 export interface RecordStore<T extends { id: string }> {
-  get(id: string): T | undefined;
-  put(record: T): T;
+  get(id: string): T | undefined | Promise<T | undefined>;
+  put(record: T): T | Promise<T>;
 }
 
 /**

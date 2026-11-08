@@ -140,7 +140,7 @@ export class VeniceClient {
       throw new RailError("OVER_CAP", `top-up $${amountUsd} outside (0, $${this.o.maxTopUpUsd}]`);
     }
 
-    let action = this.o.topups.get(id);
+    let action = await this.o.topups.get(id);
     if (action?.state === "SUCCESS") return action;
     if (action?.state === "FAILED") throw new RailError(action.error?.code ?? "TOPUP_FAILED", action.error?.message ?? "top-up failed");
 
@@ -162,13 +162,13 @@ export class VeniceClient {
 
     if (res.ok) {
       this.log.info("top-up settled", { id, amountUsd });
-      return this.o.topups.put({ ...action, state: "SUCCESS", updatedAt: at, response: safeJson(text) });
+      return await this.o.topups.put({ ...action, state: "SUCCESS", updatedAt: at, response: safeJson(text) });
     }
     if (res.status >= 500 || res.status === 429) {
       // Unknown outcome: keep SIGNED so the next call re-sends the same authorization.
       throw new HttpError(res.status, text, url);
     }
-    const failed = this.o.topups.put({
+    const failed = await this.o.topups.put({
       ...action,
       state: "FAILED",
       updatedAt: at,
@@ -202,7 +202,7 @@ export class VeniceClient {
     const now = new Date().toISOString();
     this.log.info("signed top-up authorization", { id, amountUsd, payTo: req.payTo, validBefore });
     // Persist BEFORE sending.
-    return this.o.topups.put({
+    return await this.o.topups.put({
       id,
       kind: "venice_topup",
       createdAt: now,
