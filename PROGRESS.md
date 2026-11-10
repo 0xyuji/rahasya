@@ -24,7 +24,7 @@ Working state of the project: what's done, what's left, and decisions made. Upda
 | Agent guide | ✅ 11-10, live at `/docs/agents` and `/agents.md` (Copy and Download buttons); a test keeps its model table in sync | Source: `apps/web/content/docs/agents.md` |
 | Audit v3 fixes | 11-10: both Highs and most Mediums/Lows fixed, then reviewed by Fable and its regressions fixed. Deployed 11-10 from branch `audit-v3-fixes` | Left open: known issues K26-K32. Not yet used with a real wallet |
 | K26-K32 | 11-10: closed in the working tree of `audit-v3-fixes`, reviewed by Fable and its findings fixed. **Uncommitted, not deployed**, needs a real-wallet unlock test across wallet types | K27 partly: Workers memory unmeasured |
-| Final audit | 11-10 report against `9e3db94`: 0 High, 1 Medium, 15 Low, 19 Info. All 16 findings addressed on `audit-v3-fixes`, deployed 11-10. Not yet used with a real wallet | C-09 and in-page dialogs also done. Not done: approve-twice on a double wallet prompt, Solana/Ledger format check, `x-wallet-uid` required |
+| Final audit | 11-10 report against `9e3db94`: 0 High, 1 Medium, 15 Low, 19 Info. All 16 findings addressed on `audit-v3-fixes`, deployed 11-10, real-wallet test passed | C-09 and in-page dialogs also done. Not done: approve-twice on a double wallet prompt, Solana/Ledger format check, `x-wallet-uid` required |
 | Body limit | ✅ 8 MB (gateway + proxy), raised from 4 MB after a 413 | Owner hasn't said what they were doing when it hit; ask if it recurs |
 | Demo video | ⬜ Script + narration lines written (in chat, 11-08); owner records, ElevenLabs voice | Show the new header links |
 | X post | ⬜ Not started | Must say it was built at NEAR HACKATHON, tag @NEARProtocol and #NEARHackathon, with the video. Optional tags: @NearLegion, @NearBuilders. Owner posts |
@@ -32,7 +32,8 @@ Working state of the project: what's done, what's left, and decisions made. Upda
 
 ## Next steps (in order)
 
-0. ~~Deploy the state-machine work and Fable review fixes~~ ✅ 11-10. ~~Merge to master, add CI~~ ✅ 11-10. Before going public: trim this file. Real-wallet run must also cover: Cancel unlock, an API-wallet top-up.
+0. ~~Real-wallet test of the final code~~ ✅ 11-10 (`cf887e7`): $5 top-up through the new checks, API key call, Truly private with Verified enclave, Lock and Disconnect. Code freeze from here: real bugs only.
+   ~~Deploy the state-machine work and Fable review fixes~~ ✅ 11-10. ~~Merge to master, add CI~~ ✅ 11-10. Before going public: trim this file. Real-wallet run must also cover: Cancel unlock, an API-wallet top-up.
 1. Owner reviews the new landing page on rahasya.chat; adjust if wanted. Click the dialogs' Connect wallet / NEAR wallet / Unlock buttons with a real wallet.
 2. Pick tracks (unanswered). Suggested: privacy (primary), agents, maybe security.
 3. ~~Probe rahasya.chat~~ ✅ 40/40. ~~Venice accepts both output-limit fields~~ ✅.
