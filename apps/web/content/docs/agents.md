@@ -15,7 +15,7 @@ Everything a coding agent or tool needs to use Rahasya, in one file. Raw version
 |---|---|---|
 | Base URL | `https://<your-deployment>/api/v1` | `http://127.0.0.1:8787/v1` |
 | API key | `nsk_…` | The local key the proxy prints |
-| Prompts pass through | Rahasya's server, never stored | Only the user's machine and Venice |
+| Prompts pass through | Rahasya's server, never stored, then Venice and the model host | The user's machine, then Venice and the model host |
 
 Read the key from an environment variable such as `RAHASYA_API_KEY`. Don't ask anyone to paste a key into a chat, and never print, log or commit one.
 
@@ -78,7 +78,7 @@ Ask the person to do this. It takes a wallet and at least $5 in any token:
 - `n` must be 1. The body limit is 8 MB, and images are sent base64-encoded.
 - The rate limit is 60 requests per minute per key.
 - Of `venice_parameters`, only `disable_thinking` and `strip_thinking_response` are used. Other keys are dropped.
-- In streams, reasoning arrives as `reasoning_content`, and the last chunk before `[DONE]` carries `usage`.
+- In streams, reasoning arrives as `reasoning_content`, and the last chunk before `[DONE]` carries `usage` (not on TEE models).
 
 ## Errors
 
@@ -93,7 +93,8 @@ The shape is `{ "error": { "message": "...", "type": "<code>", "code": "<code>" 
 | 413 | `too_large` | Send less, or fewer images at a time |
 | 429 | `daily_limit`, `total_limit` | Stop and tell the person. Retrying won't help |
 | 429 | `rate_limited` | Wait for the next minute, then retry |
-| 5xx | `upstream_error` | Retry with backoff |
+| 503 | `busy` | Too many large requests at once. Retry shortly |
+| 5xx | `upstream_error` | Retry with backoff, unless the response has `x-should-retry: false`: then the key was charged |
 
 ## Local proxy
 

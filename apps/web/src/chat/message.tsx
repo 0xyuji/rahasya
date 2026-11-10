@@ -25,8 +25,9 @@ function cost(usd?: number) {
  */
 const REPLY_ELEMENTS: Components = {
   img: ({ alt }) => <span>[image not loaded{alt ? `: ${alt}` : ""}]</span>,
-  a: ({ href, children }) => (
-    <a href={href} target="_blank" rel="noopener noreferrer nofollow">
+  a: ({ node: _node, children, ...props }) => (
+    // Only real links leave the page; in-page ones (footnotes) stay as they are.
+    <a {...props} {...(/^https?:/i.test(props.href ?? "") ? { target: "_blank", rel: "noopener noreferrer nofollow" } : {})}>
       {children}
     </a>
   ),

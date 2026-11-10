@@ -153,12 +153,13 @@ export async function handleChat(req: Request): Promise<Response> {
     const rec = await authorize(bearer(req), null);
     const declared = Number(req.headers.get("content-length") ?? 0) || 0;
     if (declared > MAX_BODY) return oaiError(413, "Request body too large.", "too_large"); // not retryable, so before the budget
-    release = takeBodyBudget(declared, rec.id);
+    release = takeBodyBudget(declared || (req.body ? MAX_BODY : 0), rec.id); // no length given: assume the worst until it's read
     if (!release) return serverBusy();
     let text = await readBody(req);
     if (text === null) return oaiError(413, "Request body too large.", "too_large");
-    if (!declared) {
-      release = takeBodyBudget(text.length, rec.id); // no content-length: count what actually arrived
+    if (!declared && req.body) {
+      release?.();
+      release = takeBodyBudget(text.length, rec.id); // now we know the real size
       if (!release) return serverBusy();
     }
     let body: Record<string, unknown>;
@@ -297,22 +298,23 @@ export function meterStream(onUsage: (usage: unknown, final: boolean) => Promise
 export async function collectStream(res: Response): Promise<Record<string, unknown>> {
   if (!/event-stream/i.test(res.headers.get("content-type") ?? "")) return (await res.json()) as Record<string, unknown>;
   type ToolCall = { id?: string; type: string; function: { name: string; arguments: string } };
-  type Delta = { content?: string | null; reasoning_content?: string | null; reasoning?: string | null; refusal?: string | null; tool_calls?: Array<{ index?: number; id?: string; type?: string; function?: { name?: string; arguments?: string } }> };
+  type Delta = { content?: string | null; reasoning_content?: string | null; reasoning?: string | null; refusal?: string | null; function_call?: { name?: string; arguments?: string }; tool_calls?: Array<{ index?: number; id?: string; type?: string; function?: { name?: string; arguments?: string } }> };
   const tools: ToolCall[] = [];
   const logprobs: unknown[] = [];
   let text = "";
   let reasoning = "";
   let refusal = "";
   let finish: unknown = null;
-  let done = false;
   let usage: unknown;
   let generated = false;
+  let earlyUsage = false; // usage reported before the reply finished: Venice has already counted something
+  const fnCall = { name: "", arguments: "" };
   let first: { id?: unknown; created?: unknown; system_fingerprint?: unknown } | undefined;
-  const fail = (message: string) => Object.assign(new HttpError(502, message, "stream"), { noContent: !generated });
+  const fail = (message: string) => Object.assign(new HttpError(502, message, "stream"), { noContent: !generated && !earlyUsage });
   const take = (line: string) => {
     if (!line.startsWith("data:")) return;
     const data = line.slice(5).trim();
-    if (data === "[DONE]") return void (done = true);
+    if (data === "[DONE]") return;
     if (!data) return;
     let ev: { id?: unknown; created?: unknown; system_fingerprint?: unknown; error?: unknown; usage?: unknown; choices?: Array<{ finish_reason?: unknown; delta?: Delta; logprobs?: { content?: unknown[] } | null }> };
     try {
@@ -320,18 +322,21 @@ export async function collectStream(res: Response): Promise<Record<string, unkno
     } catch {
       return;
     }
+    if (ev.usage) earlyUsage = true;
     if (ev.error) throw fail(JSON.stringify(ev.error).slice(0, 300));
     first ??= ev;
-    if (ev.usage) usage = ev.usage;
     const choice = ev.choices?.[0];
     if (choice?.finish_reason != null) finish = choice.finish_reason;
+    if (ev.usage && finish !== null) usage = ev.usage; // only usage at or after the finish is the real total
     if (choice?.logprobs?.content) logprobs.push(...choice.logprobs.content);
     const d = choice?.delta;
     if (!d) return;
     if (d.content) text += d.content;
     if (d.reasoning_content ?? d.reasoning) reasoning += d.reasoning_content ?? d.reasoning;
     if (d.refusal) refusal += d.refusal;
-    if (d.content || d.reasoning_content || d.reasoning || d.tool_calls?.length) generated = true;
+    if (Object.entries(d).some(([k, v]) => k !== "role" && v !== null && v !== undefined && v !== "" && !(Array.isArray(v) && !v.length))) generated = true;
+    if (d.function_call?.name) fnCall.name += d.function_call.name;
+    if (d.function_call?.arguments) fnCall.arguments += d.function_call.arguments;
     for (const t of d.tool_calls ?? []) {
       // A continuation without an index belongs to the call in progress.
       const at = t.index ?? (t.id || !tools.length ? tools.length : tools.length - 1);
@@ -361,11 +366,12 @@ export async function collectStream(res: Response): Promise<Record<string, unkno
     await reader.cancel().catch(() => {});
   }
   if (!first) throw fail("Venice sent an empty stream.");
-  if (finish === null && !done) throw fail("Venice's reply was cut off before it finished.");
-  const message: Record<string, unknown> = { role: "assistant", content: text || (tools.length ? null : "") };
+  if (finish === null || finish === "error" || finish === "abort") throw fail("Venice's reply was cut off before it finished.");
+  const message: Record<string, unknown> = { role: "assistant", content: text || (tools.length || fnCall.name ? null : "") };
   if (reasoning) message.reasoning_content = reasoning;
   if (refusal) message.refusal = refusal;
   if (tools.length) message.tool_calls = tools.filter(Boolean);
+  if (fnCall.name) message.function_call = fnCall;
   return {
     id: first.id,
     object: "chat.completion",
@@ -377,6 +383,16 @@ export async function collectStream(res: Response): Promise<Record<string, unkno
 }
 
 const FAST_FAILURE_MS = 10_000;
+
+const markCharged = (e: unknown) => Object.assign(Object(e) as object, { charged: true });
+
+/** Only whole, non-negative token counts are believed; anything else keeps the reservation. */
+const validUsage = (u: unknown) => [(u as { prompt_tokens?: unknown })?.prompt_tokens, (u as { completion_tokens?: unknown })?.completion_tokens].every((n) => Number.isInteger(n) && (n as number) >= 0);
+
+async function settleFailure(rec: KeyRecord, held: number, day: string, e: unknown, started: number): Promise<void> {
+  if (nothingGenerated(e, Date.now() - started)) await recordSpend(rec, -held, day);
+  else markCharged(e);
+}
 
 /**
  * A reservation is released only when Venice can't have generated anything worth billing: it refused
@@ -425,7 +441,7 @@ async function passthrough(rec: KeyRecord, venice: VeniceClient, def: ModelDef, 
     try {
       res = await withTopUp(rec, () => venice.chatStream({ ...upstream, stream_options: { include_usage: true } }));
     } catch (e) {
-      if (nothingGenerated(e, Date.now() - started)) await recordSpend(rec, -held, day);
+      await settleFailure(rec, held, day, e, started);
       throw e;
     }
     let json: Record<string, unknown>;
@@ -434,9 +450,10 @@ async function passthrough(rec: KeyRecord, venice: VeniceClient, def: ModelDef, 
     } catch (e) {
       // Generation has started, so a failure keeps the reservation, unless it failed at once with nothing produced.
       if ((e as { noContent?: unknown }).noContent === true && Date.now() - started <= FAST_FAILURE_MS) await recordSpend(rec, -held, day);
+      else markCharged(e);
       throw e;
     }
-    const actual = costUsd(def, json.usage as Parameters<typeof costUsd>[1], live);
+    const actual = validUsage(json.usage) ? costUsd(def, json.usage as Parameters<typeof costUsd>[1], live) : undefined;
     // The reply is already paid for: a failed correction keeps the reservation, never a 502.
     if (actual !== undefined) await recordSpend(rec, actual - held, day).catch(() => {});
     return Response.json({ ...json, model: def.key });
@@ -447,14 +464,14 @@ async function passthrough(rec: KeyRecord, venice: VeniceClient, def: ModelDef, 
   try {
     res = await withTopUp(rec, () => venice.chatStream(upstream));
   } catch (e) {
-    if (nothingGenerated(e, Date.now() - started)) await recordSpend(rec, -held, day);
+    await settleFailure(rec, held, day, e, started);
     throw e;
   }
   // Pass the SSE stream through untouched. Running usage can only raise the charge above the
   // reservation; the final usage sets it to the real cost (audit V2-05).
   let charged = held;
   const tap = meterStream(async (usage, final) => {
-    const actual = costUsd(def, usage as Parameters<typeof costUsd>[1], live);
+    const actual = validUsage(usage) ? costUsd(def, usage as Parameters<typeof costUsd>[1], live) : undefined;
     if (actual === undefined || (!final && actual <= charged)) return;
     const delta = actual - charged;
     charged = actual;
@@ -489,7 +506,7 @@ async function e2ee(rec: KeyRecord, venice: VeniceClient, def: ModelDef, body: R
       }),
     ));
   } catch (e) {
-    if (nothingGenerated(e, Date.now() - started)) await recordSpend(rec, -held, day);
+    await settleFailure(rec, held, day, e, started);
     throw e;
   }
   const id = `chatcmpl-${Date.now().toString(36)}`;
@@ -499,9 +516,13 @@ async function e2ee(rec: KeyRecord, venice: VeniceClient, def: ModelDef, body: R
     let text = "";
     let cost: number | undefined;
     let usage: unknown;
-    for await (const d of deltas) {
-      if (d.type === "text") text += d.text;
-      else if (d.type === "usage") (usage = d.usage), (cost = d.costUsd);
+    try {
+      for await (const d of deltas) {
+        if (d.type === "text") text += d.text;
+        else if (d.type === "usage") (usage = d.usage), (cost = d.costUsd);
+      }
+    } catch (e) {
+      throw markCharged(e); // generation started: the reservation stands
     }
     // Real cost replaces the reservation (a decryption failure mid-way throws above and keeps it).
     if (cost !== undefined) await recordSpend(rec, cost - held, day).catch(() => {});
@@ -569,6 +590,6 @@ function toResponse(e: unknown): Response {
   const status = (e as { status?: number }).status;
   const res = oaiError(status && status >= 400 && status < 600 ? status : 502, (e as Error)?.message?.slice(0, 300) ?? "Upstream error", "upstream_error");
   // The key kept its reservation; an SDK's silent retry would hold another one.
-  if ((e as { noContent?: unknown })?.noContent === false || (e as Error)?.name === "TimeoutError") res.headers.set("x-should-retry", "false");
+  if ((e as { charged?: unknown })?.charged === true) res.headers.set("x-should-retry", "false");
   return res;
 }

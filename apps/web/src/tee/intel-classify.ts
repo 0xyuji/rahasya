@@ -49,22 +49,11 @@ export function checkQuoteCertificates(qvl: typeof Qvl, quoteBytes: Uint8Array):
 }
 
 /**
- * A getCollateral failure, after checkQuoteCertificates passed. Only failures that say
- * nothing about the quote can be "unavailable": no network, our relay's limits, Intel's
- * rate limits or server errors. Everything else is "fail", including a message a future
- * library version words differently, so an upgrade can't quietly downgrade a forged quote.
+ * A getCollateral failure, after checkQuoteCertificates passed. The quote can only influence
+ * which FMSPC is looked up, so the one failure that's about the quote is Intel answering 404 for
+ * it. Everything else is an outage or a bad reply from Intel or a proxy, and is "unavailable",
+ * which asks the user before sending. A hash test pins the library this reasoning was checked against.
  */
-const COLLATERAL_UNAVAILABLE = [
-  /^Failed to fetch( .*)?:\s*(429|5\d\d)\s*$/,
-  /^Failed to fetch$/, // Chrome's network error
-  /^NetworkError when attempting to fetch resource\.?$/, // Firefox
-  /^Load failed$/, // Safari
-  /^network access is limited to the collateral relay/, // our lockdown refusing
-  /^collateral relay unreachable$/, // any transport or body failure, from the lockdown's fetch
-  /^Missing (SGX-|TCB-)/, // a response header Intel or a proxy left off: about the reply, not the quote
-  /^(Unexpected (token|end)|JSON\.parse|JSON Parse error)/, // an HTML error page where collateral should be
-  /^(The operation timed out|signal timed out|The user aborted a request|The operation was aborted)\.?$/,
-];
 export function classifyCollateralError(message: string): "unavailable" | "fail" {
-  return COLLATERAL_UNAVAILABLE.some((re) => re.test(message.trim())) ? "unavailable" : "fail";
+  return /^Failed to fetch TCB info:\s*404\s*$/.test(message.trim()) ? "fail" : "unavailable";
 }

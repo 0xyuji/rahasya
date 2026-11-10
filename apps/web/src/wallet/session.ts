@@ -40,17 +40,19 @@ export function walletUid(source: { chain: string; address: string }): string {
  */
 export function attemptGuard() {
   let current: object | null = null;
-  const abandoned = new WeakSet<object>();
+  let epoch = 0;
+  const startedIn = new WeakMap<object, number>();
   return {
-    /** The user gave up on this prompt: a signature that still arrives later is thrown away. */
+    /** The user locked or gave up: any signature still on its way, from any attempt, is thrown away. */
     abandon() {
-      if (current) abandoned.add(current);
+      epoch++;
       current = null;
     },
-    wasAbandoned: (attempt: object) => abandoned.has(attempt),
+    wasAbandoned: (attempt: object) => startedIn.get(attempt) !== epoch,
     begin(): object | null {
       if (current) return null;
       current = {};
+      startedIn.set(current, epoch);
       return current;
     },
     isCurrent: (attempt: object) => attempt === current,

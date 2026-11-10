@@ -61,6 +61,25 @@ test("K26: tool calls without index or type are assembled the way SDKs expect", 
   assert.ok(out.created > 0);
 });
 
+test("final audit: usage before an early error means something was generated", async () => {
+  await assert.rejects(collectStream(sse('data: {"choices":[],"usage":{"prompt_tokens":9,"completion_tokens":0}}\n\ndata: {"error":{"message":"boom"}}\n\n')), (e: { noContent?: boolean }) => e.noContent === false);
+});
+
+test("final audit: legacy function_call, refusal-only and error endings", async () => {
+  const fc = [{ id: "c", choices: [{ delta: { function_call: { name: "f", arguments: "{" } } }] }, { choices: [{ delta: { function_call: { arguments: "}" } } }] }, { choices: [{ delta: {}, finish_reason: "function_call" }] }];
+  const out = (await collectStream(sse(fc.map((l) => `data: ${JSON.stringify(l)}\n\n`).join("")))) as { choices: Array<{ message: { function_call: unknown; content: unknown } }> };
+  assert.deepEqual(out.choices[0]!.message.function_call, { name: "f", arguments: "{}" });
+  assert.equal(out.choices[0]!.message.content, null);
+  await assert.rejects(collectStream(sse('data: {"choices":[{"delta":{"refusal":"no"}}]}\n\n')), (e: { noContent?: boolean }) => e.noContent === false, "a refusal counts as generated");
+  await assert.rejects(collectStream(sse('data: {"choices":[{"delta":{"content":"x"},"finish_reason":"error"}]}\n\ndata: [DONE]\n\n')));
+  await assert.rejects(collectStream(sse('data: {"choices":[{"delta":{"content":"x"}}]}\n\ndata: [DONE]\n\n')), /cut off/, "[DONE] alone isn't a finished reply");
+});
+
+test("final audit: early usage isn't treated as the total", async () => {
+  const out = (await collectStream(sse('data: {"choices":[],"usage":{"prompt_tokens":9}}\n\ndata: {"choices":[{"delta":{"content":"x"},"finish_reason":"stop"}]}\n\n'))) as { usage?: unknown };
+  assert.equal(out.usage, undefined);
+});
+
 test("a quick outage doesn't bill retries; a slow failure keeps the charge", () => {
   assert.equal(nothingGenerated(new HttpError(503, "down", "u"), 800), true);
   assert.equal(nothingGenerated(new TypeError("connect failed"), 800), true);

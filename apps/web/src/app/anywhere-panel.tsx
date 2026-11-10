@@ -109,9 +109,17 @@ export function AnywherePanel({ onCredited }: { onCredited: () => void }) {
     const onUpdate = (a: AnywhereAction) => {
       if (!ctl.signal.aborted) setAction(a);
     };
-    void runAnywhere(action.id, { inference: w.inference, onUpdate, signal: ctl.signal, topUp: t.topUp }).then((a) => {
-      if (a.state === "DONE") onCredited();
-    });
+    const id = action.id;
+    void runAnywhere(id, { inference: w.inference, onUpdate, signal: ctl.signal, topUp: t.topUp }).then(
+      (a) => {
+        if (a.state === "DONE") onCredited();
+      },
+      () => {
+        // Usually another tab moved it on: show what's saved.
+        const saved = anywhereActions.get(id);
+        if (saved && !ctl.signal.aborted) setAction(saved);
+      },
+    );
     return () => ctl.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [action?.id, w.inference, retries]);

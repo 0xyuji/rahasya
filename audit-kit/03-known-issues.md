@@ -29,7 +29,7 @@ No need to report these again. **Do** tell us if one is worse than described, an
 | K23 | The UI says an extra deposit to a used 1Click address is "normally refunded, minus a refund fee". 1Click's docs don't cover a second deposit after a completed swap | Not tested with a real second deposit |
 | K24 | Local development and production currently share one Upstash database and `API_WALLET_ENC_KEY` | Operational, not a code issue. To be separated and rotated |
 | K25 | The local proxy cancels upstream only for streamed requests; a non-streamed request finishes after the client disconnects | Bounded by that one request |
-| K33 | NEAR unlock compares the wallet-reported `accountId` only. Signer prompts use `window.confirm`, which some webviews suppress (read as declined) | No in-page dialog yet |
+| K33 | NEAR unlock compares the wallet-reported `accountId` only | Signer questions are in-page dialogs (`wallet/ask.ts`) |
 | K34 | npm `rahasya@0.1.0` predates the 11-10 proxy fixes, and a release from the private repo has no provenance record | 0.1.1 and a provenance release are planned |
 | K27 | Body limit stays 8 MB. The key is checked before the body is read, and large bodies share a 16 MB per-isolate budget (503 when full). At most one large body per key (held for a whole non-streamed generation), a body-read limit of 30 s idle and 120 s total, and several copies still held per request. Workers memory wasn't measured (B-02) | The owner raised the limit after real 413s |
 
@@ -53,13 +53,19 @@ Each fix has a regression test; please re-check them.
 | F-12: login message not domain-bound | EIP-4361 (SIWE) for EVM, the same format for Solana, NEP-413 recipient = our host | `server.test.ts` (incl. NEAR full-access check) |
 | F-13 | `GETDEL` for challenges; per-user lock on key creation; rate-limit TTL always set; `GET /api/account` is read-only (POST opens the wallet); expired keys can be renamed; x402 `payTo` pinned to Venice's address; client `appFees` stripped; body read with a streaming 4 MB cap; E2EE non-streamed requests reserve too; proxy logs no upstream error bodies; `__Host-` session cookie over HTTPS; "sign out everywhere" | `server.test.ts`, `topup.test.ts`, probe |
 
+## Fixed after the final audit (2026-11-10, report against 9e3db94), not yet re-reviewed
+
+C-14 (every money field must be present in 1Click's copy and equal; refunds tied to the paying wallet; the token comes from the live list), C-13 (a nonce check catches a send hidden behind a declined retry; the approve-twice variant remains), B-10, B-11, B-12 (usage checks and `x-should-retry`), B-13 (streams must finish, on every path), B-14, C-15 (balance check before the prompt; a missing field is a try-again), C-16 (compare-before-write, `navigator.locks` around top-ups), A-07 (only Intel's TCB 404 is a fail; a hash test pins the library), A-08 (consent per enclave, reset on a wallet change), A-09 (60-second cache after consent), D-09, D-10, D-11 (`account` passed to the wallet), E-10, E-11, E-15, E-16, A-11, C-17, C-18, B-16.
+
+Live checks made for these: sign-in message host on `rahasya.chat` and `www`; every compared field in 1Click's status copy, including `deadline`; `[DONE]` and a `finish_reason` on plain and both TEE streams.
+
 ## Closed after audit v3 (2026-11-10), not yet re-reviewed by anyone outside
 
 | Was | Now |
 |---|---|
 | K26 non-streamed requests timing out | Upstream is always streamed and collected (`collectStream`), so usage always arrives and only silence can time out |
 | K28 no server-side wallet check | Pages send `x-wallet-uid`; `withUser` answers 409 on a mismatch. A new sign-in ends the browser's earlier session. Clients that omit the header (the probe, tools) are unaffected: the cookie still authorizes |
-| K29 unlock signer unchecked | EVM signer recovered and compared; Solana signature verified. EVM, Solana and NEAR mismatches ask once per account and signer rather than refuse, because smart accounts, Ledgers and multi-account wallets are legitimate. NEAR compares the self-reported `accountId` only. `window.confirm` may be suppressed in some webviews |
+| K29 unlock signer unchecked | EVM signer recovered and compared; Solana signature verified. EVM, Solana and NEAR mismatches ask once per account and signer rather than refuse, because smart accounts, Ledgers and multi-account wallets are legitimate. NEAR compares the self-reported `accountId` only. Asked in an in-page dialog |
 | K30 Intel check | "Couldn't check" retries once, then asks before sending (once per conversation). Collateral errors are an allowlist: anything unrecognised is "fail". Intel 4xx pass through as fail. CI checks the worker CSP after the build |
 | K31 late deposits | Re-checked for the newest few closed actions (under 7 days old) when the panel opens |
 | K32 saved quote tampering | Compared with 1Click's own copy before sending. If 1Click can't confirm the quote, nothing is sent. The any-token panel still shows the saved address without this check; a tamperer with that access could change the page too |

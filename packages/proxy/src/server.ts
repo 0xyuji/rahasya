@@ -109,7 +109,7 @@ async function e2ee(res: ServerResponse, chat: VeniceChat, def: ModelDef, body: 
     mode: "private",
     model: def.key,
     messages,
-    maxTokens: typeof body.max_tokens === "number" ? body.max_tokens : undefined,
+    maxTokens: typeof body.max_completion_tokens === "number" ? body.max_completion_tokens : typeof body.max_tokens === "number" ? body.max_tokens : undefined,
     temperature: typeof body.temperature === "number" ? body.temperature : undefined,
     signal,
   });

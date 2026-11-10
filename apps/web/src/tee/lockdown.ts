@@ -64,7 +64,7 @@ for (const name of BLOCKED) {
 
 // navigator.storage gives access to the origin-private file system; serviceWorker and
 // locks reach other contexts of our origin.
-for (const name of ["storage", "storageBuckets", "serviceWorker", "locks"]) {
+for (const name of ["storage", "storageBuckets", "serviceWorker", "locks", "usb", "hid", "serial", "bluetooth", "gpu"]) {
   try {
     for (let o: object | null = navigator; o; o = Object.getPrototypeOf(o)) {
       const d = Object.getOwnPropertyDescriptor(o, name);

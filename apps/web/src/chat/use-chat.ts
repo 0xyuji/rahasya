@@ -1,9 +1,10 @@
 "use client";
 
 import { RailError, VeniceChat, resolveModel, type AttestationReport, type PrivacyMode } from "@pay/rail/browser";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { friendly, veniceFor } from "../funding/flow";
 import { verifyIntelQuote } from "../tee/intel-verify";
+import { askUser } from "../wallet/ask";
 import { useWallet } from "../wallet/wallet-context";
 import { buildContext, newId, type Msg } from "./conversation";
 
@@ -13,7 +14,8 @@ export function useChat(onCreditChange: () => void) {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [attestations, setAttestations] = useState<Record<string, AttestationReport>>({});
   const run = useRef<AbortController | null>(null); // the one reply being generated
-  const sendUnverified = useRef(false); // this conversation's answer to "Intel's check couldn't run"
+  const acceptedEnclaves = useRef(new Set<string>()); // enclave keys the user chose to use while Intel's check couldn't run
+  useEffect(() => acceptedEnclaves.current.clear(), [w.inference]); // a choice doesn't carry over to another wallet
   const busy = messages.some((m) => m.status === "streaming");
 
   // Truly private: every attestation's Intel signature is also verified here, in a sandboxed worker.
@@ -48,15 +50,17 @@ export function useChat(onCreditChange: () => void) {
         return;
       }
 
-      const confirmUnverified = () => {
-        sendUnverified.current ||= window.confirm("Intel's hardware check couldn't run right now, so this enclave can't be fully confirmed. Your message would still be encrypted to it.\n\nSend anyway? (You won't be asked again in this conversation.)");
-        return sendUnverified.current;
+      const unverifiedAccepted = (r: AttestationReport) => acceptedEnclaves.current.has(r.signingAddress);
+      const confirmUnverified = async (r: AttestationReport) => {
+        const ok = await askUser("Intel's hardware check couldn't run right now, so this enclave can't be fully confirmed. Your message would still be encrypted to it.\n\nSend anyway? You won't be asked again for this enclave in this conversation.", "Send anyway");
+        if (ok) acceptedEnclaves.current.add(r.signingAddress);
+        return ok;
       };
       const ctl = new AbortController();
       run.current = ctl;
       let chunks: () => number | undefined = () => undefined;
       try {
-        const { meta, deltas } = await chat.stream({ mode, model: modelKey, messages: context, maxTokens: 4096, signal: ctl.signal, confirmUnverified, unverifiedAccepted: sendUnverified.current });
+        const { meta, deltas } = await chat.stream({ mode, model: modelKey, messages: context, maxTokens: 4096, signal: ctl.signal, confirmUnverified, unverifiedAccepted });
         chunks = () => meta.plaintextChunks;
         if (meta.attestation) {
           const aid = `${meta.attestation.model}:${meta.attestation.nonce.slice(0, 8)}`;
@@ -95,7 +99,7 @@ export function useChat(onCreditChange: () => void) {
   const stop = () => run.current?.abort();
   const clear = () => {
     run.current?.abort();
-    sendUnverified.current = false;
+    acceptedEnclaves.current.clear();
     setMessages([]);
   };
 

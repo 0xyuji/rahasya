@@ -14,7 +14,7 @@ Working state of the project: what's done, what's left, and decisions made. Upda
 | API keys (hosted) | ✅ Mostly tested | curl, opencode, daily limit (429), model allowlist (403) verified. Deleted key (401) and sign out everywhere are covered by the live probe (40/40, 11-09). Open: second same-amount top-up on mainnet (offline test F-02 passes) |
 | opencode integration | ✅ Done | Generated config lists all non-TEE models, prices, `enabled_providers`. Needs `opencode.jsonc` + `--standalone` |
 | Local proxy | ✅ One-file download: `curl -fsSLO https://rahasya.chat/rahasya.mjs && node rahasya.mjs` (Node 22+). First run asks for the key | Tested from the live site with a throwaway key. npm: account made with passkey 2FA (11-08); package `packages/proxy/npm` + workflow `.github/workflows/publish-proxy.yml` ready, first publish after the repo is public (see "npm release") |
-| Security audit | ✅ Audit 1 (F-01..F-13), audit 2 (V2-01..V2-08) and the fix review (R-01, R-02, T-01, T-02, notes) fixed, with regression tests. 174 tests (rail 48, web 116, proxy 10) | Residual: two colluding NEAR RPCs (K10); set trusted `BASE_RPC_URL` / `NEAR_RPC_URL` for production |
+| Security audit | ✅ Audit 1 (F-01..F-13), audit 2 (V2-01..V2-08) and the fix review (R-01, R-02, T-01, T-02, notes) fixed, with regression tests. 186 tests (rail 51, web 125, proxy 10) | Residual: two colluding NEAR RPCs (K10); set trusted `BASE_RPC_URL` / `NEAR_RPC_URL` for production |
 | Name / brand | ✅ **Rahasya**, `rahasya.chat` bought | `rahasya.ai` only if we win |
 | GitHub | ✅ Private repo `0xyuji/rahasya` | Must be **public** by the deadline (ask first) |
 | Cloudflare deploy | ✅ Live at **https://rahasya.chat** (+ www, + rahasya.itadori.workers.dev). Probe 40/40 on rahasya.chat (11-09) | Domain at Namecheap, DNS on Cloudflare (MX/TXT email forwarding kept) |
@@ -24,6 +24,7 @@ Working state of the project: what's done, what's left, and decisions made. Upda
 | Agent guide | ✅ 11-10, live at `/docs/agents` and `/agents.md` (Copy and Download buttons); a test keeps its model table in sync | Source: `apps/web/content/docs/agents.md` |
 | Audit v3 fixes | 11-10: both Highs and most Mediums/Lows fixed, then reviewed by Fable and its regressions fixed. Deployed 11-10 from branch `audit-v3-fixes` | Left open: known issues K26-K32. Not yet used with a real wallet |
 | K26-K32 | 11-10: closed in the working tree of `audit-v3-fixes`, reviewed by Fable and its findings fixed. **Uncommitted, not deployed**, needs a real-wallet unlock test across wallet types | K27 partly: Workers memory unmeasured |
+| Final audit | 11-10 report against `9e3db94`: 0 High, 1 Medium, 15 Low, 19 Info. All 16 findings addressed on `audit-v3-fixes`, deployed 11-10. Not yet used with a real wallet | C-09 and in-page dialogs also done. Not done: approve-twice on a double wallet prompt, Solana/Ledger format check, `x-wallet-uid` required |
 | Body limit | ✅ 8 MB (gateway + proxy), raised from 4 MB after a 413 | Owner hasn't said what they were doing when it hit; ask if it recurs |
 | Demo video | ⬜ Script + narration lines written (in chat, 11-08); owner records, ElevenLabs voice | Show the new header links |
 | X post | ⬜ Not started | Must say it was built at NEAR HACKATHON, tag @NEARProtocol and #NEARHackathon, with the video. Optional tags: @NearLegion, @NearBuilders. Owner posts |

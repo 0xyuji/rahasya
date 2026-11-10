@@ -1,6 +1,7 @@
 import { strict as assert } from "node:assert";
 import { beforeEach, test } from "node:test";
 import { ANYWHERE_FINAL, ANYWHERE_MACHINE, CREDIT_MACHINE, DepositBroadcastError, DepositNotSentError, anywhereSteps, creditSteps, type CreditState } from "./machines.ts";
+import { askUser, currentQuestion } from "../wallet/ask.ts";
 import { attemptGuard, recoverSigner, solanaSignatureValid, walletSession, walletUid } from "../wallet/session.ts";
 import { ed25519 } from "@noble/curves/ed25519.js";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
@@ -21,12 +22,16 @@ globalThis.localStorage = {
 
 let statuses: string[] = [];
 let onStatus: (() => Response | undefined) | undefined;
+const USDC_ASSET = "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near";
+let seeded: Record<string, unknown> = {};
+const fullCopy = () => ({ quote: { depositAddress: "dep", amountIn: "5100000" }, quoteRequest: seeded });
 const reply = (body: unknown) => new Response(JSON.stringify(body), { status: 200 });
 globalThis.fetch = (async (url: string, init?: RequestInit) => {
   const u = String(url);
   const scripted = u.includes("/v0/status") ? onStatus?.() : undefined;
   if (scripted) return scripted;
-  if (u.includes("/v0/status")) return reply({ status: statuses.shift() ?? "PENDING_DEPOSIT", swapDetails: { destinationChainTxHashes: [{ hash: "0xdelivered" }] }, quoteResponse: { quote: { depositAddress: "dep", amountIn: "5100000" }, quoteRequest: { recipient: ADDRESS } } });
+  if (u.includes("/v0/tokens")) return reply([{ assetId: USDC_ASSET, decimals: 6, blockchain: "base", symbol: "USDC", price: 1, priceUpdatedAt: "", contractAddress: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913" }]);
+  if (u.includes("/v0/status")) return reply({ status: statuses.shift() ?? "PENDING_DEPOSIT", swapDetails: { destinationChainTxHashes: [{ hash: "0xdelivered" }] }, quoteResponse: fullCopy() });
   if (u.includes("/v0/deposit/submit")) return reply({});
   const rpc = JSON.parse(String(init?.body)) as { id: number };
   return reply({ jsonrpc: "2.0", id: rpc.id, result: `0x${(10n ** 12n).toString(16).padStart(64, "0")}` }); // USDC balance
@@ -41,7 +46,8 @@ let n = 0;
 
 function seed(state: CreditState): string {
   const deadline = new Date(Date.now() + 20 * 60_000).toISOString();
-  const quoteRequest = { swapType: "EXACT_OUTPUT", originAsset: "o", destinationAsset: "d", amount: "5000000", refundTo: "r", recipient: ADDRESS, deadline };
+  const quoteRequest = { swapType: "EXACT_OUTPUT", originAsset: USDC_ASSET, destinationAsset: "d", amount: "5000000", refundTo: ADDRESS, recipient: ADDRESS, deadline };
+  seeded = quoteRequest;
   const id = `credit_${++n}`;
   actions.put({
     id,
@@ -50,7 +56,7 @@ function seed(state: CreditState): string {
     usd: 5,
     source: { chain: "evm", address: ADDRESS },
     inferenceAddress: ADDRESS,
-    origin: { chain: "base", symbol: "USDC", assetId: "o", decimals: 6, priceUsd: 1 },
+    origin: { chain: "base", symbol: "USDC", assetId: USDC_ASSET, decimals: 6, priceUsd: 1 },
     quoteRequest,
     quote: { quoteRequest, quote: { depositAddress: "dep", amountIn: "5100000", amountOut: "5000000", minAmountOut: "5000000", deadline } },
     history: [],
@@ -240,6 +246,51 @@ test("a 1Click reply with no status isn't taken for a deposit, and nothing is se
   assert.equal(sends, 0);
 });
 
+test("K32: a copy missing a field is a try-again, not a pass and not a permanent failure", async () => {
+  const id = seed("QUOTED");
+  onStatus = () => reply({ status: "PENDING_DEPOSIT", quoteResponse: { quote: { depositAddress: "dep" }, quoteRequest: { recipient: ADDRESS } } });
+  let sends = 0;
+  const a = await runCredit(id, deps(async () => (sends++, "0x")).d);
+  assert.equal(a.state, "QUOTED");
+  assert.equal(sends, 0);
+});
+
+test("the token sent is rebuilt from 1Click's live list, and a tampered one is refused", async () => {
+  const id = seed("QUOTED");
+  const a = actions.get(id)!;
+  actions.put({ ...a, origin: { ...a.origin, native: true, priceUsd: 0.5 } as never });
+  statuses = ["PENDING_DEPOSIT", "SUCCESS"];
+  let sent: { native?: boolean; priceUsd?: number } | undefined;
+  const done = await runCredit(id, deps((async (asset: never) => ((sent = asset), "0x")) as never).d);
+  assert.equal(done.state, "DONE");
+  assert.equal(sent!.native, false);
+  assert.equal(sent!.priceUsd, 1);
+});
+
+test("a quote refunding anywhere but the paying wallet is refused, even if 1Click agrees", async () => {
+  const id = seed("QUOTED");
+  const a = actions.get(id)!;
+  const quoteRequest = { ...a.quoteRequest, refundTo: "attacker" };
+  actions.put({ ...a, quoteRequest, quote: { ...a.quote, quoteRequest } as never });
+  seeded = quoteRequest;
+  let sends = 0;
+  assert.equal((await runCredit(id, deps(async () => (sends++, "0x")).d)).state, "FAILED");
+  assert.equal(sends, 0);
+});
+
+test("a stale tab can't overwrite a finished any-token action", async () => {
+  const inferenceAddress = `0x${"ef".repeat(20)}`;
+  const quoteRequest = { deadline: "t" };
+  const a = anywhereActions.put({ id: `tab_${++n}`, kind: "anywhere", createdAt: new Date().toISOString(), state: "EXPIRED", token: {}, refundTo: "r", inferenceAddress, quoteRequest, quote: { quoteRequest, quote: { depositAddress: "d" } }, history: [] } as never);
+  onStatus = () => {
+    const now = anywhereActions.get(a.id)!; // the other tab finishes it while this read is in flight
+    anywhereActions.put({ ...now, state: "DONE", history: [...now.history, { at: "t", state: "DONE" }] });
+    return reply({ status: "SUCCESS", swapDetails: {} });
+  };
+  assert.equal(await recheckClosed(inferenceAddress), undefined);
+  assert.equal(anywhereActions.get(a.id)!.state, "DONE");
+});
+
 test("K32: a failed read never lets a send through (unknown address, rate limit, outage)", async () => {
   for (const status of [404, 429, 500]) {
     const id = seed("QUOTED");
@@ -301,7 +352,7 @@ test("an EVM address is refused as a refund address on non-EVM chains", () => {
 
 test("K32: a saved quote that differs from 1Click's own copy is refused before sending", async () => {
   const id = seed("QUOTED");
-  onStatus = () => reply({ status: "PENDING_DEPOSIT", quoteResponse: { quote: { depositAddress: "attacker" }, quoteRequest: { recipient: ADDRESS } } });
+  onStatus = () => reply({ status: "PENDING_DEPOSIT", quoteResponse: { ...fullCopy(), quoteRequest: { ...seeded, refundTo: "attacker" } } });
   let sends = 0;
   const a = await runCredit(id, deps(async () => (sends++, "0x")).d);
   assert.equal(a.state, "FAILED");
@@ -311,7 +362,7 @@ test("K32: a saved quote that differs from 1Click's own copy is refused before s
 test("K32: a matching copy goes through, whatever the address casing", async () => {
   const id = seed("QUOTED");
   let reads = 0;
-  onStatus = () => (reads++ ? reply({ status: "SUCCESS", swapDetails: {} }) : reply({ status: "PENDING_DEPOSIT", quoteResponse: { quote: { depositAddress: "DEP", amountIn: "5100000" }, quoteRequest: { recipient: ADDRESS.toLowerCase() } } }));
+  onStatus = () => (reads++ ? reply({ status: "SUCCESS", swapDetails: {} }) : reply({ status: "PENDING_DEPOSIT", quoteResponse: { quote: { depositAddress: "DEP", amountIn: "5100000" }, quoteRequest: { ...seeded, recipient: ADDRESS.toLowerCase() } } }));
   let sends = 0;
   assert.equal((await runCredit(id, deps(async () => (sends++, "0x")).d)).state, "DONE");
   assert.equal(sends, 1);
@@ -365,6 +416,18 @@ test("K29: the unlock signature must come from the connected account", async () 
   assert.equal(solanaSignatureValid(new Uint8Array(3), msg, ed25519.getPublicKey(priv)), false);
 });
 
+test("questions are shown one at a time and each gets its own answer", async () => {
+  const first = askUser("one");
+  const second = askUser("two", "Send anyway");
+  assert.equal(currentQuestion()!.message, "one");
+  currentQuestion()!.answer(true);
+  assert.equal(await first, true);
+  assert.equal(currentQuestion()!.confirmLabel, "Send anyway");
+  currentQuestion()!.answer(false);
+  assert.equal(await second, false);
+  assert.equal(currentQuestion(), null);
+});
+
 test("a corrupted saved record is skipped instead of crashing the dialogs", () => {
   saved.set("iw:credit:broken", "{not json");
   saved.set("iw:credit:partial", JSON.stringify({ id: "partial", state: "SWAPPING" }));
@@ -386,7 +449,7 @@ test("a $0 sweep is success only if the USDC is already gone", async () => {
 
 test("any-token quotes must echo the amount and not ask for more than the credit is worth", () => {
   const token = { decimals: 6, price: 1, symbol: "USDT" };
-  const req = { originAsset: "a", destinationAsset: "b", recipient: "r", refundTo: "f", swapType: "FLEX_INPUT", amount: "5150000" };
+  const req = { originAsset: "a", destinationAsset: "b", recipient: "r", refundTo: "f", swapType: "FLEX_INPUT", amount: "5150000", deadline: new Date(Date.now() + 3600_000).toISOString() };
   const ok = (quote: object, echo: object = req) => ({ quoteRequest: echo, quote: { depositAddress: "d", amountIn: "5150000", minAmountIn: "5000000", minAmountOut: "5000000", ...quote } }) as never;
   checkAnywhereQuote(req as never, ok({}), token, 5);
   const code = (f: () => void) => assert.throws(f, (e: { code: string }) => e.code === "QUOTE_MISMATCH");
@@ -410,6 +473,9 @@ test("cancelling a hung unlock frees the button and throws away a late signature
   assert.ok(g.wasAbandoned(hung));
   const next = g.begin()!;
   assert.ok(next && !g.wasAbandoned(next));
+  g.cancel(); // a reconnect, then the user locks: every signature still on its way is dropped
+  g.abandon();
+  assert.ok(g.wasAbandoned(next));
 });
 
 test("progress list tells the truth in every failure", () => {
@@ -446,5 +512,6 @@ test("wallet session: one unlock at a time, and a cancelled attempt frees the ne
   assert.equal(g.begin(), null, "no second wallet prompt");
   g.cancel();
   assert.ok(!g.isCurrent(first));
+  assert.ok(!g.wasAbandoned(first), "a brief reconnect isn't the user giving up");
   assert.ok(g.begin());
 });

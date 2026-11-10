@@ -152,17 +152,15 @@ test("quote is idempotent per action id", async () => {
   assert.equal(oc.calls.quote, 1);
 });
 
-test("crash after signing: retry rebroadcasts the SAME tx, never signs a second one", async () => {
+test("a failed broadcast is settled by the chain and never signs a second transaction", async () => {
   const oc = fakeOneClick(["SUCCESS"]);
   const dep = fakeDepositor({ failFirstBroadcast: true });
   const e = engine(oc, dep);
   await e.quote("s1", INTENT);
-  await assert.rejects(e.execute("s1"));
-  assert.equal(e.get("s1")!.state, "DEPOSIT_SIGNED");
   const a = await e.execute("s1");
   assert.equal(a.state, "SUCCESS");
   assert.equal(dep.calls.prepare, 1, "signed exactly once");
-  assert.deepEqual(dep.calls.broadcast, ["raw1", "raw1"], "same signed bytes both times");
+  assert.ok(dep.calls.broadcast.every((raw: string) => raw === "raw1"), "only ever the same signed bytes");
 });
 
 test("concurrent execute calls share one run", async () => {
@@ -177,14 +175,35 @@ test("concurrent execute calls share one run", async () => {
 });
 
 test("dropped deposit (provably never landed) is re-signed once", async () => {
-  const oc = fakeOneClick(["SUCCESS"]);
-  const dep = fakeDepositor({ checks: ["dropped", "confirmed"] });
+  const oc = fakeOneClick(["PENDING_DEPOSIT", "SUCCESS"]);
+  const dep = fakeDepositor({ checks: ["dropped", "dropped", "confirmed"] });
   const e = engine(oc, dep);
   await e.quote("s1", INTENT);
   const a = await e.execute("s1");
   assert.equal(a.state, "SUCCESS");
   assert.equal(dep.calls.prepare, 2);
   assert.equal(a.deposit!.raw, "raw2");
+});
+
+test("one false 'dropped' from a lagging RPC doesn't sign again", async () => {
+  const dep = fakeDepositor({ checks: ["dropped", "confirmed"] });
+  const e = engine(fakeOneClick(["SUCCESS"]), dep);
+  await e.quote("s1", INTENT);
+  assert.equal((await e.execute("s1")).state, "SUCCESS");
+  assert.equal(dep.calls.prepare, 1);
+});
+
+test("'dropped' twice still doesn't sign again if 1Click sees the deposit", async () => {
+  const dep = fakeDepositor({ checks: ["dropped", "dropped"] });
+  const e = engine(fakeOneClick(["KNOWN_DEPOSIT_TX", "SUCCESS"]), dep);
+  await e.quote("s1", INTENT);
+  assert.equal((await e.execute("s1")).state, "SUCCESS");
+  assert.equal(dep.calls.prepare, 1);
+});
+
+test("the swap cap prices the input from the token list, not the quote's own claim", async () => {
+  const oc = fakeOneClick(["SUCCESS"], (r) => void (r.quote.amountIn = "5665258700"));
+  await assert.rejects(engine(oc, fakeDepositor()).quote("s1", INTENT), (e: { code: string }) => e.code === "OVER_CAP");
 });
 
 test("nonce conflict pauses for review instead of guessing", async () => {

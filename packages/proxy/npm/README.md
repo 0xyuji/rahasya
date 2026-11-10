@@ -8,4 +8,4 @@ npx rahasya@0.1.1        # first run asks for your inference key (rahasya.chat â
 
 It prints `http://127.0.0.1:8787/v1` and a local API key for your tools. `npx rahasya@0.1.1 --help` lists the other commands. Pin the version as shown.
 
-Source: [`packages/proxy`](https://github.com/0xyuji/rahasya/tree/master/packages/proxy), bundled into one readable file. Releases are published from GitHub Actions with npm provenance, so each version links to the commit it was built from.
+Source: [`packages/proxy`](https://github.com/0xyuji/rahasya/tree/master/packages/proxy), bundled into one readable file. Releases are built by GitHub Actions and approved by hand before going live.

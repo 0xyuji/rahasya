@@ -7,6 +7,10 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import * as qvl from "@phala/dcap-qvl";
 import { STALE_COLLATERAL_MESSAGES, checkQuoteCertificates, classifyCollateralError, classifyVerifyError } from "./intel-classify.ts";
+import { createHash } from "node:crypto";
+import { join } from "node:path";
+
+const COLLATERAL_SHA256 = "04913856ea32d9e1e7af90ccade8f8fc71f74df813412e14eb98935d2138edcb";
 
 const att = JSON.parse(readFileSync(new URL("../../../../packages/rail/src/venice/fixtures/attestation-gemma-tee.json", import.meta.url), "utf8"));
 const realQuote = new Uint8Array(Buffer.from(att.intel_quote, "hex"));
@@ -49,7 +53,7 @@ test("T-01: every stale-collateral message still exists in the pinned library (u
 
 test("T-01: Intel's 'not found' for the quote's platform fails; network trouble doesn't", () => {
   assert.equal(classifyCollateralError("Failed to fetch TCB info: 404"), "fail");
-  assert.equal(classifyCollateralError("Failed to fetch PCK CRL: 400"), "fail");
+  assert.equal(classifyCollateralError("Failed to fetch PCK CRL: 400"), "unavailable", "only the TCB lookup depends on the quote");
   assert.equal(classifyCollateralError("Failed to fetch TCB info: 429"), "unavailable");
   assert.equal(classifyCollateralError("Failed to fetch QE identity: 502"), "unavailable");
   assert.equal(classifyCollateralError("network access is limited to the collateral relay"), "unavailable");
@@ -59,7 +63,11 @@ test("T-01: Intel's 'not found' for the quote's platform fails; network trouble 
   assert.equal(classifyCollateralError("collateral relay unreachable"), "unavailable");
   assert.equal(classifyCollateralError("Missing TCB-Info-Issuer-Chain"), "unavailable", "about Intel's reply, not the quote");
   assert.equal(classifyCollateralError("Unexpected token < in JSON at position 0"), "unavailable");
-  assert.equal(classifyCollateralError("certificate JSON field is invalid"), "fail", "patterns are anchored");
-  assert.equal(classifyCollateralError("quote parse timeout"), "fail");
-  assert.equal(classifyCollateralError("some new library error"), "fail");
+  assert.equal(classifyCollateralError("Failed to fetch QE identity: 404"), "unavailable");
+  assert.equal(classifyCollateralError("some new library error"), "unavailable", "asks the user; the pre-check and a hash pin cover the quote side");
+});
+
+test("the verifier library is the version the classifier was checked against", () => {
+  const file = join(import.meta.dirname, "..", "..", "..", "..", "node_modules", "@phala", "dcap-qvl", "src", "collateral.js");
+  assert.equal(createHash("sha256").update(readFileSync(file)).digest("hex"), COLLATERAL_SHA256, "dcap-qvl changed: re-check what getCollateral can throw before updating this hash");
 });

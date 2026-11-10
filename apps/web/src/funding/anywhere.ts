@@ -90,6 +90,10 @@ export const anywhereActions = new LocalStore<AnywhereAction>("anywhere", (a) =>
 
 function move(a: AnywhereAction, state: AnywhereState, patch: Partial<AnywhereAction> = {}): AnywhereAction {
   ANYWHERE_MACHINE.assert(a.state, state);
+  const saved = anywhereActions.get(a.id);
+  if (saved && (saved.state !== a.state || saved.history.length !== a.history.length)) {
+    throw new RailError("STALE_ACTION", "This deposit was updated in another tab. Reload to see the latest state.");
+  }
   return anywhereActions.put({ ...a, error: undefined, ...patch, state, history: [...a.history, { at: new Date().toISOString(), state }] });
 }
 
@@ -114,6 +118,7 @@ export function checkAnywhereQuote(req: QuoteRequest, quote: QuoteResponse, toke
   const minAmountIn = units(q.minAmountIn);
   if (amountIn <= 0n || amountIn > BigInt(req.amount)) bad.push("amountIn");
   if (minAmountIn <= 0n || minAmountIn > amountIn) bad.push("minAmountIn");
+  if (!Number.isFinite(Date.parse(q.deadline ?? req.deadline))) bad.push("deadline");
   if (units(q.minAmountOut) < BigInt(Math.floor(usd * 0.9 * 1e6))) bad.push("minAmountOut"); // must deliver about what we show
   if (bad.length) throw new RailError("QUOTE_MISMATCH", `1Click quote doesn't match the request (${bad.join(", ")}). Not showing it.`);
   checkMaxInput({ decimals: token.decimals, priceUsd: token.price, symbol: token.symbol }, q.amountIn, usd);
@@ -257,6 +262,8 @@ export async function recheckClosed(inferenceAddress: string): Promise<AnywhereA
     .slice(0, 3);
   for (const a of recent) {
     const st = await oneclick.status(a.quote.quote.depositAddress!, a.quote.quote.depositMemo).catch(() => undefined);
+    const now = anywhereActions.get(a.id);
+    if (now?.state !== a.state || now.history.length !== a.history.length) continue; // another tab got there first
     const s = st?.status;
     if (s === "SUCCESS") return move(a, "SWAPPED", { oneclickStatus: s, delivered: st!.swapDetails?.amountOut });
     if (s === "REFUNDED") return move(a, "REFUNDED", { oneclickStatus: s });

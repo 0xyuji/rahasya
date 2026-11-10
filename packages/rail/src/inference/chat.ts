@@ -22,9 +22,9 @@ export interface ChatRequest {
   /** Ask for JSON; uses json_schema when supported, else prompt instructions (caller validates). */
   json?: { name: string; schema: Record<string, unknown> };
   /** Truly private only: Intel's check couldn't run even after a retry. Return true to send anyway. */
-  confirmUnverified?: () => boolean | Promise<boolean>;
-  /** The user already agreed for this conversation: no retry, no asking again. */
-  unverifiedAccepted?: boolean;
+  confirmUnverified?: (report: AttestationReport) => boolean | Promise<boolean>;
+  /** The user already agreed for this enclave: no retry, no asking again. */
+  unverifiedAccepted?: (report: AttestationReport) => boolean;
   /** Aborting ends the request and the stream, so Venice stops generating (and billing). */
   signal?: AbortSignal;
 }
@@ -68,6 +68,7 @@ export class VeniceChat {
   private readonly log: Logger;
   private readonly attestations = new Map<string, AttestationReport>();
   private readonly inflight = new Map<string, Promise<AttestationReport>>();
+  private readonly acceptedUnverified = new Map<string, { report: AttestationReport; at: number }>();
   private prices?: { at: number; map: LivePrices };
 
   constructor(opts: VeniceChatOptions) {
@@ -91,6 +92,8 @@ export class VeniceChat {
     const cached = this.attestations.get(model.id);
     const ttl = this.o.attestationTtlMs ?? 10 * 60_000;
     if (!force && cached && Date.now() - Date.parse(cached.fetchedAt) < ttl) return cached;
+    const accepted = this.acceptedUnverified.get(model.id);
+    if (!force && accepted && Date.now() - accepted.at < 60_000) return accepted.report;
     // One attestation in flight per model: a prefetch (switching to Truly private) and a send share it.
     const pending = this.inflight.get(model.id);
     if (pending && !force) return pending;
@@ -144,11 +147,14 @@ export class VeniceChat {
       });
     const unverified = (r: AttestationReport) => r.checks.find((c) => c.name === INTEL_CHECK)?.status === "unavailable";
     let report = await attest();
-    if (req.confirmUnverified && !req.unverifiedAccepted && unverified(report)) {
-      report = await attest(true);
-      if (unverified(report) && !(await req.confirmUnverified())) {
-        throw beforeRequest(new RailError("INTEL_UNAVAILABLE", "Not sent: Intel's check couldn't run. Try again in a moment."));
+    if (req.confirmUnverified && unverified(report)) {
+      if (!req.unverifiedAccepted?.(report)) {
+        report = await attest(true);
+        if (unverified(report) && !(await req.confirmUnverified(report))) {
+          throw beforeRequest(new RailError("INTEL_UNAVAILABLE", "Not sent: Intel's check couldn't run. Try again in a moment."));
+        }
       }
+      if (unverified(report)) this.acceptedUnverified.set(model.id, { report, at: Date.now() }); // no re-attesting every message of an outage
     }
     if (!report.ok) throw beforeRequest(new Error(`attestation failed for ${model.label}; not sending`));
     req.signal?.throwIfAborted(); // stopped while attesting: the paid request never goes out
@@ -225,10 +231,14 @@ async function* plainDeltas(res: Response): AsyncGenerator<ChatDelta> {
   const reader = res.body!.getReader();
   const dec = new TextDecoder();
   let buf = "";
+  let finished = false;
   try {
     for (;;) {
       const { done, value } = await reader.read();
-      if (done) return;
+      if (done) {
+        if (!finished) throw new Error("The reply was cut off before it finished.");
+        return;
+      }
       buf += dec.decode(value, { stream: true });
       let nl: number;
       while ((nl = buf.indexOf("\n")) >= 0) {
@@ -238,7 +248,8 @@ async function* plainDeltas(res: Response): AsyncGenerator<ChatDelta> {
         const data = line.slice(5).trim();
         if (data === "[DONE]") return;
         try {
-          const chunk = JSON.parse(data) as { choices?: Array<{ delta?: { content?: string; reasoning_content?: string } }>; usage?: StreamUsage };
+          const chunk = JSON.parse(data) as { choices?: Array<{ finish_reason?: unknown; delta?: { content?: string; reasoning_content?: string } }>; usage?: StreamUsage };
+          if (chunk.choices?.[0]?.finish_reason != null) finished = true;
           if (chunk.usage) yield { type: "usage", usage: chunk.usage };
           const delta = chunk.choices?.[0]?.delta;
           if (delta?.reasoning_content) yield { type: "reasoning", text: delta.reasoning_content };

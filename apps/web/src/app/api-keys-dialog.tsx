@@ -156,6 +156,7 @@ export function ApiKeysDialog({ open, onClose }: { open: boolean; onClose: () =>
       setEditing(null);
       await load();
     } catch (e) {
+      if ((e as { status?: number }).status === 409) setPhase("needs-login");
       setErr((e as Error).message);
     } finally {
       setBusy(false);
@@ -169,6 +170,7 @@ export function ApiKeysDialog({ open, onClose }: { open: boolean; onClose: () =>
       await call(`/api/keys/${id}`, { method: "DELETE" });
       await load();
     } catch (e) {
+      if ((e as { status?: number }).status === 409) setPhase("needs-login");
       setErr((e as Error).message);
     }
   }

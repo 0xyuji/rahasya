@@ -12,7 +12,7 @@ import {
 import type { JsonStore } from "../store.ts";
 import { RailError, sleep, toUnits } from "../util.ts";
 import { defineMachine } from "../machine.ts";
-import { validateQuote } from "../oneclick/validate.ts";
+import { checkMaxInput, validateQuote } from "../oneclick/validate.ts";
 
 export { validateQuote };
 
@@ -181,10 +181,13 @@ export class SwapEngine {
     const quote = await this.o.oneclick.quote(quoteRequest);
     validateQuote(quoteRequest, quote);
 
-    const inUsd = Number(quote.quote.amountInUsd);
+    // The cap can't rest on the quote's own figure: price the input from the token list too.
+    const listedUsd = (Number(BigInt(quote.quote.amountIn)) / 10 ** origin.decimals) * origin.priceUsd;
+    const inUsd = Math.max(Number(quote.quote.amountInUsd), listedUsd);
     if (!(inUsd <= this.o.maxSwapUsd)) {
       throw new RailError("OVER_CAP", `swap is ~$${inUsd.toFixed(2)}, above the $${this.o.maxSwapUsd} cap`);
     }
+    if (intent.mode === "EXACT_OUTPUT") checkMaxInput(origin, quote.quote.amountIn, Number(intent.amount) * dest.priceUsd);
 
     const now = new Date().toISOString();
     const action: SwapAction = {
@@ -249,7 +252,11 @@ export class SwapEngine {
             break;
           }
           case "DEPOSIT_SIGNED": {
-            await this.depositor(a).broadcast(a.deposit!);
+            // A failed broadcast proves nothing (it may have landed on an earlier try, and a resend then
+            // fails on its old blockhash). The chain decides, in DEPOSIT_SENT.
+            await this.depositor(a)
+              .broadcast(a.deposit!)
+              .catch((e) => this.log.warn("broadcast failed; checking the chain", { id: a.id, err: String(e) }));
             a = this.transition(a, "DEPOSIT_SENT", a.deposit!.txHash);
             say(`Deposit sent on ${CHAIN_LABEL[a.origin.chain]}, waiting for confirmation…`);
             break;
@@ -297,6 +304,7 @@ export class SwapEngine {
     const d = this.depositor(a);
     const until = Date.now() + this.t.depositTimeoutMs;
     let rebroadcasts = 0;
+    let droppedAnswers = 0;
     while (Date.now() < until) {
       const check = await d.check(a.deposit!);
       if (check === "confirmed") {
@@ -319,6 +327,22 @@ export class SwapEngine {
         return a;
       }
       if (check === "dropped") {
+        // One lagging RPC can claim this falsely, and signing again would pay twice: it takes two
+        // answers in a row, and 1Click must also have seen nothing.
+        if (++droppedAnswers < 2) {
+          await sleep(this.t.depositPollMs);
+          continue;
+        }
+        const st = await this.o.oneclick.status(a.quote!.quote.depositAddress!, a.quote!.quote.depositMemo).catch(() => undefined);
+        if (!st) {
+          await sleep(this.t.depositPollMs);
+          continue;
+        }
+        if (st.status !== "PENDING_DEPOSIT") {
+          a = this.transition(a, "DEPOSIT_CONFIRMED", a.deposit!.txHash);
+          say("1Click sees the deposit, so it did land.", a);
+          return a;
+        }
         // Provably never landed: safe to sign a new one, if the quote still has time.
         if (a.depositAttempts >= this.t.maxDepositAttempts) {
           a = this.fail(a, "DEPOSIT_DROPPED", "deposit never landed after retries");
@@ -334,6 +358,7 @@ export class SwapEngine {
         say("Deposit didn't land (network dropped it). Re-signing — the old one can no longer execute.", a);
         return this.signDeposit(a);
       }
+      droppedAnswers = 0;
       // pending: periodically rebroadcast the SAME signed tx (harmless if already seen)
       if (++rebroadcasts % 5 === 0) await d.broadcast(a.deposit!).catch(() => {});
       await sleep(this.t.depositPollMs);

@@ -17,7 +17,7 @@ import { overLimit } from "../../../../../server/ratelimit.ts";
 const INTEL_PCS = "https://api.trustedservices.intel.com";
 const INTEL_ROOT_CA_CRL = "https://certificates.trustedservices.intel.com/IntelSGXRootCA.der";
 
-type Route = { query: (q: URLSearchParams) => boolean; upstream: (q: URLSearchParams) => string; hexBody?: boolean; headers: string[] };
+type Route = { query: (q: URLSearchParams) => boolean; upstream: (q: URLSearchParams) => string; hexBody?: boolean; headers: string[]; quoteSide?: boolean };
 
 const ROUTES: Record<string, Route> = {
   "sgx/certification/v4/pckcrl": {
@@ -29,6 +29,7 @@ const ROUTES: Record<string, Route> = {
     query: (q) => keysAre(q, ["fmspc"]) && /^[0-9a-fA-F]{12}$/.test(q.get("fmspc")!),
     upstream: (q) => `${INTEL_PCS}/tdx/certification/v4/tcb?fmspc=${q.get("fmspc")!.toUpperCase()}`,
     headers: ["TCB-Info-Issuer-Chain", "SGX-TCB-Info-Issuer-Chain"],
+    quoteSide: true, // the FMSPC comes from the quote: "not found" here is an answer about it
   },
   "tdx/certification/v4/qe/identity": {
     query: (q) => keysAre(q, ["update"]) && q.get("update") === "standard",
@@ -68,9 +69,9 @@ export async function GET(req: Request, ctx: { params: Promise<{ path: string[] 
     } catch {
       return new Response("Intel's collateral service didn't answer", { status: 502 });
     }
-    // Only these can be about the quote (no collateral for that FMSPC, a malformed query), so they
-    // reach the verifier as a fail. 401, 403, 429 and 5xx are about us or Intel (audit T-01, A-04).
-    if (res.status === 400 || res.status === 404 || res.status === 410) return new Response(`Intel answered ${res.status}`, { status: res.status });
+    // Only Intel having no TCB data for the quote's FMSPC is about the quote, and reaches the verifier
+    // as a fail. Everything else is Intel's or our trouble (audit T-01, A-07).
+    if (route.quoteSide && res.status === 404) return new Response("not found at Intel", { status: 404 });
     if (!res.ok) return new Response(`upstream ${res.status}`, { status: 502 });
     const raw = await res.arrayBuffer();
     if (raw.byteLength > 512 * 1024) return new Response("upstream too large", { status: 502 });

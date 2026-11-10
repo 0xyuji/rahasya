@@ -25,7 +25,7 @@ export default function Home() {
 
       <ChatApp />
 
-      <footer className={s.foot}>Non-custodial. Your wallet, your keys, your credit.</footer>
+      <footer className={s.foot}>Website chat is non-custodial: your wallet, your keys, your credit.</footer>
     </>
   );
 }

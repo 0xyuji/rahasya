@@ -44,11 +44,11 @@ curl $BASE/chat/completions \
 ```
 
 - **`model`**: one of the ids below. The underlying Venice id (`venice_id`) is accepted too.
-- **`stream: true`**: returns Server-Sent Events in OpenAI chunk format. The last chunk before `[DONE]` carries `usage` (we always request it, because it's how spend is metered).
-- **Tools / function calling**: passed through unchanged for every model except the TEE models (see below).
+- **`stream: true`**: returns Server-Sent Events in OpenAI chunk format. The last chunk before `[DONE]` carries `usage` on every model except the two TEE models.
+- **Tools / function calling**: passed through unchanged for every model except the TEE models (see below). TEE models also ignore `top_p`, `response_format` and image parts.
 - **Other parameters** (`temperature`, `max_tokens`, `top_p`, `response_format`, `reasoning_effort`, …) are passed through to Venice. You may also send `venice_parameters`, but only `disable_thinking` and `strip_thinking_response` are used; other keys are dropped, because per-request features such as web search can't be metered per token. We always set `include_venice_system_prompt: false`, so the model gets only your prompt.
 - **Output limit**: `max_tokens` or `max_completion_tokens`, from 1 to 32768. With neither, the model's maximum applies, and your key is charged a reservation for it until real usage arrives. `n` must be 1.
-- **Timeouts**: a request ends after 3 minutes with no data from Venice, or 30 minutes in total, streaming or not. Use `stream: true` for long replies: a client that hangs up on a silent non-streamed request can leave the key charged the full reservation. If a request times out or fails late, the key keeps its reservation, because Venice may already have generated (and billed) the reply. A quick 500, 502 or 503 is refunded.
+- **Timeouts**: a request ends after 3 minutes with no data from Venice, or 30 minutes in total, streaming or not. Use `stream: true` for long replies: a client that hangs up on a silent non-streamed request can leave the key charged the full reservation. If a request times out or fails late, the key keeps its reservation, because Venice may already have generated (and billed) the reply. A quick 500, 502 or 503 is refunded. When the key was charged, the response carries `x-should-retry: false`.
 
 **Switching from OpenAI:** change the base URL, the API key and the model id; the request and response format stay the same, within the limits below.
 
@@ -128,7 +128,7 @@ Errors use the OpenAI shape: `{ "error": { "message": "...", "type": "<code>", "
 | 401 | `expired_key` | Key passed its expiry |
 | 402 | `insufficient_credit` | API wallet is out of credit. Add credit on the site |
 | 403 | `model_not_allowed` | The key's allowlist excludes this model |
-| 503 | `busy` | Too many large requests at once (one request over 1 MB per key at a time). Retry shortly |
+| 503 | `busy` | Too many large requests at once (one request over 1 MB per key at a time, per server instance). Retry shortly |
 | 413 | `too_large` | Request body over 8 MB (images are sent base64-encoded, so send a few at a time) |
 | 429 | `daily_limit` / `total_limit` | The key hit a spend limit |
 | 429 | `rate_limited` | More than 60 requests in a minute on this key |

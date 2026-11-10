@@ -313,10 +313,14 @@ export async function* decryptStream(
   const reader = res.body!.getReader();
   const dec = new TextDecoder();
   let buf = "";
+  let finished = false;
   try {
     for (;;) {
       const { done, value } = await reader.read();
-      if (done) break;
+      if (done) {
+        if (!finished) throw new Error("The reply was cut off before it finished.");
+        break;
+      }
       buf += dec.decode(value, { stream: true });
       let nl: number;
       while ((nl = buf.indexOf("\n")) >= 0) {
@@ -325,12 +329,13 @@ export async function* decryptStream(
         if (!line.startsWith("data:")) continue;
         const data = line.slice(5).trim();
         if (data === "[DONE]") return;
-        let chunk: { choices?: Array<{ delta?: { content?: string; reasoning_content?: string } }>; usage?: StreamUsage };
+        let chunk: { choices?: Array<{ finish_reason?: unknown; delta?: { content?: string; reasoning_content?: string } }>; usage?: StreamUsage };
         try {
           chunk = JSON.parse(data);
         } catch {
           continue;
         }
+        if (chunk.choices?.[0]?.finish_reason != null) finished = true;
         if (chunk.usage) yield { field: "usage", usage: chunk.usage, text: "", encrypted: false };
         const delta = chunk.choices?.[0]?.delta ?? {};
         for (const [field, v] of [["content", delta.content], ["reasoning", delta.reasoning_content]] as const) {

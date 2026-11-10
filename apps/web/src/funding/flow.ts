@@ -166,18 +166,34 @@ const runs = new Map<string, { done: Promise<CreditAction>; listeners: Set<(a: C
 function recordSent(a: CreditAction, depositTx: string, depositConfirmed: boolean | undefined): CreditAction {
   const saved = actions.get(a.id);
   if (!saved || (saved.state === a.state && saved.history.length === a.history.length)) return move(a, "DEPOSIT_SENT", { depositTx, depositConfirmed });
+  depositConfirmed ||= saved.depositConfirmed;
   const priorTxs = [...(saved.priorTxs ?? []), ...(saved.depositTx && saved.depositTx !== depositTx ? [saved.depositTx] : [])];
   if (CREDIT_MACHINE.can(saved.state, "SWAPPING")) return move(saved, "SWAPPING", { depositTx, depositConfirmed, priorTxs });
   return actions.put({ ...saved, depositTx, depositConfirmed, priorTxs });
 }
 
-/** Anything with page access can edit a saved action; 1Click's copy can't be. The deposit address must be present. */
-function matchesRemote(a: CreditAction, remote: QuoteResponse): boolean {
-  const same = (mine: unknown, theirs: unknown) => theirs === undefined || String(mine).toLowerCase() === String(theirs).toLowerCase();
+/**
+ * Anything with page access can edit a saved action; 1Click's copy can't be. Every field that decides
+ * where money goes must be present there and equal. "missing" is a try-again, "different" a refusal.
+ */
+function checkRemote(a: CreditAction, remote: QuoteResponse): "match" | "missing" | "different" {
   const q = remote.quote;
   const r = remote.quoteRequest;
-  if (!q?.depositAddress) return false;
-  return same(a.quote.quote.depositAddress, q.depositAddress) && same(a.quote.quote.amountIn, q?.amountIn) && same(a.quoteRequest.recipient, r?.recipient) && same(a.quoteRequest.refundTo, r?.refundTo) && same(a.quoteRequest.originAsset, r?.originAsset);
+  const pairs: Array<[unknown, unknown]> = [
+    [a.quote.quote.depositAddress, q?.depositAddress],
+    [a.quote.quote.amountIn, q?.amountIn],
+    [a.quoteRequest.recipient, r?.recipient],
+    [a.quoteRequest.refundTo, r?.refundTo],
+    [a.quoteRequest.originAsset, r?.originAsset],
+    [a.quoteRequest.destinationAsset, r?.destinationAsset],
+    [a.quoteRequest.amount, r?.amount],
+    [a.quoteRequest.swapType, r?.swapType],
+    [a.quoteRequest.deadline, r?.deadline],
+  ];
+  if (pairs.some(([, theirs]) => theirs === undefined || theirs === null)) return "missing";
+  const same = (x: unknown, y: unknown) => String(x).toLowerCase() === String(y).toLowerCase();
+  if (!same(a.quoteRequest.refundTo, a.source.address)) return "different"; // refunds must go back to the paying wallet
+  return pairs.every(([mine, theirs]) => same(mine, theirs)) ? "match" : "different";
 }
 
 /** 1Click has seen something at this address. Anything but a real status string says nothing. */
@@ -231,21 +247,35 @@ async function driveCredit(id: string, deps: RunCreditDeps, onUpdate: (a: Credit
           a = emit(move(a, "SWAPPING", { oneclickStatus: before!.status }));
           break;
         }
-        // After "Send again" the first deposit may still land, so a doubt here goes back to watching it.
-        if (a.resent && (!before?.status || !before.quoteResponse || !matchesRemote(a, before.quoteResponse))) {
-          return emit(move(a, "SEND_UNCONFIRMED", { error: "We couldn't check whether your first deposit arrived, so nothing was sent. Try again in a moment." }));
-        }
-        // No money moves on a quote 1Click can't vouch for: a failed read is a "try again", never a pass.
-        if (!before?.quoteResponse) return emit({ ...a, error: "We couldn't confirm this quote with 1Click, so nothing was sent. Try again in a moment." });
-        if (!matchesRemote(a, before.quoteResponse)) {
+        // No money moves on a quote 1Click can't vouch for. A doubt is a "try again", never a pass;
+        // after "Send again" the first deposit may still land, so it goes back to watching that.
+        const doubt = (error: string) => (a!.resent ? emit(move(a!, "SEND_UNCONFIRMED", { error })) : emit({ ...a!, error }));
+        const remote = before?.status && before.quoteResponse ? checkRemote(a, before.quoteResponse) : "missing";
+        if (remote === "missing") return doubt("We couldn't confirm this quote with 1Click, so nothing was sent. Try again in a moment.");
+        if (remote === "different") {
+          if (a.resent) return doubt("This saved quote doesn't match 1Click's own copy, so nothing was sent.");
           a = emit(move(a, "FAILED", { error: "Refusing to send: this saved quote doesn't match 1Click's own copy." }));
+          break;
+        }
+        // What's sent and what it's worth come from 1Click's live token list, not the saved copy.
+        let origin: ResolvedAsset;
+        try {
+          origin = resolveAsset(await oneclick.tokens(), a.origin.chain, a.origin.symbol as SymbolName);
+        } catch {
+          return doubt("We couldn't check this token's price, so nothing was sent. Try again in a moment.");
+        }
+        try {
+          if (origin.assetId !== a.quoteRequest.originAsset) throw new Error("Saved token doesn't match the quote.");
+          checkMaxInput(origin, a.quote.quote.amountIn, a.usd);
+        } catch (e) {
+          a = emit(move(a, "FAILED", { error: `Refusing to send: ${friendly(e)}` }));
           break;
         }
 
         a = emit(move(a, "SENDING"));
         let tx: string;
         try {
-          tx = await deps.send(a.origin, depositAddress, BigInt(a.quote.quote.amountIn));
+          tx = await deps.send(origin, depositAddress, BigInt(a.quote.quote.amountIn), a.source.address);
         } catch (e) {
           if (e instanceof DepositBroadcastError) {
             // It's on the network; only confirming it failed. Sending again could pay twice, so track it.
@@ -325,8 +355,8 @@ async function driveCredit(id: string, deps: RunCreditDeps, onUpdate: (a: Credit
       }
       case "TOPPING_UP": {
         try {
-          if (deps.topUp) await deps.topUp(`topup_${a.id}`, a.usd);
-          else await veniceFor(deps.inference!).topUp(`topup_${a.id}`, a.usd); // idempotent per id
+          const topUpId = `topup_${a.id}`;
+          await topUpOnce(topUpId, () => (deps.topUp ? deps.topUp(topUpId, a!.usd) : veniceFor(deps.inference!).topUp(topUpId, a!.usd))); // idempotent per id
           a = emit(move(a, "DONE"));
         } catch (e) {
           a = emit({ ...a, error: friendly(e) }); // stay TOPPING_UP: retrying re-sends the same authorization
@@ -345,7 +375,9 @@ const toppingUp = new Map<string, Promise<void>>();
 export function topUpOnce(id: string, run: () => Promise<unknown>): Promise<void> {
   let p = toppingUp.get(id);
   if (!p) {
-    p = run().then(() => {}).finally(() => toppingUp.delete(id));
+    // One signer per id across tabs too: a second tab must find the first one's saved authorization.
+    const locks = typeof navigator !== "undefined" ? navigator.locks : undefined;
+    p = (locks ? locks.request(`topup:${id}`, run) : run()).then(() => {}).finally(() => toppingUp.delete(id));
     toppingUp.set(id, p);
   }
   return p;
