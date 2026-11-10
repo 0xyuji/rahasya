@@ -23,3 +23,12 @@ test("the API docs' structured-output claim matches the catalog", () => {
   for (const m of Object.values(MODELS)) assert.equal(m.structuredOutputs, !m.e2ee, m.key);
   assert.equal(Object.values(MODELS).filter((m) => m.e2ee).length, 2);
 });
+
+test("the npx version in the docs and the Local proxy menu matches the npm package", () => {
+  const root = join(import.meta.dirname, "..", "..", "..", "..", "..");
+  const { version } = JSON.parse(readFileSync(join(root, "packages", "proxy", "npm", "package.json"), "utf8")) as { version: string };
+  const npx = `npx rahasya@${version}`;
+  assert.ok(DOCS["api.md"]!.includes(npx));
+  assert.ok(DOCS["agents.md"]!.includes(npx));
+  assert.ok(readFileSync(join(import.meta.dirname, "..", "editor-dialog.tsx"), "utf8").includes(npx));
+});

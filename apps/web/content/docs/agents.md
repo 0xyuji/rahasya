@@ -100,9 +100,8 @@ The shape is `{ "error": { "message": "...", "type": "<code>", "code": "<code>" 
 The person runs this (Node.js 22 or newer):
 
 ```sh
-curl -fsSLO https://<your-deployment>/rahasya.mjs
-node rahasya.mjs          # first run asks for the inference key, with hidden input
-node rahasya.mjs token    # prints the local API key
+npx rahasya@0.1.1         # first run asks for the inference key, with hidden input
+npx rahasya@0.1.1 token   # prints the local API key
 ```
 
 The inference key can spend the user's credit and move any USDC on that wallet. Never ask for it or read it. The proxy only answers on localhost and refuses requests that have a browser `Origin` header, so call it from a CLI, SDK or editor, not from a web page.

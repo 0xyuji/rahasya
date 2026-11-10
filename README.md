@@ -9,7 +9,7 @@ For judges and screening agents, the fastest checks need no wallet and no money:
 | Do | See |
 |---|---|
 | Open https://rahasya.chat/docs | What it is, the API, and how the money and privacy flows work |
-| `npm install && npm test` | 173 offline tests pass |
+| `npm install && npm test` | 174 offline tests pass |
 | `npm run verify:tee` | A live TEE attestation from the NEAR AI enclave model, checked locally |
 | `npm run quote:dry` | Live NEAR Intents dry quotes for $5 of USDC on Base from SOL, ETH and NEAR |
 
@@ -24,7 +24,7 @@ Uncensored models are useful exactly where people least want an account trail: h
 3. **Chat.** Choose a model and a privacy mode in the prompt bar:
    - **Anonymous**: all allowed models, including Abliterated Large V2 / Large Flash. No account, email or card: you are a wallet address, not a name (pseudonymous). The model host can read the prompt. Funding from your connected wallet links it to the inference wallet on-chain; for an unlinked deposit, use *Any token, anywhere* from a fresh or shielded source (Zcash is supported).
    - **Truly private**: TEE models only. The browser fetches an attestation with a fresh nonce, checks it, and encrypts the conversation to a key inside the enclave (ECDH secp256k1 → HKDF-SHA256 → AES-256-GCM). Venice reports that one of the two TEE models runs on **NEAR AI** enclaves.
-4. **Use it from your tools.** A local proxy (`node rahasya.mjs`, one downloadable file) exposes an OpenAI-compatible API on `127.0.0.1`, so opencode, Cursor, SillyTavern or the OpenAI SDK can spend the same credit.
+4. **Use it from your tools.** A local proxy (`npx rahasya@0.1.1`, or one downloadable file) exposes an OpenAI-compatible API on `127.0.0.1`, so opencode, Cursor, SillyTavern or the OpenAI SDK can spend the same credit.
 
 ## How NEAR fits
 
@@ -54,7 +54,7 @@ npm install
 
 | Do | See |
 |---|---|
-| `npm test` | **173 tests pass** offline: swap state machine (crash-resume never double-sends, dropped deposits re-signed once, refunds, kill switch, spend cap, tampered quotes refused), E2EE round trip, attestation checks against a real captured quote (replayed nonce, swapped key and debug enclave all rejected), wallet derivation golden vector, x402 top-up idempotency, API-key limits and login, privacy-mode context rules, proxy auth/origin/Host guards, the in-browser Intel quote verifier against a real captured quote (tampering and forged collateral rejected) and its worker lockdown, plus a regression test for every audit finding. |
+| `npm test` | **174 tests pass** offline: swap state machine (crash-resume never double-sends, dropped deposits re-signed once, refunds, kill switch, spend cap, tampered quotes refused), E2EE round trip, attestation checks against a real captured quote (replayed nonce, swapped key and debug enclave all rejected), wallet derivation golden vector, x402 top-up idempotency, API-key limits and login, privacy-mode context rules, proxy auth/origin/Host guards, the in-browser Intel quote verifier against a real captured quote (tampering and forged collateral rejected) and its worker lockdown, plus a regression test for every audit finding. |
 | `npm run verify:tee` | A live attestation of the NEAR AI enclave model with a fresh nonce: 7 checks done locally from the raw Intel TDX quote, 3 reported by Venice. Uses a throwaway in-memory wallet. |
 | `npm run quote:dry` | Live dry quotes from NEAR Intents for $5 of USDC on Base from SOL, ETH and NEAR. |
 
@@ -77,8 +77,8 @@ On **https://rahasya.chat**, nothing to install. (To run it yourself: `cp apps/w
 **Local proxy (most private):** account menu → **Local proxy**, then (Node.js 22+, no clone needed):
 
 ```sh
-curl -fsSLO https://rahasya.chat/rahasya.mjs
-node rahasya.mjs          # first run: paste the inference key (hidden input, saved 0600 in ~/.rahasya), then it serves
+npx rahasya@0.1.1         # or: curl -fsSLO https://rahasya.chat/rahasya.mjs && node rahasya.mjs
+                          # first run: paste the inference key (hidden input, saved 0600 in ~/.rahasya), then it serves
                           # http://127.0.0.1:8787/v1 + a local API key
 ```
 

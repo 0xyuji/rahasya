@@ -145,8 +145,11 @@ Errors use the OpenAI shape: `{ "error": { "message": "...", "type": "<code>", "
 If you don't want anything passing through our server, run the proxy on your own machine. It uses your browser **inference wallet** directly, and TEE models are then end-to-end encrypted from your device:
 
 ```sh
-curl -fsSLO https://<your-deployment>/rahasya.mjs   # one readable file; needs Node.js 22+
-node rahasya.mjs     # first run asks for the key from account menu → Local proxy, then serves
+npx rahasya@0.1.1    # needs Node.js 22+; first run asks for the key from account menu → Local proxy, then serves
+
+# or, as one readable file:
+curl -fsSLO https://<your-deployment>/rahasya.mjs
+node rahasya.mjs
 ```
 
 It prints `http://127.0.0.1:8787/v1` and a local API key. Later runs start straight away (`node rahasya.mjs --help` lists the other commands). The site publishes the file's SHA-256 at `/rahasya.mjs.sha256` and shows it in the Local proxy dialog. The file is built from `packages/proxy` in this repo (`npm run -w @pay/proxy bundle`), so you can also run it from a clone with `npm run proxy`.

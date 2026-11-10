@@ -10,6 +10,7 @@ import s from "./credit-dialog.module.css";
 const PORT = 8787;
 const BASE = `http://127.0.0.1:${PORT}/v1`;
 const DEFAULT_MODEL = PRIVACY_MODES.anonymous.chatModel;
+const NPX = "npx rahasya@0.1.1"; // pinned: a test keeps it in step with packages/proxy/npm/package.json
 
 const TOOLS = {
   opencode: {
@@ -93,14 +94,19 @@ export function EditorDialog({ open, onClose }: { open: boolean; onClose: () => 
         Nothing goes through us.
       </p>
 
-      <div className={s.label}>1. Download and start it (needs Node.js 22 or newer)</div>
+      <div className={s.label}>1. Start it (needs Node.js 22 or newer)</div>
+      <pre className={s.code}>{NPX}</pre>
+      <button className={s.copyBtn} onClick={() => copy(NPX)}>
+        Copy command
+      </button>
+      <div className={s.label}>Or download it as one readable file</div>
       <pre className={s.code}>{download}</pre>
       <button className={s.copyBtn} onClick={() => copy(download)}>
         Copy commands
       </button>
       <p className={s.fine}>
         The first run asks for the key from step 2 (input hidden). One readable file, built from our repo. Later runs start straight away;{" "}
-        <code>node rahasya.mjs --help</code> shows the other commands.
+        add <code>--help</code> to see the other commands.
         {sha && (
           <>
             {" "}

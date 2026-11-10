@@ -39,7 +39,7 @@ Next: set up your tool in [Integrations](integrations.md), see every endpoint, m
 | | Website chat | API key | Local proxy |
 |---|---|---|---|
 | Where | This site | Any tool, any machine | Any tool, on your machine |
-| Setup | None | Paste a key | Download one file, run `node rahasya.mjs` |
+| Setup | None | Paste a key | Run `npx rahasya@0.1.1`, or download one file |
 | Pays from | Inference wallet (in your browser) | API wallet (server signs) | Inference wallet (on your machine) |
 | Spend limits per key | – | Daily, total, models, expiry | – |
 | Prompts pass through our server | No | Yes, in transit, never stored | No |
