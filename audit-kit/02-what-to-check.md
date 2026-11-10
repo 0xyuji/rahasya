@@ -6,11 +6,11 @@ Breaking any of them is **High or worse**. For each, the right column says where
 
 | # | Invariant | Enforced in | Existing tests |
 |---|---|---|---|
-| **I1** | Value only ever goes to (a) a 1Click deposit address from a quote that echoes our exact request with recipient = the user's own wallet and refundTo = an address the user gave, or (b) Venice via an x402 authorization signed by the paying wallet | `rail/oneclick/validate.ts`, `web/funding/flow.ts`, `web/funding/anywhere.ts`, `rail/swap/engine.ts` | `engine.test.ts` (tampered recipient) |
+| **I1** | Value only ever goes to (a) a 1Click deposit address from a quote that echoes our exact request with recipient = the user's own wallet and refundTo = an address the user gave, or (b) Venice via an x402 authorization signed by the paying wallet | `rail/oneclick/validate.ts`, `web/funding/flow.ts`, `web/funding/anywhere.ts` (`checkAnywhereQuote`), `rail/swap/engine.ts` | `engine.test.ts` (tampered recipient), `flow.test.ts` |
 | **I2** | Our server never receives the user's wallet key or the inference wallet key | Architecture; `web/wallet/wallet-context.tsx` | Review |
 | **I3** | The derivation message, salt and NEP-413 params never change (or every user silently gets a new wallet) | `rail/wallet/derive.ts` | Golden vector in `derive.test.ts` |
 | **I4** | Truly private mode never sends user/system content in plaintext, never falls back to a non-TEE model, and refuses if any attestation check fails | `rail/inference/chat.ts`, `rail/inference/models.ts` (`resolveModel`), `rail/venice/e2ee.ts` (`newSession`) | `models.test.ts`, `e2ee.test.ts` |
-| **I5** | Anonymous requests never include messages exchanged in Truly private mode; E2EE requests carry no plaintext-role history | `web/chat/conversation.ts`, `proxy/server.ts` (`foldForE2ee`), `web/server/gateway.ts` (`fold`) | `conversation.test.ts`, `proxy/server.test.ts` |
+| **I5** | Anonymous requests never include messages exchanged in Truly private mode; E2EE requests carry no plaintext-role history and at most one system message | `web/chat/conversation.ts`, `proxy/server.ts` (`foldForE2ee`), `web/server/gateway.ts` (`fold`) | `conversation.test.ts`, `proxy/server.test.ts` |
 | **I6** | An attestation passes only if: the nonce is echoed, the model matches, keccak(enclave key) = signing address, it's a TDX v4 quote, REPORTDATA binds our nonce and that address, and the debug bit is off. On the website, Intel's DCAP signature chain must also verify for that same quote (same REPORTDATA); "fail" blocks, "couldn't check" doesn't, and "couldn't check" is only possible for failures that say nothing about the quote (network, rate limits, Intel errors, stale collateral) | `rail/venice/e2ee.ts` (`evaluateAttestation`, `withQuoteVerdict`), `web/tee/*` | `e2ee.test.ts`, `intel-verdict.test.ts`, `web/tee/intel-verify.test.ts`, `web/tee/intel-classify.test.ts` |
 | **I7** | An x402 authorization is persisted before sending; a retry re-sends the same one; a new one is signed only after the old `validBefore` + 120 s; payment only to Venice's known `payTo` | `rail/venice/client.ts` (`topUp`) | Review |
 | **I8** | API key plaintext is never stored; `authorize` checks existence, expiry, model allowlist, daily/total limits and rate **before** any upstream call | `web/server/keys.ts` | `server.test.ts`, probe |
@@ -24,8 +24,28 @@ Breaking any of them is **High or worse**. For each, the right column says where
 | **I16** | Third-party verifier code (`@phala/dcap-qvl`) never runs on our server or in the page: only in a worker that has no storage, no raw network, a `fetch` limited to GET on `/api/tee/pccs/` without cookies, a CSP limiting scripts and connections to our origin (`public/_headers`), and no way to read our cookie routes (they require a header `import()` can't send) | `web/tee/lockdown.ts`, `web/tee/intel-verify.worker.ts`, `web/public/_headers`, `web/server/http.ts` (`fromOurPage`) | `web/tee/lockdown.test.ts` (emulated), `audit-v2.test.ts` (T-02), probe; verified in headless Chrome on the Cloudflare build |
 | **I17** | Only our server decides swap fees and attribution: a client's `appFees` and `referral` are always dropped; ours come from server env (recipient, bps as an integer, capped at 100) | `web/app/api/oneclick/[...path]/route.ts` | Probe ("client appFees and referral are replaced") |
 | **I18** | Every API-key request is charged exactly once: a reservation before the upstream call, corrected once to Venice's reported cost (for streams: as soon as the usage chunk passes, so a client hanging up after `[DONE]` doesn't matter), kept in full if no usage arrives, refunded only if the upstream call failed before generating anything | `web/server/gateway.ts` (`reserve`, `meterStream`, `passthrough`, `e2ee`), `web/server/keys.ts` (`recordSpend`) | `server.test.ts` ("streamed spend settles…", "a stream without usage…") |
+| **I19** | A deposit is sent only from `QUOTED`, by one run per action. Once a wallet has broadcast a transaction, the action returns to `QUOTED` only if the user chooses "Send again" | `web/funding/{flow,machines,senders}.ts` | `flow.test.ts` |
+| **I20** | Every saved state change follows its transition table; a move outside it throws before anything is saved. Saved state names never change, so unfinished deposits resume | `rail/machine.ts`, `web/funding/machines.ts`, `rail/swap/engine.ts` | `machine.test.ts`, `flow.test.ts`, `engine.test.ts` |
+| **I21** | The API keys dialog shows and acts on an account only if the session belongs to the connected wallet; Disconnect ends that session | `web/app/api-keys-dialog.tsx`, `web/wallet/{wallet-context.tsx,session.ts}` | `flow.test.ts` (uid rule); Review |
+| **I22** | The inference wallet is only ever set from a signature by the wallet connected when it arrives. Signatures from another wallet or a cancelled attempt are discarded, and only one unlock runs at a time | `web/wallet/{wallet-context.tsx,session.ts}` | `flow.test.ts` (guard); Review |
+| **I23** | The UI reports credit as added only if a top-up happened or the USDC was already swept (see K20) | `web/funding/{flow,target}.ts` (`confirmSweep`), `web/app/usdc-panel.tsx` | `flow.test.ts` |
+| **I24** | On the website and local proxy, Stop or a client disconnect ends the upstream request; stopping during attestation means the paid request is never sent. The `chatStream` timeout limits silence, not reply length, and a silent upstream is always ended | `rail/venice/{client,e2ee}.ts`, `rail/inference/chat.ts`, `web/chat/use-chat.ts`, `proxy/server.ts` | `chat-stop.test.ts`, `proxy/server.test.ts` |
 
 ## B. Attack checklist (highest value first)
+
+### Funding state machines (new in v3, Critical/High)
+- [ ] Any path to a second send without the user asking: wallet errors after broadcast that aren't `DepositBroadcastError`, joined runs, two tabs (K21), resume after reload (I19)
+- [ ] A real state or edge missing from a table, so an action throws and strands funds; a table edge that is too permissive (I20)
+- [ ] `move()` validates an in-memory copy: can a stale copy overwrite newer saved state in a way that matters?
+- [ ] Actions crossing between the inference and API wallets in the shared dialogs
+
+### Wallet switching and sessions (new in v3, High/Medium)
+- [ ] A late or cancelled unlock signature landing on another wallet; A → B → A switching; a brief reconnect (I22)
+- [ ] API keys session left by another wallet; races between Disconnect and a new sign-in (I21)
+
+### Stop, disconnects and timeouts (new in v3, Medium)
+- [ ] Stop racing the stream, attestation or the first byte; an abort that leaves spend wrong (I18, I24)
+- [ ] A stalled upstream that never hits the silence timer, or a consumer that stops reading
 
 ### Spend someone else's credit (Critical/High)
 - [ ] Any way to get a session for a wallet you don't control: challenge replay, cross-chain confusion (`chain` vs `address` format), NEAR function-call keys counting as ownership, EVM smart-wallet signature edge cases, Solana base58/base64 parsing
@@ -60,7 +80,7 @@ Breaking any of them is **High or worse**. For each, the right column says where
 - [ ] Anything server-side that still assumes Node (`Buffer`, `fs`, `process.cwd`) and fails open on Workers
 
 ### Redirect or lose a deposit (Critical)
-- [ ] A malicious or MITM'd 1Click response: is every field we act on validated? (`quoteAnywhere` checks fewer fields than `validateQuote`; memo handling)
+- [ ] A malicious or MITM'd 1Click response: is every field we act on validated? (`checkAnywhereQuote` is new in v3: compare it with `validateQuote`; memo handling)
 - [ ] localStorage tampering of a saved action (deposit address, amounts) before `runCredit` sends
 - [ ] The `/api/oneclick` proxy rewriting or relaying something dangerous
 - [ ] Refund-address handling (wrong chain format accepted?)

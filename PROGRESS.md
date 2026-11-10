@@ -20,6 +20,7 @@ Working state of the project: what's done, what's left, and decisions made. Upda
 | Cloudflare deploy | ✅ Live at **https://rahasya.chat** (+ www, + rahasya.itadori.workers.dev). Probe 40/40 on rahasya.chat (11-09) | Domain at Namecheap, DNS on Cloudflare (MX/TXT email forwarding kept) |
 | Landing page | ✅ 11-09: header has API · Local proxy · Docs; a line under the prompt (Chat here · API keys · Local proxy); both dialogs open before connecting, with Connect/Unlock buttons | Not yet clicked end to end with a real wallet. Header tool links hidden under 640px (the row covers mobile) |
 | State machines | ✅ 11-10, deployed with the Fable review fixes: transition tables for credit, anywhere and swap; see `docs/state-machines.md` | 134 tests, typecheck and probe 40/40 on rahasya.chat after the deploy. Not yet clicked with a real wallet since the deploy |
+| Audit kit | ✅ v3 built 11-10 (`npm run audit:pack`): 24 invariants, delta guide `audit-kit/06-changes-since-v2.md`, prompt `focused/7-changes-since-v2.md` | Owner is sending it for audit; fix findings before the 11-12 freeze |
 | Body limit | ✅ 8 MB (gateway + proxy), raised from 4 MB after a 413 | Owner hasn't said what they were doing when it hit; ask if it recurs |
 | Demo video | ⬜ Script + narration lines written (in chat, 11-08); owner records, ElevenLabs voice | Show the new header links |
 | X post | ⬜ Not started | Must say it was built at NEAR HACKATHON, tag @NEARProtocol and #NEARHackathon, with the video. Optional tags: @NearLegion, @NearBuilders. Owner posts |

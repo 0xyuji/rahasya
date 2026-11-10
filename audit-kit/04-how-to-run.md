@@ -1,6 +1,6 @@
 # 4. How to run it
 
-**Requirements:** Node 26 or newer (runs the TypeScript directly), npm. macOS or Linux. No Docker.
+**Requirements:** Node 22.18 or newer (runs the TypeScript directly; tests pass on 22, 24 and 26), npm. macOS or Linux. No Docker.
 
 Open `source/` (or clone the repo), then:
 
@@ -11,7 +11,7 @@ npm install
 ## No keys, no money (start here)
 
 ```sh
-npm test               # 112 offline tests: rail 40, web 63, proxy 9. No network, no keys.
+npm test               # 134 offline tests: rail 45, web 79, proxy 10. No network, no keys.
 npm run typecheck      # all packages
 npm run verify:tee     # live TEE attestation with a throwaway in-memory wallet: 10 checks, prints PASS/FAIL
 npm run quote:dry      # live NEAR Intents dry quotes (nothing is created or sent)
@@ -71,7 +71,7 @@ It signs in with throwaway in-memory wallets (no funds) and runs 40 checks:
 - read-only `GET /api/account`
 - deleted keys, logout and "sign out everywhere"
 
-It prints PASS/FAIL and exits non-zero on any failure. Our last run: **40/40** against https://rahasya.chat. Note it uses up your IP's 1Click quote allowance for a minute.
+It prints PASS/FAIL and exits non-zero on any failure. Our last run: **40/40** against https://rahasya.chat on 2026-11-10, after the `d683de2` deploy. Note it uses up your IP's 1Click quote allowance for a minute.
 
 Side effect: a couple of throwaway users and their empty API wallets are created in that deployment's Redis. Their keys are deleted at the end.
 

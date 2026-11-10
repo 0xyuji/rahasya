@@ -4,7 +4,7 @@ No need to report these again. **Do** tell us if one is worse than described, an
 
 | # | Issue | Status |
 |---|---|---|
-| K1 | Spend limits can be exceeded by requests already in flight when a limit is crossed. Every request reserves an estimate up front (prompt size + `max_tokens`, 1–32768, default 2048) that's corrected to the real cost at the end, on the same UTC day | Bounded by concurrency × per-request cost (60/min rate limit). A per-key concurrency cap would close it |
+| K1 | Spend limits can be exceeded by requests already in flight when a limit is crossed. Every request reserves an estimate up front (prompt size + the output limit: `max_tokens`, 1–32768, default the model's maximum) that's corrected to the real cost at the end, on the same UTC day | Bounded by concurrency × per-request cost (60/min rate limit). A per-key concurrency cap would close it |
 | K2 | The rate limit is a fixed 60 requests/minute window per key | Simple by design |
 | K3 | The server holds API wallet keys (custody of Venice credit) | Product decision. Credit can't be withdrawn; USDC is swept to credit immediately. A breach means credit gets spent, not funds stolen (except USDC not yet swept) |
 | K4 | API-key requests, including TEE models, are plaintext on our server while in transit | Documented. Truly private mode on the website and the local proxy avoid it |
@@ -23,6 +23,12 @@ No need to report these again. **Do** tell us if one is worse than described, an
 | K17 | `recordSpend` issues its four writes (day counter, its TTL, total counter, last-used) in parallel, not atomically. A failed write can leave day and total apart by one request's cost, or a day key without a TTL | Bounded to one request per failure. A Redis `MULTI` would close it |
 | K18 | The Worker is also reachable on its `*.workers.dev` URL (same code, same secrets) | Same behaviour as `rahasya.chat`; tell us if anything differs there (e.g. client IP) |
 | K19 | The proxy download (`/rahasya.mjs`) and its SHA-256 come from the same site, so the checksum only catches a broken download, not a compromised deployment. The file is built from the public repo on every deploy, but the build isn't reproducible-verified | Users who don't want to trust the site can run it from a clone (`npm run proxy`). A signed release (or npm provenance) would close it |
+| K20 | After a $0 API-wallet sweep, the browser treats the top-up as already done if it also reads less than $5 of USDC. If both reads lag behind a just-arrived deposit, "Added" can appear before credit exists | Narrow. The USDC stays on the API wallet and is swept on the next out-of-credit request |
+| K21 | One run per credit action is enforced per browser tab. A second tab can mark a send unconfirmed while the first wallet prompt is open, and saved state is last-writer-wins | A double send still needs the user to click "Send again". The Web Locks API would close it |
+| K22 | `tee_provider` ("near-ai") comes from Venice's attestation JSON and isn't bound to the hardware quote | Labelled in the UI and README as Venice's claim. A cross-check against NEAR AI's own attestation would close it |
+| K23 | The UI says an extra deposit to a used 1Click address is "normally refunded, minus a refund fee". 1Click's docs don't cover a second deposit after a completed swap | Not tested with a real second deposit |
+| K24 | Local development and production currently share one Upstash database and `API_WALLET_ENC_KEY` | Operational, not a code issue. To be separated and rotated |
+| K25 | The local proxy cancels upstream only for streamed requests; a non-streamed request finishes after the client disconnects | Bounded by that one request |
 
 ## Fixed after the first audit (2026-11-08, report against commit 6be0d23)
 
@@ -43,6 +49,22 @@ Each fix has a regression test; please re-check them.
 | F-11: no upper bound on `amountIn` | Quote input priced independently (token list) and capped at +5% + $0.50; re-validated right before sending | `audit-regressions.test.ts` |
 | F-12: login message not domain-bound | EIP-4361 (SIWE) for EVM, the same format for Solana, NEP-413 recipient = our host | `server.test.ts` (incl. NEAR full-access check) |
 | F-13 | `GETDEL` for challenges; per-user lock on key creation; rate-limit TTL always set; `GET /api/account` is read-only (POST opens the wallet); expired keys can be renamed; x402 `payTo` pinned to Venice's address; client `appFees` stripped; body read with a streaming 4 MB cap; E2EE non-streamed requests reserve too; proxy logs no upstream error bodies; `__Host-` session cookie over HTTPS; "sign out everywhere" | `server.test.ts`, `topup.test.ts`, probe |
+
+## Fixed after an internal AI review (2026-11-10), not yet reviewed by anyone else
+
+Details and questions are in `06-changes-since-v2.md`. Tests in `apps/web/src/funding/flow.test.ts`, `packages/rail/src/machine.test.ts`, `packages/rail/src/inference/chat-stop.test.ts`, `packages/proxy/src/server.test.ts`.
+
+| Finding | Fix |
+|---|---|
+| R3-01: a send failing after broadcast offered "Confirm and send" again | `DepositBroadcastError` keeps tracking the deposit; a deposit 1Click never sees goes to `SEND_UNCONFIRMED` after 5 minutes |
+| R3-02: "Added" with $0 credited; quotes crossing wallets | `confirmSweep`; dialogs ignore actions for the other wallet |
+| R3-03: API keys session not tied to the wallet, survived Disconnect | `uid` compared with the connected wallet; Disconnect logs out |
+| R3-04: cancelled tools kept billing through the proxy; Stop left the connection open | Upstream aborted; readers cancel on early exit |
+| R3-05: replies cut off at 3 minutes | Timeout limits silence only |
+| R3-06: a hung wallet prompt locked the account menu | Cancel unlock; late signatures discarded |
+| R3-07: Truly private follow-ups got HTTP 400 (two system messages) | One system message on E2EE requests |
+| R3-08: weaker any-token quote checks than documented | `checkAnywhereQuote` |
+| R3-09: wording stronger than the code ("unlinkable", near-ai as fact, "Verified" when Intel was unavailable) | Reworded in the UI and docs |
 
 ## Fixed after the fix-verification review (2026-11-08, report against c3c7624)
 

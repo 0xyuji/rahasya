@@ -12,7 +12,7 @@ after reloads. After 1Click reports SUCCESS, the USDC becomes Venice credit via 
 Server-side scripts use a separate swap state machine (sign -> persist -> broadcast).
 
 Files in scope:
-  apps/web/src/funding/{flow,anywhere,senders,target,local-store}.ts
+  apps/web/src/funding/{machines,flow,anywhere,senders,target,local-store}.ts
   apps/web/src/app/api/oneclick/[...path]/route.ts
   apps/web/src/app/{credit-dialog,anywhere-panel,usdc-panel}.tsx
   packages/rail/src/oneclick/{client,validate,types}.ts
@@ -24,11 +24,13 @@ Invariants to try to break:
   I1  value only goes to a validated 1Click deposit address whose quote echoes recipient = the
       user's own wallet and refundTo = the user's address (or to Venice via x402)
   I13 the proxy forwards only 4 routes and only quotes delivering USDC on Base to DESTINATION_CHAIN
+  I19 a deposit is sent only from QUOTED, once; after broadcast only "Send again" returns to QUOTED
+  I20 every saved state change follows its transition table
+  I23 the UI reports credit as added only if it was
 
 Specifically try:
 - A malicious or MITM'd 1Click response: which fields do we act on that aren't validated?
-  (quoteAnywhere checks fewer fields than validateQuote; depositMemo; amountIn vs minAmountIn;
-  deadline)
+  (compare checkAnywhereQuote with validateQuote; depositMemo; amountIn vs minAmountIn; deadline)
 - localStorage tampering (another script or extension) changing a saved action's depositAddress or
   amount before runCredit sends; the resume logic; "send again" double-deposit behavior
 - Amount handling: decimals, float -> bigint conversion in senders, very small/large amounts,
@@ -41,5 +43,5 @@ Rules: do NOT broadcast transactions or make deposits. Dry quotes (`npm run quot
 Never read .env. Prove findings with node tests (engine.test.ts shows how to fake 1Click and
 depositors) under audit-findings/.
 
-Output: Markdown report following templates/findings-template.md, with the invariant checklist for I1 and I13.
+Output: Markdown report following templates/findings-template.md, with the invariant checklist for I1, I13, I19, I20 and I23.
 ```

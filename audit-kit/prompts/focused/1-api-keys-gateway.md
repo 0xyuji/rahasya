@@ -15,7 +15,7 @@ Files in scope:
   apps/web/src/server/server.test.ts (existing tests + an in-memory Redis fake: setKvForTests)
   scripts/audit/probe.ts (black-box checks)
 Context: apps/web/content/docs/api.md and protocol.md; the audit kit's 02-what-to-check.md and
-03-known-issues.md (skip K1–K18 unless worse than stated).
+03-known-issues.md (skip K1–K25 unless worse than stated).
 
 Invariants to try to break:
   I8  key plaintext never stored; authorize checks existence, expiry, allowlist, limits, rate before upstream

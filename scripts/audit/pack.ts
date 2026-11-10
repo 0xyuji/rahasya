@@ -1,5 +1,5 @@
 /**
- * Builds dist/rahasya-audit-kit-v2-<commit>(.zip): the audit-kit/ docs at the top level plus a
+ * Builds dist/rahasya-audit-kit-v3-<commit>(.zip): the audit-kit/ docs at the top level plus a
  * source/ snapshot made with `git archive` (tracked files only, so .env files, data/ and
  * node_modules can't end up in it). Refuses to run with uncommitted changes, so the
  * snapshot always matches COMMIT.txt. Then scans the result for anything secret-shaped.
@@ -14,12 +14,13 @@ import { join } from "node:path";
 const root = execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim();
 const run = (cmd: string, args: string[], cwd = root) => execFileSync(cmd, args, { cwd, encoding: "utf8" });
 
-if (run("git", ["status", "--porcelain"]).trim()) {
+// Untracked files can't reach the snapshot (git archive is tracked-only), so only tracked changes block.
+if (run("git", ["status", "--porcelain", "--untracked-files=no"]).trim()) {
   console.error("Uncommitted changes. Commit first so the snapshot matches the commit id.");
   process.exit(1);
 }
 const commit = run("git", ["rev-parse", "--short", "HEAD"]).trim();
-const KIT_VERSION = "v2";
+const KIT_VERSION = "v3";
 const folderOnly = process.argv.includes("--folder");
 const name = `rahasya-audit-kit-${KIT_VERSION}-${commit}`;
 const dist = join(root, "dist");
@@ -35,6 +36,7 @@ const tar = join(dist, `${name}.tar`);
 run("git", ["archive", "--format=tar", `--output=${tar}`, "HEAD"]);
 run("tar", ["-xf", tar, "-C", join(stage, "source")]);
 rmSync(tar);
+rmSync(join(stage, "source", "PROGRESS.md"), { force: true }); // internal working notes, not part of the review
 writeFileSync(
   join(stage, "source", "COMMIT.txt"),
   `${run("git", ["rev-parse", "HEAD"]).trim()}\n${run("git", ["log", "-1", "--format=%cI %s"]).trim()}\n`,

@@ -1,6 +1,6 @@
 # 1. System overview
 
-Full user-facing explanation: `source/apps/web/content/docs/protocol.md`. API reference: `source/apps/web/content/docs/api.md`.
+Full user-facing explanation: `source/apps/web/content/docs/protocol.md`. API reference: `source/apps/web/content/docs/api.md`. Every stateful flow and how it is enforced: `source/docs/state-machines.md`.
 
 ## Components
 
@@ -61,14 +61,15 @@ Full user-facing explanation: `source/apps/web/content/docs/protocol.md`. API re
 | Prompts | In transit only (API keys); never stored | Disclosure |
 | Partner key, Upstash token, `API_WALLET_ENC_KEY`, fee settings | Worker secrets (`wrangler secret`); `.dev.vars` locally (gitignored) | Quota abuse / data access / API wallet decryption |
 
-## Code map (security-relevant, ~1,900 of ~6,800 lines)
+## Code map (security-relevant)
 
 | Area | Files |
 |---|---|
 | Gateway, keys, sessions, API wallet | `apps/web/src/server/{gateway,keys,login,api-wallet,crypto,http,kv,rpc,ratelimit}.ts`, `apps/web/src/app/api/{auth,keys,account,v1}/**/route.ts` |
 | E2EE + attestation | `packages/rail/src/venice/e2ee.ts`; in-browser Intel signature check: `apps/web/src/tee/{lockdown,intel-verify.worker,intel-verify}.ts`, relay `apps/web/src/app/api/tee/pccs/[...path]/route.ts` |
 | x402 + SIWX | `packages/rail/src/venice/{client,siwx}.ts` |
-| Inference wallet derivation | `packages/rail/src/wallet/derive.ts`, `apps/web/src/wallet/wallet-context.tsx` |
+| Inference wallet derivation and unlock | `packages/rail/src/wallet/derive.ts`, `apps/web/src/wallet/{wallet-context.tsx,session.ts}` |
+| State machines | `packages/rail/src/machine.ts`, `apps/web/src/funding/machines.ts`, `SWAP_MACHINE` in `packages/rail/src/swap/engine.ts` |
 | Browser funding | `apps/web/src/funding/{flow,anywhere,senders,target,local-store}.ts`, `apps/web/src/app/api/oneclick/[...path]/route.ts` |
 | Quote validation, swap engine | `packages/rail/src/oneclick/validate.ts`, `packages/rail/src/swap/engine.ts`, `packages/rail/src/chains/*.ts` |
 | Privacy-mode context rules | `apps/web/src/chat/conversation.ts`, `packages/rail/src/inference/{chat,models}.ts` |

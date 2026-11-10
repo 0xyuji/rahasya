@@ -12,21 +12,22 @@ on Cloudflare Workers (OpenNext).
 
 The audit kit is in the folder next to this source (or in audit-kit/ in the repo). Read in order:
   01-overview.md, 02-what-to-check.md, 03-known-issues.md, 04-how-to-run.md,
-  05-changes-since-v1.md,
+  05-changes-since-v1.md, 06-changes-since-v2.md,
   templates/findings-template.md
 and from the source: apps/web/content/docs/protocol.md and apps/web/content/docs/api.md.
 
 Steps:
 1. Run `npm install`, `npm test`, `npm run typecheck`, `npm run verify:tee`. Record the results.
    If a local dev server is running (with its own .env.local), also run `npm run audit:probe`.
-2. For EACH invariant I1–I18 in 02-what-to-check.md: trace the enforcing code, look for missing
+2. For EACH invariant I1–I24 in 02-what-to-check.md: trace the enforcing code, look for missing
    checks, races, type confusion, unvalidated input, and differences between the browser, server
    and proxy versions of the same logic. Try to break it.
 3. Work through every item of the attack checklist (section B). Prefer proving over reasoning:
    write small tests (node --test) or scripts against localhost that demonstrate the issue.
    Put them in audit-findings/.
-4. Skip K1–K18 in 03-known-issues.md unless you can show one is worse than described. Re-check
-   the items under "Fixed after kit v1" and "Fixed while preparing kit v1".
+4. Skip K1–K25 in 03-known-issues.md unless you can show one is worse than described. Re-check
+   the "Fixed" sections, and read commit d683de2 (browser funding) hardest: it has had no
+   outside review. Answer the questions in 06-changes-since-v2.md.
 
 Hard rules:
 - NEVER run anything that sends a transaction, makes a deposit or tops up credit (no
@@ -39,7 +40,7 @@ Output a single Markdown report in the format of templates/findings-template.md:
 2. Summary: severity counts; which invariants hold or are broken.
 3. Findings, most severe first. Each with: severity, invariant, file:line, what's wrong, exploit
    scenario, proof (path in audit-findings/ or exact steps + expected vs actual), suggested fix.
-4. The invariant checklist I1–I18: holds / broken (F-xx) / not checked, plus how you checked.
+4. The invariant checklist I1–I24: holds / broken (F-xx) / not checked, plus how you checked.
 5. Coverage: what you reviewed, what you couldn't (and why), what needs a human or live funds.
 
 Be concrete. No generic advice that doesn't point at code in this repo. If unsure whether
