@@ -62,12 +62,37 @@ function Pre({ children }: { children?: ReactNode }) {
   );
 }
 
-export function DocBody({ md }: { md: string }) {
+/** Copy or download the whole page as Markdown, to hand to an agent. */
+function RawFile({ text: body, href }: { text: string; href: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className={s.fileBar}>
+      <span>Give this file to your agent</span>
+      <button
+        type="button"
+        className={s.fileBtn}
+        onClick={() => {
+          void navigator.clipboard.writeText(body);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1200);
+        }}
+      >
+        {copied ? "Copied" : "Copy"}
+      </button>
+      <a className={s.fileBtn} href={href} download={`${brand.repo}-agents.md`}>
+        Download .md
+      </a>
+    </div>
+  );
+}
+
+export function DocBody({ md, raw }: { md: string; raw?: string }) {
   const [origin, setOrigin] = useState(process.env.NEXT_PUBLIC_SITE_URL ?? "https://<your-deployment>");
   useEffect(() => setOrigin(window.location.origin), []);
 
   return (
     <article className={s.body}>
+      {raw && <RawFile text={personalize(md, origin)} href={raw} />}
       <Markdown
         remarkPlugins={[remarkGfm]}
         components={{

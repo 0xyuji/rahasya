@@ -20,5 +20,5 @@ export default async function DocPage({ params }: { params: Promise<{ slug: stri
   const { slug } = await params;
   const p = PAGES.find((x) => x.slug === slug);
   if (!p) notFound();
-  return <DocBody md={readDoc(p.file)} />;
+  return <DocBody md={readDoc(p.file)} raw={"raw" in p ? p.raw : undefined} />;
 }

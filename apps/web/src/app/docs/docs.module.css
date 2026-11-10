@@ -232,3 +232,32 @@
     opacity: 1;
   }
 }
+
+.fileBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 1.6em;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  font-size: 14px;
+  color: var(--paper-dim);
+}
+.fileBar span {
+  flex: 1 1 auto;
+}
+.fileBtn {
+  border: 1px solid var(--line-strong);
+  background: var(--ink-2);
+  border-radius: 7px;
+  padding: 4px 10px;
+  font-size: 13px;
+  color: var(--paper-dim);
+  text-decoration: none;
+  cursor: pointer;
+}
+.fileBtn:hover {
+  color: var(--paper);
+}

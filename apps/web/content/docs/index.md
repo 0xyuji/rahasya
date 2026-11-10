@@ -2,6 +2,8 @@
 
 Uncensored and abliterated models, paid with whatever token you hold. No account, no card. Use them in the chat on this site, or from opencode, Cursor, SillyTavern and anything else that speaks the OpenAI API.
 
+**Using an AI agent?** Give it [the agent guide](agents.md), one file with everything it needs.
+
 ## Quick start: chat
 
 1. **Connect a wallet** (top right). EVM, Solana or NEAR all work. Your wallet is your login.

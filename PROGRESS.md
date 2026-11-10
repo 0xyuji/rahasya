@@ -14,13 +14,14 @@ Working state of the project: what's done, what's left, and decisions made. Upda
 | API keys (hosted) | ✅ Mostly tested | curl, opencode, daily limit (429), model allowlist (403) verified. Deleted key (401) and sign out everywhere are covered by the live probe (40/40, 11-09). Open: second same-amount top-up on mainnet (offline test F-02 passes) |
 | opencode integration | ✅ Done | Generated config lists all non-TEE models, prices, `enabled_providers`. Needs `opencode.jsonc` + `--standalone` |
 | Local proxy | ✅ One-file download: `curl -fsSLO https://rahasya.chat/rahasya.mjs && node rahasya.mjs` (Node 22+). First run asks for the key | Tested from the live site with a throwaway key. npm: account made with passkey 2FA (11-08); package `packages/proxy/npm` + workflow `.github/workflows/publish-proxy.yml` ready, first publish after the repo is public (see "npm release") |
-| Security audit | ✅ Audit 1 (F-01..F-13), audit 2 (V2-01..V2-08) and the fix review (R-01, R-02, T-01, T-02, notes) fixed, with regression tests. 134 tests (rail 45, web 79, proxy 10) | Residual: two colluding NEAR RPCs (K10); set trusted `BASE_RPC_URL` / `NEAR_RPC_URL` for production |
+| Security audit | ✅ Audit 1 (F-01..F-13), audit 2 (V2-01..V2-08) and the fix review (R-01, R-02, T-01, T-02, notes) fixed, with regression tests. 135 tests (rail 45, web 80, proxy 10) | Residual: two colluding NEAR RPCs (K10); set trusted `BASE_RPC_URL` / `NEAR_RPC_URL` for production |
 | Name / brand | ✅ **Rahasya**, `rahasya.chat` bought | `rahasya.ai` only if we win |
 | GitHub | ✅ Private repo `0xyuji/rahasya` | Must be **public** by the deadline (ask first) |
 | Cloudflare deploy | ✅ Live at **https://rahasya.chat** (+ www, + rahasya.itadori.workers.dev). Probe 40/40 on rahasya.chat (11-09) | Domain at Namecheap, DNS on Cloudflare (MX/TXT email forwarding kept) |
 | Landing page | ✅ 11-09: header has API · Local proxy · Docs; a line under the prompt (Chat here · API keys · Local proxy); both dialogs open before connecting, with Connect/Unlock buttons | Not yet clicked end to end with a real wallet. Header tool links hidden under 640px (the row covers mobile) |
 | State machines | ✅ 11-10, deployed with the Fable review fixes: transition tables for credit, anywhere and swap; see `docs/state-machines.md` | 134 tests, typecheck and probe 40/40 on rahasya.chat after the deploy. Not yet clicked with a real wallet since the deploy |
 | Audit kit | ✅ v3 built 11-10 (`npm run audit:pack`): 24 invariants, delta guide `audit-kit/06-changes-since-v2.md`, prompt `focused/7-changes-since-v2.md` | Owner is sending it for audit; fix findings before the 11-12 freeze |
+| Agent guide | ✅ 11-10, live at `/docs/agents` and `/agents.md` (Copy and Download buttons); a test keeps its model table in sync | Source: `apps/web/content/docs/agents.md` |
 | Body limit | ✅ 8 MB (gateway + proxy), raised from 4 MB after a 413 | Owner hasn't said what they were doing when it hit; ask if it recurs |
 | Demo video | ⬜ Script + narration lines written (in chat, 11-08); owner records, ElevenLabs voice | Show the new header links |
 | X post | ⬜ Not started | Must say it was built at NEAR HACKATHON, tag @NEARProtocol and #NEARHackathon, with the video. Optional tags: @NearLegion, @NearBuilders. Owner posts |
@@ -56,6 +57,8 @@ npm run cf:deploy                      # builds, then deploys (plain `opennextjs
 - Bundle: about 2.9 MB gzipped. The free plan limit is 3 MB; the paid plan ($5/month) allows 10 MB.
 
 ## npm release (after the repo is public)
+
+**State (11-10):** 0.1.0 is already on npm, published by hand by the owner on 11-08, so step 5 below is done. It predates the 11-10 proxy fixes (no upstream hang-up). Next release is 0.1.1, after the repo is public and the audit is back.
 
 Trusted publisher set up on npmjs.com (11-08): GitHub Actions, 0xyuji/rahasya, `publish-proxy.yml`, **stage only** (both "Allow" boxes unchecked). Status: pending validation until 2026-11-10 16:32 UTC. Owner chose to release later, once fully confident; if it expires, delete it on npmjs.com and add it again (same values).
 
