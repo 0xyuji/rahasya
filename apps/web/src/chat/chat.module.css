@@ -282,8 +282,18 @@
 .dock {
   position: sticky;
   bottom: 0;
-  padding: 16px 20px 18px;
-  background: linear-gradient(to top, var(--ink) 70%, transparent);
+  padding: 8px 20px 18px;
+  background: var(--ink); /* solid, so scrolled text can't show through "New chat" */
+}
+.dock::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  height: 24px;
+  background: linear-gradient(to top, var(--ink), transparent);
+  pointer-events: none;
 }
 .dockInner {
   width: min(760px, 100%);

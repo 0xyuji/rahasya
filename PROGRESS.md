@@ -3,7 +3,7 @@
 Working state of the project: what's done, what's left, and decisions made. Update this file whenever something changes; it's the first thing to read when picking the work back up.
 
 **Deadline:** 2026-11-14 23:59 UTC (NEAR hackathon, submit once). Judging 2026-11-16, results by 2026-11-18.
-**Last updated:** 2026-11-10 (Fable review items 1-10 fixed and deployed; branch `review-fixes`; pick up from "Next steps")
+**Last updated:** 2026-11-10 (Fable review items 1-10 fixed and deployed; pick up from "Next steps")
 
 ## Status
 
@@ -27,11 +27,11 @@ Working state of the project: what's done, what's left, and decisions made. Upda
 
 ## Next steps (in order)
 
-0. ~~Deploy the state-machine work and Fable review fixes~~ ✅ 11-10. Merge `review-fixes` to master and add a small CI workflow. Before going public: trim this file, rotate the Upstash token and 1Click partner key. Real-wallet run must also cover: Cancel unlock, an API-wallet top-up.
+0. ~~Deploy the state-machine work and Fable review fixes~~ ✅ 11-10. ~~Merge to master, add CI~~ ✅ 11-10. Before going public: trim this file, rotate the Upstash token and 1Click partner key. Real-wallet run must also cover: Cancel unlock, an API-wallet top-up.
 1. Owner reviews the new landing page on rahasya.chat; adjust if wanted. Click the dialogs' Connect wallet / NEAR wallet / Unlock buttons with a real wallet.
 2. Pick tracks (unanswered). Suggested: privacy (primary), agents, maybe security.
 3. ~~Probe rahasya.chat~~ ✅ 40/40. ~~Venice accepts both output-limit fields~~ ✅.
-4. (11-10: plain NEAR sent from a NEAR wallet through Any token worked on the live site, before the deploy: wNEAR route, $5.17 credited in a few minutes.) Truly private follow-up messages failed on the live site with HTTP 400 ("Encrypted field is not valid hex", two system messages in a row); fixed in `buildContext` and deployed. One real end-to-end run on the live site: pay with a non-USDC token, chat in both modes, use an API key. Check the fee lands in `rahasya.near`'s NEAR Intents balance.
+4. (11-10: plain NEAR sent from a NEAR wallet through Any token worked on the live site, before the deploy: wNEAR route, $5.17 credited in a few minutes.) Truly private follow-up messages failed on the live site with HTTP 400 ("Encrypted field is not valid hex", two system messages in a row); fixed in `buildContext` and deployed. Confirmed after the deploy with a real wallet: Anonymous then Truly private follow-up, Verified enclave, Intel check passes in the browser. Still to run (free): Cancel unlock, NEAR tab default, fee check. Skipped on purpose (owner, to save $5): real-money API-wallet top-up and reload during a swap; both have offline tests only. One real end-to-end run on the live site: pay with a non-USDC token, chat in both modes, use an API key. Check the fee lands in `rahasya.near`'s NEAR Intents balance.
 5. ~~Deleted key → 401, sign out everywhere~~ ✅ (live probe). Second same-amount top-up: do it during step 4, real money (offline test F-02 passes).
 6. Demo video (2–3 min): pay with any token → chat → Truly private with the Intel check → API key in opencode.
 7. ~~Check the README against HACKATHON.md~~ ✅ 11-10 (clean keyless copy: `npm install`, tests on Node 22/24/26, `verify:tee`, `quote:dry` all pass). Name the chosen tracks in the README. Make the repo public (ask first).
