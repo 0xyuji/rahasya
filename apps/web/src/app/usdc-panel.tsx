@@ -33,6 +33,7 @@ export function UsdcPanel({ onCredited }: { onCredited: () => void }) {
     setMsg(null);
     try {
       const usd = t.kind === "api" ? await sweepApiWallet() : await creditIdleUsdc(w.inference!);
+      if (!usd) throw new Error("Nothing was credited yet. Try again in a minute.");
       setMsg({ ok: true, text: `Added $${usd.toFixed(2)} of credit.` });
       onCredited();
       void refresh();

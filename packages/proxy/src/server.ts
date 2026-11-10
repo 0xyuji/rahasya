@@ -35,6 +35,11 @@ export function createProxy(o: ProxyOptions): Server {
 
   return createServer(async (req, res) => {
     const t0 = Date.now();
+    // The tool hung up before the reply finished: hang up on Venice too, or it keeps generating and billing.
+    const hangup = new AbortController();
+    res.on("close", () => {
+      if (!res.writableFinished) hangup.abort();
+    });
     try {
       // Browsers attach Origin; editor tools and SDKs don't. Refusing it blocks
       // any website from driving this localhost proxy with your credit.
@@ -53,13 +58,14 @@ export function createProxy(o: ProxyOptions): Server {
         const body = await readJson(req);
         const def = resolve(body.model);
         if (!def) return send(res, 400, err(`Unknown model "${body.model}". GET /v1/models lists the allowed ones.`));
-        if (def.e2ee) await e2ee(res, chat, def, body, log);
-        else await passthrough(res, o.venice, def, body);
+        if (def.e2ee) await e2ee(res, chat, def, body, log, hangup.signal);
+        else await passthrough(res, o.venice, def, body, hangup.signal);
         log(`${def.key} ${def.e2ee ? "(e2ee) " : ""}${Date.now() - t0}ms`);
         return;
       }
       return send(res, 404, err("Not found. This proxy serves /v1/models and /v1/chat/completions."));
     } catch (e) {
+      if (hangup.signal.aborted) return void res.end(); // nobody is listening any more
       if (e instanceof VeniceInsufficientBalance) {
         return send(res, 402, err(`Out of credit.${o.creditUrl ? ` Add credit at ${o.creditUrl}` : ""}`, "insufficient_credit"));
       }
@@ -78,11 +84,11 @@ function toOpenAiModel(m: ModelDef) {
   return { id: m.key, object: "model", created: 0, owned_by: "venice", name: m.label, venice_id: m.id, privacy: m.tier, e2ee: m.e2ee };
 }
 
-async function passthrough(res: ServerResponse, venice: VeniceClient, def: ModelDef, body: Record<string, unknown>) {
+async function passthrough(res: ServerResponse, venice: VeniceClient, def: ModelDef, body: Record<string, unknown>, signal: AbortSignal) {
   const vp = (body.venice_parameters as Record<string, unknown> | undefined) ?? {};
   const upstream = { ...body, model: def.id, venice_parameters: { ...vp, include_venice_system_prompt: false } };
   if (body.stream) {
-    const r = await venice.chatStream(upstream);
+    const r = await venice.chatStream(upstream, {}, signal);
     res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" });
     const reader = r.body!.getReader();
     for (;;) {
@@ -96,7 +102,7 @@ async function passthrough(res: ServerResponse, venice: VeniceClient, def: Model
   }
 }
 
-async function e2ee(res: ServerResponse, chat: VeniceChat, def: ModelDef, body: Record<string, unknown>, log: (l: string) => void) {
+async function e2ee(res: ServerResponse, chat: VeniceChat, def: ModelDef, body: Record<string, unknown>, log: (l: string) => void, signal: AbortSignal) {
   if (body.tools) log(`note: ${def.key} is end-to-end encrypted; tool definitions were dropped (E2EE can't carry them)`);
   const messages = foldForE2ee((body.messages as Array<{ role: string; content: unknown }>) ?? []);
   const { deltas } = await chat.stream({
@@ -105,6 +111,7 @@ async function e2ee(res: ServerResponse, chat: VeniceChat, def: ModelDef, body: 
     messages,
     maxTokens: typeof body.max_tokens === "number" ? body.max_tokens : undefined,
     temperature: typeof body.temperature === "number" ? body.temperature : undefined,
+    signal,
   });
   const id = `chatcmpl-${Date.now().toString(36)}`;
   const created = Math.floor(Date.now() / 1000);

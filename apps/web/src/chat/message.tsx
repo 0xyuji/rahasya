@@ -34,7 +34,7 @@ export function Message({ m, attestation, onUnlock }: { m: Msg; attestation?: At
 
   const model = MODELS[m.modelKey];
   return (
-    <div className={s.assistant}>
+    <div className={s.assistant} data-status={m.status}>
       {m.reasoning && (
         <button className={s.thinkingToggle} onClick={() => setShowThinking((v) => !v)} aria-expanded={showThinking}>
           {m.status === "streaming" && !m.text ? "Thinking…" : showThinking ? "Hide thinking" : "Show thinking"}
@@ -78,7 +78,11 @@ export function Message({ m, attestation, onUnlock }: { m: Msg; attestation?: At
           {m.status === "stopped" && <span>stopped</span>}
           {attestation && (
             <button className={`${s.verified} ${attestation.ok && !m.plaintextChunks ? "" : s.unverified}`} onClick={() => setShowProof((v) => !v)}>
-              {attestation.ok && !m.plaintextChunks ? "Verified enclave" : "Verification issue"}
+              {!attestation.ok || m.plaintextChunks
+                ? "Verification issue"
+                : attestation.checks.find((c) => c.name === INTEL_CHECK)?.status === "unavailable"
+                  ? "Enclave checked, Intel check unavailable"
+                  : "Verified enclave"}
             </button>
           )}
         </div>
@@ -112,7 +116,7 @@ function Proof({ a, plaintextChunks }: { a: AttestationReport; plaintextChunks: 
     <div className={s.proof}>
       <p className={s.proofLead}>
         Your message was encrypted in this browser to a key that, according to its attestation, lives only inside a hardware enclave ({a.teeHardware ?? "TEE"}
-        {a.gpu ? ` + NVIDIA ${a.gpu}` : ""}, run by {a.teeProvider ?? "the provider"}). Before sending, we checked:
+        {a.gpu ? ` + NVIDIA ${a.gpu}` : ""}{a.teeProvider ? `, run by ${a.teeProvider} according to Venice` : ""}). Before sending, we checked:
       </p>
       <div className={s.proofGroup}>Checked in your browser</div>
       <ul className={s.checks}>

@@ -2,6 +2,7 @@
 
 import { appFetch } from "../app/app-fetch";
 import { useWallet } from "../wallet/wallet-context";
+import { confirmSweep, inferenceUsdc } from "./flow";
 
 export interface ResolvedTarget {
   kind: "inference" | "api";
@@ -23,13 +24,12 @@ export async function sweepApiWallet(): Promise<number> {
 export function useCreditTarget(): ResolvedTarget {
   const w = useWallet();
   if (w.creditTarget.kind === "api") {
+    const { address } = w.creditTarget;
     return {
       kind: "api",
-      address: w.creditTarget.address,
+      address,
       label: "your API wallet",
-      topUp: async () => {
-        await sweepApiWallet();
-      },
+      topUp: async () => confirmSweep(await sweepApiWallet(), () => inferenceUsdc(address)),
     };
   }
   return { kind: "inference", address: w.inference?.address ?? null, label: "your inference wallet" };

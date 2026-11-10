@@ -3,7 +3,7 @@
 Working state of the project: what's done, what's left, and decisions made. Update this file whenever something changes; it's the first thing to read when picking the work back up.
 
 **Deadline:** 2026-11-14 23:59 UTC (NEAR hackathon, submit once). Judging 2026-11-16, results by 2026-11-18.
-**Last updated:** 2026-11-09 (end of day; pick up from "Next steps")
+**Last updated:** 2026-11-10 (Fable review items 1-10 fixed and deployed; branch `review-fixes`; pick up from "Next steps")
 
 ## Status
 
@@ -11,28 +11,30 @@ Working state of the project: what's done, what's left, and decisions made. Upda
 |---|---|---|
 | Website chat (anonymous + Truly private) | ✅ Done, tested on mainnet | In-browser Intel DCAP check shows "Genuine Intel hardware ✓" |
 | Funding (any token → 1Click → USDC on Base → Venice x402) | ✅ Done, tested on mainnet | 1% app fee on swaps, half to `rahasya.near` |
-| API keys (hosted) | ✅ Mostly tested | curl, opencode, daily limit (429), model allowlist (403) verified. Open: deleted key (401), sign out everywhere, second same-amount top-up (F-02) |
+| API keys (hosted) | ✅ Mostly tested | curl, opencode, daily limit (429), model allowlist (403) verified. Deleted key (401) and sign out everywhere are covered by the live probe (40/40, 11-09). Open: second same-amount top-up on mainnet (offline test F-02 passes) |
 | opencode integration | ✅ Done | Generated config lists all non-TEE models, prices, `enabled_providers`. Needs `opencode.jsonc` + `--standalone` |
 | Local proxy | ✅ One-file download: `curl -fsSLO https://rahasya.chat/rahasya.mjs && node rahasya.mjs` (Node 22+). First run asks for the key | Tested from the live site with a throwaway key. npm: account made with passkey 2FA (11-08); package `packages/proxy/npm` + workflow `.github/workflows/publish-proxy.yml` ready, first publish after the repo is public (see "npm release") |
-| Security audit | ✅ Audit 1 (F-01..F-13), audit 2 (V2-01..V2-08) and the fix review (R-01, R-02, T-01, T-02, notes) fixed, with regression tests. 113 tests (rail 40, web 64, proxy 9) | Residual: two colluding NEAR RPCs (K10); set trusted `BASE_RPC_URL` / `NEAR_RPC_URL` for production |
+| Security audit | ✅ Audit 1 (F-01..F-13), audit 2 (V2-01..V2-08) and the fix review (R-01, R-02, T-01, T-02, notes) fixed, with regression tests. 134 tests (rail 45, web 79, proxy 10) | Residual: two colluding NEAR RPCs (K10); set trusted `BASE_RPC_URL` / `NEAR_RPC_URL` for production |
 | Name / brand | ✅ **Rahasya**, `rahasya.chat` bought | `rahasya.ai` only if we win |
 | GitHub | ✅ Private repo `0xyuji/rahasya` | Must be **public** by the deadline (ask first) |
 | Cloudflare deploy | ✅ Live at **https://rahasya.chat** (+ www, + rahasya.itadori.workers.dev). Probe 40/40 on rahasya.chat (11-09) | Domain at Namecheap, DNS on Cloudflare (MX/TXT email forwarding kept) |
 | Landing page | ✅ 11-09: header has API · Local proxy · Docs; a line under the prompt (Chat here · API keys · Local proxy); both dialogs open before connecting, with Connect/Unlock buttons | Not yet clicked end to end with a real wallet. Header tool links hidden under 640px (the row covers mobile) |
+| State machines | ✅ 11-10, deployed with the Fable review fixes: transition tables for credit, anywhere and swap; see `docs/state-machines.md` | 134 tests, typecheck and probe 40/40 on rahasya.chat after the deploy. Not yet clicked with a real wallet since the deploy |
 | Body limit | ✅ 8 MB (gateway + proxy), raised from 4 MB after a 413 | Owner hasn't said what they were doing when it hit; ask if it recurs |
 | Demo video | ⬜ Script + narration lines written (in chat, 11-08); owner records, ElevenLabs voice | Show the new header links |
-| X post | ⬜ Not started | Tag @NEARProtocol #NEARHackathon, with the video |
+| X post | ⬜ Not started | Must say it was built at NEAR HACKATHON, tag @NEARProtocol and #NEARHackathon, with the video. Optional tags: @NearLegion, @NearBuilders. Owner posts |
 | Hackathon submission | ⬜ Not started | Print the payload and get an explicit yes first |
 
 ## Next steps (in order)
 
+0. ~~Deploy the state-machine work and Fable review fixes~~ ✅ 11-10. Merge `review-fixes` to master and add a small CI workflow. Before going public: trim this file, rotate the Upstash token and 1Click partner key. Real-wallet run must also cover: Cancel unlock, an API-wallet top-up.
 1. Owner reviews the new landing page on rahasya.chat; adjust if wanted. Click the dialogs' Connect wallet / NEAR wallet / Unlock buttons with a real wallet.
 2. Pick tracks (unanswered). Suggested: privacy (primary), agents, maybe security.
 3. ~~Probe rahasya.chat~~ ✅ 40/40. ~~Venice accepts both output-limit fields~~ ✅.
-4. One real end-to-end run on the live site: pay with a non-USDC token, chat in both modes, use an API key. Check the fee lands in `rahasya.near`'s NEAR Intents balance.
-5. Finish the API checks: deleted key → 401, sign out everywhere, second same-amount top-up.
+4. (11-10: plain NEAR sent from a NEAR wallet through Any token worked on the live site, before the deploy: wNEAR route, $5.17 credited in a few minutes.) Truly private follow-up messages failed on the live site with HTTP 400 ("Encrypted field is not valid hex", two system messages in a row); fixed in `buildContext` and deployed. One real end-to-end run on the live site: pay with a non-USDC token, chat in both modes, use an API key. Check the fee lands in `rahasya.near`'s NEAR Intents balance.
+5. ~~Deleted key → 401, sign out everywhere~~ ✅ (live probe). Second same-amount top-up: do it during step 4, real money (offline test F-02 passes).
 6. Demo video (2–3 min): pay with any token → chat → Truly private with the Intel check → API key in opencode.
-7. Make the repo public (ask first), re-read https://nearhackathon.com/HACKATHON.md, check the README against it.
+7. ~~Check the README against HACKATHON.md~~ ✅ 11-10 (clean keyless copy: `npm install`, tests on Node 22/24/26, `verify:tee`, `quote:dry` all pass). Name the chosen tracks in the README. Make the repo public (ask first).
 8. X post, then the submission (payload shown, explicit yes).
 
 ## Deploy (Cloudflare Workers)
@@ -65,12 +67,15 @@ Trusted publisher set up on npmjs.com (11-08): GitHub Actions, 0xyuji/rahasya, `
 ## Submission facts (collected from the owner)
 
 - Only project this person submits to the hackathon (11-08): no Q-015 disclosure needed.
-- Still to collect before submitting: tracks, team lead name, contact email, team size, demo post link, consent. Payout account: ask explicitly (don't assume `rahasya.near`, the fee recipient).
+- Keep rahasya.chat up through 2026-11-18, ideally 11-25 (Q-012); the repo stays public through judging (Q-014).
+- Still to collect before submitting: tracks, team lead name, contact email, team size (`1`, `2 - 4`, `4 - 6`, `6 - 8`, `8+`), demo post link, consent (read the notice verbatim). Payout account: ask explicitly (don't assume `rahasya.near`, the fee recipient).
 
 ## Decisions
 
 | Date | Decision | Why |
 |---|---|---|
+| 11-10 | Tracks: `privacy`, `security`, `agents`. README says "three rounds of review", no claim about who | Owner said go; who ran the audits is unconfirmed |
+| 11-10 | State machines are a small in-repo table (`defineMachine`), no XState; audited top-up, sweep and metering code left as is | Bundle is near the 3 MB limit; those paths are already explicit and regression-tested. State names are persisted in browsers: never rename them |
 | 11-08 | Domain stays registered at Namecheap; DNS moves to Cloudflare | Workers custom domains need a Cloudflare zone |
 | 11-08 | Host on Cloudflare Workers, not Vercel | Owner's choice; the domain is there. Server code was kept fetch-only for this |
 | 11-08 | Name: Rahasya, "Private AI, kept in confidence" | Domain bought |

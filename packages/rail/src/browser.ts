@@ -1,6 +1,7 @@
 // Browser-safe surface of the rail: no node:fs / process.env / server-held keys.
 export * from "./assets.ts";
 export * from "./util.ts";
+export * from "./machine.ts";
 export * from "./log.ts";
 export type { RecordStore } from "./store.ts";
 export * from "./oneclick/client.ts";

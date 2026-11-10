@@ -9,9 +9,9 @@ For judges and screening agents, the fastest checks need no wallet and no money:
 | Do | See |
 |---|---|
 | Open https://rahasya.chat/docs | What it is, the API, and how the money and privacy flows work |
-| `npm install && npm test` | 113 offline tests pass |
-| `npm run audit:probe -- https://rahasya.chat` | 40 black-box security checks against the live site pass (throwaway in-memory wallets, no funds) |
-| `npm run verify:tee` | A live TEE attestation from the NEAR AI enclave, checked locally |
+| `npm install && npm test` | 134 offline tests pass |
+| `npm run verify:tee` | A live TEE attestation from the NEAR AI enclave model, checked locally |
+| `npm run quote:dry` | Live NEAR Intents dry quotes for $5 of USDC on Base from SOL, ETH and NEAR |
 
 ## The problem
 
@@ -19,11 +19,11 @@ Uncensored models are useful exactly where people least want an account trail: h
 
 ## What it does
 
-1. **Connect any wallet** (EVM, Solana or NEAR). It's your login. One signature derives a separate **inference wallet** in your browser. It's recreated from the same signature on any device and never stored or sent anywhere.
+1. **Connect any wallet** (EVM, Solana or NEAR). It's your login. One signature derives (the first EVM unlock asks twice, to prove the wallet signs the same way every time) a separate **inference wallet** in your browser. It's recreated from the same signature on any device and never stored or sent anywhere.
 2. **Add credit with any token.** NEAR Intents (1Click) swaps from 216 tokens on 39 chains into USDC on your *own* inference wallet. Your browser then pays Venice over **x402** (USDC on Base). Non-custodial: we never hold funds or keys.
 3. **Chat.** Choose a model and a privacy mode in the prompt bar:
-   - **Anonymous**: all allowed models, including Abliterated Large V2 / Large Flash. You're unlinkable (wallet auth, no account), but the model host can read the prompt.
-   - **Truly private**: TEE models only. The browser fetches an attestation with a fresh nonce, checks it, and encrypts the conversation to a key inside the enclave (ECDH secp256k1 → HKDF-SHA256 → AES-256-GCM). One of the two TEE models runs on **NEAR AI** enclaves.
+   - **Anonymous**: all allowed models, including Abliterated Large V2 / Large Flash. No account, email or card: you are a wallet address, not a name (pseudonymous). The model host can read the prompt. Funding from your connected wallet links it to the inference wallet on-chain; for an unlinked deposit, use *Any token, anywhere* from a fresh or shielded source (Zcash is supported).
+   - **Truly private**: TEE models only. The browser fetches an attestation with a fresh nonce, checks it, and encrypts the conversation to a key inside the enclave (ECDH secp256k1 → HKDF-SHA256 → AES-256-GCM). Venice reports that one of the two TEE models runs on **NEAR AI** enclaves.
 4. **Use it from your tools.** A local proxy (`node rahasya.mjs`, one downloadable file) exposes an OpenAI-compatible API on `127.0.0.1`, so opencode, Cursor, SillyTavern or the OpenAI SDK can spend the same credit.
 
 ## How NEAR fits
@@ -31,12 +31,20 @@ Uncensored models are useful exactly where people least want an account trail: h
 | Piece | Role |
 |---|---|
 | **NEAR Intents 1Click** | Every deposit: any token, any chain → USDC on the user's own Base address. Exact-output (connected wallet) and flex-input (send from anywhere) quotes, status tracking, refunds to the user's address. Quotes go through a small proxy that adds our partner key, a 1% app fee (1Click keeps half) and a referral tag; clients can't change any of them. |
-| **NEAR AI** | The default Truly private model (`e2ee-deepseek-v4-1-flash-1017-abliterated`) is attested as `tee_provider: near-ai` (Intel TDX + NVIDIA H100). |
+| **NEAR AI** | The default Truly private model (`e2ee-deepseek-v4-1-flash-1017-abliterated`) is reported by Venice's attestation as `tee_provider: near-ai` (Intel TDX + NVIDIA H100). That field isn't bound to the hardware quote, so the UI shows it as Venice's claim. |
 | **NEAR wallets** | Login + derivation via `@hot-labs/near-connect` (NEP-413 `signMessage`). |
+
+## Hackathon tracks
+
+| Track | What fits | See |
+|---|---|---|
+| `privacy` (Privacy & Private AI) | Truly private mode: fresh-nonce TEE attestation checked in the browser, Intel signature chain verified locally, then end-to-end encryption to the enclave | `npm run verify:tee`, "Who can see what" below |
+| `security` (AI Security & Defense) | Tools get a spending key, not a wallet: daily and total limits, model allowlist, expiry, rate limit. The API wallet only ever holds Venice credit, which can't be withdrawn | [docs/api.md](apps/web/content/docs/api.md) "Limits", `apps/web/src/server/keys.ts` |
+| `agents` (Agent Economy) | Coding agents pay for inference through an OpenAI-compatible API or local proxy, from x402 credit funded through NEAR Intents. A person adds the credit; the agent spends it inside the key's limits | "Use it from opencode, Cursor and other tools" below |
 
 ## Try it
 
-Requirements: Node 26+ (runs the TypeScript directly), npm.
+Requirements: Node 22.18 or newer (runs the TypeScript directly; tests pass on 22, 24 and 26), npm.
 
 ```sh
 npm install
@@ -46,13 +54,13 @@ npm install
 
 | Do | See |
 |---|---|
-| `npm test` | **113 tests pass** offline: swap state machine (crash-resume never double-sends, dropped deposits re-signed once, refunds, kill switch, spend cap, tampered quotes refused), E2EE round trip, attestation checks against a real captured quote (replayed nonce, swapped key and debug enclave all rejected), wallet derivation golden vector, x402 top-up idempotency, API-key limits and login, privacy-mode context rules, proxy auth/origin/Host guards, the in-browser Intel quote verifier against a real captured quote (tampering and forged collateral rejected) and its worker lockdown, plus a regression test for every audit finding. |
+| `npm test` | **134 tests pass** offline: swap state machine (crash-resume never double-sends, dropped deposits re-signed once, refunds, kill switch, spend cap, tampered quotes refused), E2EE round trip, attestation checks against a real captured quote (replayed nonce, swapped key and debug enclave all rejected), wallet derivation golden vector, x402 top-up idempotency, API-key limits and login, privacy-mode context rules, proxy auth/origin/Host guards, the in-browser Intel quote verifier against a real captured quote (tampering and forged collateral rejected) and its worker lockdown, plus a regression test for every audit finding. |
 | `npm run verify:tee` | A live attestation of the NEAR AI enclave model with a fresh nonce: 7 checks done locally from the raw Intel TDX quote, 3 reported by Venice. Uses a throwaway in-memory wallet. |
 | `npm run quote:dry` | Live dry quotes from NEAR Intents for $5 of USDC on Base from SOL, ETH and NEAR. |
 
 ### 2. The website (your own wallet, real money, minimum $5)
 
-On **https://rahasya.chat**, nothing to install. (To run it yourself: `cp apps/web/.env.example apps/web/.env.local`, add a free Reown project id and an Upstash Redis database, then `npm run dev` for http://localhost:3000.)
+On **https://rahasya.chat**, nothing to install. (To run it yourself: `cp apps/web/.env.example apps/web/.env.local`, add a free Reown project id, then `npm run dev` for http://localhost:3000. Chat and funding need nothing else; API keys also need the Upstash Redis and encryption key values described in that file.)
 
 | Do | See |
 |---|---|
@@ -64,7 +72,7 @@ On **https://rahasya.chat**, nothing to install. (To run it yourself: `cp apps/w
 
 ### 3. Use it from opencode, Cursor and other tools
 
-**API keys (hosted):** account menu → **API keys** → sign in with your wallet → **Add credit** to your API wallet → **New key** (optional daily/total limit, model allowlist, expiry). Paste the key into any OpenAI-compatible tool with base URL `https://rahasya.chat/api/v1`. Quick check: `curl https://rahasya.chat/api/v1/chat/completions -H "Authorization: Bearer nsk_…" -H "content-type: application/json" -d '{"model":"gemma-4-uncensored","messages":[{"role":"user","content":"hi"}],"max_tokens":20}'` returns a reply and its cost. The dialog shows a ready-made opencode config. Full reference: [docs/api.md](apps/web/content/docs/api.md); per-tool setup: [docs/integrations.md](apps/web/content/docs/integrations.md).
+**API keys (hosted):** account menu → **API keys** → sign in with your wallet → **Add credit** to your API wallet → **New key** (optional daily/total limit, model allowlist, expiry). Paste the key into any OpenAI-compatible tool with base URL `https://rahasya.chat/api/v1`. Quick check: `curl https://rahasya.chat/api/v1/chat/completions -H "Authorization: Bearer nsk_…" -H "content-type: application/json" -d '{"model":"gemma-4-uncensored","messages":[{"role":"user","content":"hi"}],"max_tokens":20}'` returns a reply and its token usage. The dialog shows a ready-made opencode config. Full reference: [docs/api.md](apps/web/content/docs/api.md); per-tool setup: [docs/integrations.md](apps/web/content/docs/integrations.md).
 
 **Local proxy (most private):** account menu → **Local proxy**, then (Node.js 22+, no clone needed):
 
@@ -95,10 +103,11 @@ On the site at **`/docs`** (rendered from `apps/web/content/docs/`):
 | Party | Anonymous mode | Truly private mode |
 |---|---|---|
 | Our server | 1Click quote requests (addresses, amounts) through `/api/oneclick`, which only adds the partner key. No prompts, no keys, no balances. Chat goes browser → Venice directly. | same |
-| Venice | Your inference wallet address and your prompts | Your inference wallet address and **ciphertext only**\* |
+| Venice | Your IP (the browser calls Venice directly), your inference wallet address and your prompts | Your IP, your inference wallet address and **ciphertext only**\* |
 | Model host | Prompts (Venice strips identity; "private" tier = Venice-hosted, not retained; "anonymized" tier = third-party host) | Only the attested enclave can decrypt |
 | 1Click solver | Deposit and delivery addresses and amounts | same |
 | Anyone on-chain | Deposit from your wallet to a 1Click address, USDC arriving at your inference wallet, x402 payment to Venice | same |
+| Base RPC provider | Your IP and inference wallet address (balance reads about every 30 s while unlocked) | same |
 | Reown relay | Connection metadata, only when using WalletConnect QR / mobile wallets | same |
 
 \* The browser checks that the attestation is fresh, bound to the key it encrypts to, and from a non-debug Intel TDX enclave, and verifies Intel's signature chain itself (in a sandboxed worker, with Intel's data relayed through our server so your browser contacts no third party). Which software runs inside the enclave isn't pinned yet, so against Venice itself this relies on Venice running the code it publishes.
@@ -117,8 +126,8 @@ Conversations live in browser memory only. Switching from Truly private back to 
 
 - **Website chat is non-custodial.** The inference key exists only in the browser's memory, or in `~/.rahasya` (mode 0600) for the local proxy; the server never sees it.
 - **API keys are server-assisted.** The server holds each user's API wallet key, AES-256-GCM sealed in Redis (`API_WALLET_ENC_KEY`, AAD bound to the user). That wallet only holds Venice credit, which can't be withdrawn; incoming USDC is swept into credit. API keys are stored as SHA-256 hashes only.
-- **Audits:** three rounds of independent review (findings F-01..F-13, V2-01..V2-08, R-01/R-02, T-01/T-02), all fixed with a regression test each. The record is in [`audit-kit/03-known-issues.md`](audit-kit/03-known-issues.md).
-- **Audit kit:** [`audit-kit/`](audit-kit/00-START-HERE.md) has the invariants, threat model, known issues, ready-made auditor prompts and a black-box probe (`npm run audit:probe`). `npm run audit:pack` builds a shareable zip.
+- **Audits:** three rounds of review (findings F-01..F-13, V2-01..V2-08, R-01/R-02, T-01/T-02), all fixed with a regression test each. The record is in [`audit-kit/03-known-issues.md`](audit-kit/03-known-issues.md).
+- **Audit kit:** [`audit-kit/`](audit-kit/00-START-HERE.md) has the invariants, threat model, known issues, ready-made auditor prompts and a black-box probe (`npm run audit:probe -- https://rahasya.chat` runs 40 checks against a deployment; it creates throwaway test users and moves no funds). `npm run audit:pack` builds a shareable zip.
 - **Headers:** anti-framing (`frame-ancestors 'none'` + `X-Frame-Options: DENY`), so wallet prompts can't be clickjacked; `Referrer-Policy: no-referrer`; `nosniff`; HSTS; a locked-down `Permissions-Policy`. The pages have no strict `default-src` CSP because the WalletConnect modal loads from many origins, but the Intel-verifier worker gets its own (`script-src`/`connect-src 'self'`, `apps/web/public/_headers`), and cookie-authenticated routes only answer the site's own `fetch()`.
 - **Local proxy:** binds to 127.0.0.1, requires a local bearer token (constant-time compare), refuses any request with a browser `Origin`, and never logs prompts.
 - **`npm audit`** reports upstream advisories, all inside third-party libraries (none in our code):
@@ -138,6 +147,7 @@ packages/proxy    local OpenAI-compatible proxy (one-file bundle: rahasya.chat/r
 apps/web          Next.js site + API (wallet connect, add credit, chat, API keys, docs), on Cloudflare Workers
 scripts/audit     black-box probe and audit-kit packer
 docs/demo-runs    recorded mainnet runs
+docs/state-machines.md  every stateful flow: where its table lives, what to leave alone, DOM state attributes
 audit-kit         security audit brief, auditor prompts, findings template
 ```
 
@@ -147,14 +157,14 @@ audit-kit         security audit brief, auditor prompts, findings template
 - Intel's signature chain is verified in the browser, but the enclave's software measurement isn't pinned yet, and NVIDIA GPU evidence is reported by Venice's verifier (shown as such in the UI). Until pinning is done, Truly private mode protects you from everyone except Venice itself, where it relies on Venice running the enclave software it publishes. API keys and the local proxy don't run the in-browser Intel check.
 - One-click funding from a connected NEAR wallet isn't built yet; NEAR tokens work through *Any token, anywhere*.
 - Venice credit can't be withdrawn. Top up in small amounts.
-- On exact-output swaps the small slippage buffer (0.5%) may not be refunded.
+- On exact-output swaps the small slippage buffer (0.5%) may not be refunded. 1Click's docs say unused input is refunded; on a $5 mainnet swap we didn't see it come back.
 - TEE models can't carry tool calls through E2EE, so agentic editors should use a non-TEE model.
 
 ## Built with
 
 **Services:** NEAR Intents 1Click, Venice AI (x402, TEE/E2EE), NEAR AI and Phala enclaves (via Venice), Base, Solana, Cloudflare Workers (hosting), Upstash Redis (sessions, API keys, spend counters).
 
-**Libraries:** Next.js, React, viem, wagmi, Reown AppKit, `@hot-labs/near-connect`, `@solana/kit`, `@solana/web3.js`, `@solana/spl-token`, `@x402/core`, `@x402/evm`, `@noble/curves`, `@noble/hashes`, `@noble/ciphers`, `@phala/dcap-qvl` (Intel TDX quote verification), `@upstash/redis`, `@opennextjs/cloudflare` + wrangler, esbuild, zod, `@tanstack/react-query`, react-markdown, remark-gfm, qrcode.
+**Libraries:** Next.js, React, viem, wagmi, Reown AppKit, `@hot-labs/near-connect`, `@solana/kit`, `@solana/web3.js`, `@solana/spl-token`, `@solana-program/system`, `@x402/core`, `@x402/evm`, `@noble/curves`, `@noble/hashes`, `@noble/ciphers`, `@phala/dcap-qvl` (Intel TDX quote verification), `@upstash/redis`, `@opennextjs/cloudflare` + wrangler, esbuild, zod, `@tanstack/react-query`, react-markdown, remark-gfm, qrcode, dotenv, TypeScript, tsx.
 
 **AI assistance:** Most of the code was written with Claude Code (Anthropic) as the coding agent, directed and reviewed by the team.
 

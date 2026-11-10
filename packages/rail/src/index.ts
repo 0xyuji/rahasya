@@ -3,6 +3,7 @@ export * from "./config.ts";
 export * from "./log.ts";
 export * from "./store.ts";
 export * from "./util.ts";
+export * from "./machine.ts";
 export * from "./oneclick/client.ts";
 export * from "./oneclick/types.ts";
 export * from "./chains/types.ts";

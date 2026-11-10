@@ -40,8 +40,8 @@ export function ConnectButton() {
   };
 
   return (
-    <div className={s.root} ref={root}>
-      <button type="button" className={s.button} onClick={onMain} aria-haspopup="menu" aria-expanded={open} disabled={w.busy}>
+    <div className={s.root} ref={root} data-wallet-session={w.session}>
+      <button type="button" className={s.button} onClick={onMain} aria-haspopup="menu" aria-expanded={open}>
         {w.source && <span className={`${s.dot} ${w.inference ? s.dotOn : ""}`} aria-hidden />}
         {label}
       </button>
@@ -106,6 +106,10 @@ export function ConnectButton() {
                 <button role="menuitem" className={s.item} onClick={() => (setOpen(false), w.lock())}>
                   Lock
                 </button>
+              ) : w.busy ? (
+                <button role="menuitem" className={s.item} onClick={() => (setOpen(false), w.cancelUnlock())}>
+                  Cancel unlock
+                </button>
               ) : (
                 <button role="menuitem" className={s.item} onClick={() => (setOpen(false), void w.unlock())}>
                   Unlock
@@ -119,6 +123,7 @@ export function ConnectButton() {
         </div>
       )}
       {w.error && <p className={s.error}>{w.error}</p>}
+      {w.notice && !open && <p className={`${s.error} ${s.notice}`}>{w.notice}</p>}
       <EditorDialog open={w.toolPanel === "proxy"} onClose={() => w.setToolPanel(null)} />
       <ApiKeysDialog open={w.toolPanel === "keys"} onClose={() => w.setToolPanel(null)} />
       <CreditDialog open={w.creditOpen} onClose={() => w.setCreditOpen(false)} onCredited={refresh} />

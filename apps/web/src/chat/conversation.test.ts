@@ -23,7 +23,9 @@ test("E2EE request sends no plaintext-role history: everything is user/system (e
   const history = [msg("user", "q1", "private"), msg("assistant", "a1", "private")];
   const ctx = buildContext(history, { text: "q2", mode: "private", modelKey: "deepseek-abliterated-tee" });
   assert.ok(ctx.every((m) => m.role === "user" || m.role === "system"), "assistant role would travel unencrypted");
-  assert.match(ctx[1]!.content, /Assistant: a1/);
+  assert.match(ctx[0]!.content, /Assistant: a1/);
+  assert.equal(ctx.filter((m) => m.role === "system").length, 1, "Venice rejects two system messages in a row on E2EE models");
+  assert.match(ctx[0]!.content, /^You are /, "the identity line is kept");
   assert.equal(ctx.at(-1)!.content, "q2");
 });
 

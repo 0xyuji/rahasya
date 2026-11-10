@@ -11,13 +11,15 @@ import {
 import { useAppKitConnection } from "@reown/appkit-adapter-solana/react";
 import { useAppKit, useAppKitAccount, useAppKitProvider, useDisconnect } from "@reown/appkit/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { hexToBytes, type LocalAccount } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { WagmiProvider, useSignMessage } from "wagmi";
+import { appFetch } from "../app/app-fetch";
 import { evmSender, solanaSender, type DepositSender, type SolanaWallet } from "../funding/senders";
 import { initAppKit, wagmiAdapter } from "./appkit";
 import { nearConnector } from "./near";
+import { attemptGuard, walletSession, type WalletSession } from "./session";
 
 initAppKit();
 const queryClient = new QueryClient();
@@ -46,8 +48,13 @@ interface WalletState {
   inference: LocalAccount | null;
   /** Same key as hex, only for the explicit "Use in your editor" reveal. Never persisted. */
   inferenceKey: `0x${string}` | null;
+  session: WalletSession;
   busy: boolean;
   error: string | null;
+  /** Something the user should know while a wallet prompt is open. */
+  notice: string | null;
+  /** Give up on a wallet prompt that never answered. */
+  cancelUnlock: () => void;
   /** Sends a deposit from the connected wallet; null if this wallet type can't fund yet. */
   sender: DepositSender | null;
   /** The Add credit dialog, openable from anywhere (menu, chat errors). */
@@ -102,10 +109,12 @@ function WalletStateProvider({ children }: { children: React.ReactNode }) {
   const { signMessageAsync } = useSignMessage();
 
   const [nearAccount, setNearAccount] = useState<string | null>(null);
-  const [inference, setInference] = useState<LocalAccount | null>(null);
-  const [inferenceKey, setInferenceKey] = useState<`0x${string}` | null>(null);
+  // One value, so the account and its key can't get out of step.
+  const [unlocked, setUnlocked] = useState<{ account: LocalAccount; key: `0x${string}` } | null>(null);
+  const [unlockAttempt] = useState(attemptGuard);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [creditOpen, setCreditOpen] = useState(false);
   const [creditTarget, setCreditTarget] = useState<CreditTarget>({ kind: "inference" });
   const [toolPanel, setToolPanel] = useState<ToolPanel>(null);
@@ -141,11 +150,15 @@ function WalletStateProvider({ children }: { children: React.ReactNode }) {
   }, [evm.isConnected, evm.address, sol.isConnected, sol.address, nearAccount]);
 
   // A different (or no) source wallet means the old inference key must go.
+  const currentSource = useRef<Source | null>(null);
   useEffect(() => {
-    setInference(null);
-    setInferenceKey(null);
+    currentSource.current = source;
+    unlockAttempt.cancel();
+    setBusy(false);
+    setNotice(null);
+    setUnlocked(null);
     setError(null);
-  }, [source?.chain, source?.address]);
+  }, [source?.chain, source?.address, unlockAttempt]);
 
   const signDerivation = useCallback(async (s: Source): Promise<Uint8Array> => {
     if (s.chain === "evm") {
@@ -155,6 +168,7 @@ function WalletStateProvider({ children }: { children: React.ReactNode }) {
       }
       // First unlock on this address: sign twice and compare, once, to prove it's reproducible.
       if (localStorage.getItem(evmVerifiedKey(s.address)) !== "1") {
+        setNotice("One more signature, only this first time. It proves your wallet always gives the same inference wallet.");
         const again = await signMessageAsync({ message: DERIVATION_MESSAGE });
         if (again !== sig) throw new Error("This wallet signed the same message differently twice, so it can't safely recreate the inference wallet.");
         localStorage.setItem(evmVerifiedKey(s.address), "1");
@@ -190,20 +204,32 @@ function WalletStateProvider({ children }: { children: React.ReactNode }) {
 
   const unlock = useCallback(async () => {
     if (!source) return;
+    const attempt = unlockAttempt.begin();
+    if (!attempt) return;
     setBusy(true);
     setError(null);
     try {
       const sig = await signDerivation(source);
+      // The wallet changed while it was signing: this signature belongs to the old one. (A brief
+      // reconnect back to the same wallet, common on mobile, still counts.)
+      const now = currentSource.current;
+      if (unlockAttempt.wasAbandoned(attempt) || now?.chain !== source.chain || now.address !== source.address) {
+        sig.fill(0);
+        return;
+      }
       const key = deriveInferenceKey(sig, source);
       sig.fill(0);
-      setInference(privateKeyToAccount(key));
-      setInferenceKey(key);
+      setUnlocked({ account: privateKeyToAccount(key), key });
     } catch (e) {
-      setError((e as Error).message ?? String(e));
+      if (unlockAttempt.isCurrent(attempt)) setError((e as Error).message ?? String(e));
     } finally {
-      setBusy(false);
+      if (unlockAttempt.isCurrent(attempt)) {
+        unlockAttempt.cancel();
+        setBusy(false);
+        setNotice(null);
+      }
     }
-  }, [source, signDerivation]);
+  }, [source, signDerivation, unlockAttempt]);
 
   const connectNear = useCallback(async () => {
     setError(null);
@@ -218,8 +244,9 @@ function WalletStateProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const disconnect = useCallback(async () => {
-    setInference(null);
-    setInferenceKey(null);
+    setUnlocked(null);
+    // The API-keys session belongs to this wallet: it ends with it, or the next person inherits it.
+    await appFetch("/api/auth/logout", { method: "POST" }).catch(() => {});
     if (source?.chain === "near") {
       await (await nearConnector()).disconnect().catch(() => {});
       setNearAccount(null);
@@ -268,14 +295,21 @@ function WalletStateProvider({ children }: { children: React.ReactNode }) {
     toolPanel,
     setToolPanel,
     signLogin,
-    inference,
-    inferenceKey,
+    inference: unlocked?.account ?? null,
+    inferenceKey: unlocked?.key ?? null,
+    session: walletSession(!!source, !!unlocked, busy),
     busy,
     error,
+    notice,
+    cancelUnlock: () => {
+      unlockAttempt.abandon();
+      setBusy(false);
+      setNotice(null);
+    },
     connectEvmOrSolana: () => void open({ view: "Connect" }),
     connectNear,
     unlock,
-    lock: () => (setInference(null), setInferenceKey(null)),
+    lock: () => setUnlocked(null),
     disconnect,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

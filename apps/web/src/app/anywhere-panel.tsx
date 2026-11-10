@@ -2,7 +2,7 @@
 
 import type { TokenResponse } from "@pay/rail/browser";
 import QRCode from "qrcode";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ANYWHERE_FINAL,
   anywhereActions,
@@ -15,6 +15,7 @@ import {
   type AnywhereAction,
 } from "../funding/anywhere";
 import { MAX_CREDIT_USD, MIN_CREDIT_USD, friendly, oneclick } from "../funding/flow";
+import { anywhereSteps } from "../funding/machines";
 import { useCreditTarget } from "../funding/target";
 import { useWallet } from "../wallet/wallet-context";
 import s from "./credit-dialog.module.css";
@@ -64,6 +65,7 @@ export function AnywherePanel({ onCredited }: { onCredited: () => void }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [qr, setQr] = useState("");
+  const [retries, setRetries] = useState(0);
   const countdown = useCountdown(action?.quote.quote.deadline);
 
   useEffect(() => {
@@ -77,19 +79,30 @@ export function AnywherePanel({ onCredited }: { onCredited: () => void }) {
       .all()
       .filter((a) => a.inferenceAddress === t.address && !ANYWHERE_FINAL.has(a.state))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
-    if (pending) setAction(pending);
+    setAction(pending ?? null); // never keep showing an action for a different wallet
   }, [t.address]);
+
+  // A connected NEAR wallet starts with NEAR selected (once, so "change" still works).
+  const preselected = useRef(false);
+  useEffect(() => {
+    if (preselected.current || w.source?.chain !== "near" || !tokens.length) return;
+    preselected.current = true;
+    setToken((c) => c ?? tokens.find((x) => x.blockchain === "near" && x.symbol === "wNEAR") ?? null);
+  }, [tokens, w.source?.chain]);
 
   // Watch the deposit while this panel is open.
   useEffect(() => {
     if (!action || ANYWHERE_FINAL.has(action.state)) return;
     const ctl = new AbortController();
-    void runAnywhere(action.id, { inference: w.inference, onUpdate: setAction, signal: ctl.signal, topUp: t.topUp }).then((a) => {
+    const onUpdate = (a: AnywhereAction) => {
+      if (!ctl.signal.aborted) setAction(a);
+    };
+    void runAnywhere(action.id, { inference: w.inference, onUpdate, signal: ctl.signal, topUp: t.topUp }).then((a) => {
       if (a.state === "DONE") onCredited();
     });
     return () => ctl.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [action?.id, w.inference]);
+  }, [action?.id, w.inference, retries]);
 
   useEffect(() => {
     const addr = action?.quote.quote.depositAddress;
@@ -131,8 +144,9 @@ export function AnywherePanel({ onCredited }: { onCredited: () => void }) {
     const q = action.quote.quote;
     const t = action.token;
     const live = !ANYWHERE_FINAL.has(action.state);
+    const progress = anywhereSteps(action.state);
     return (
-      <>
+      <div data-anywhere-state={action.state} style={{ display: "contents" }}>
         {action.state === "AWAITING_DEPOSIT" || action.state === "INCOMPLETE" ? (
           <>
             <p className={s.p}>
@@ -188,28 +202,29 @@ export function AnywherePanel({ onCredited }: { onCredited: () => void }) {
               Only send {t.symbol} on {chainName(t.blockchain)}. Other tokens or networks sent here can be lost. Waiting for your deposit; you can close this and come back.
             </p>
           </>
-        ) : (
+        ) : progress ? (
           <ol className={s.steps}>
-            <li className={s.done}>
-              <span className={s.mark} aria-hidden />
-              {t.symbol} deposit received
-            </li>
-            <li className={action.state === "RECEIVED" ? s.now : action.state === "REFUNDED" || action.state === "FAILED" ? s.fail : s.done}>
-              <span className={s.mark} aria-hidden />
-              Swap to USDC on Base through NEAR Intents
-            </li>
-            <li className={action.state === "DONE" ? s.done : action.state === "TOPPING_UP" || action.state === "SWAPPED" ? s.now : s.todo}>
-              <span className={s.mark} aria-hidden />
-              Add credit
-            </li>
+            {[`${t.symbol} deposit received`, "Swap to USDC on Base through NEAR Intents", "Add credit"].map((label, i) => (
+              <li key={label} className={s[progress[i]!]}>
+                <span className={s.mark} aria-hidden />
+                {label}
+              </li>
+            ))}
           </ol>
-        )}
+        ) : null}
         {action.state === "DONE" && <p className={s.ok}>Added ${action.creditedUsd?.toFixed(2)} of credit.</p>}
         {action.state === "IDLE" && <p className={s.warn}>{action.error ?? "Your USDC arrived. Unlock to turn it into credit (USDC on Base tab)."}</p>}
         {action.state === "REFUNDED" && <p className={s.warn}>The swap couldn't complete; your deposit was refunded to {action.refundTo}.</p>}
         {action.state === "FAILED" && <p className={s.warn}>{action.error}</p>}
         {action.state === "EXPIRED" && <p className={s.warn}>This deposit address expired without a deposit. Nothing was received; get a new one.</p>}
-        {action.state === "TOPPING_UP" && action.error && <p className={s.warn}>{action.error}</p>}
+        {action.state === "TOPPING_UP" && action.error && (
+          <>
+            <p className={s.warn}>{action.error}</p>
+            <button className={s.primary} onClick={() => setRetries((n) => n + 1)}>
+              Retry adding credit
+            </button>
+          </>
+        )}
         {live && action.oneclickStatus && <p className={s.fine}>1Click status: {action.oneclickStatus.replaceAll("_", " ").toLowerCase()}</p>}
         {!live && (
           <button className={s.primary} onClick={() => setAction(null)}>
@@ -221,7 +236,7 @@ export function AnywherePanel({ onCredited }: { onCredited: () => void }) {
             Cancel and use a different token
           </button>
         )}
-      </>
+      </div>
     );
   }
 

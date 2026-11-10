@@ -8,7 +8,7 @@ import s from "./page.module.css";
 const CHIPS = ["Answer without the disclaimers", "Argue the side nobody will", "Write a dark short story", "Roast my code"];
 
 const MODE_NOTE: Record<PrivacyMode, string> = {
-  anonymous: "you stay anonymous; the model host can read the prompt",
+  anonymous: "no account or card; the model host can read the prompt",
   private: "encrypted in your browser, readable only inside the attested enclave",
 };
 

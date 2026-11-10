@@ -132,22 +132,54 @@ export class VeniceClient {
   }
 
   /** Streaming chat; returns the raw SSE Response (caller parses / decrypts). */
-  async chatStream(body: Record<string, unknown>, extraHeaders: Record<string, string> = {}): Promise<Response> {
+  async chatStream(body: Record<string, unknown>, extraHeaders: Record<string, string> = {}, abort?: AbortSignal): Promise<Response> {
     const url = `${this.base}/chat/completions`;
-    const res = await this.f(url, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        accept: "text/event-stream",
-        ...extraHeaders,
-        "SIGN-IN-WITH-X": await createSiwxHeader(this.o.account, url),
-      },
-      body: JSON.stringify({ ...body, stream: true }),
-      signal: AbortSignal.timeout(this.o.timeoutMs ?? 180_000),
-    });
+    // The timeout limits silence, not the reply: long outputs can stream for many minutes.
+    const ms = this.o.timeoutMs ?? 180_000;
+    const ctl = new AbortController();
+    if (abort?.aborted) ctl.abort(abort.reason);
+    abort?.addEventListener("abort", () => ctl.abort(abort.reason), { once: true });
+    let silence: ReturnType<typeof setTimeout> | undefined;
+    const arm = () => {
+      clearTimeout(silence);
+      silence = setTimeout(() => ctl.abort(new DOMException("Venice stopped responding.", "TimeoutError")), ms);
+      (silence as { unref?: () => void }).unref?.(); // never keeps a Node process alive
+    };
+    ctl.signal.addEventListener("abort", () => clearTimeout(silence), { once: true });
+    arm();
+    let res: Response;
+    try {
+      res = await this.f(url, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          accept: "text/event-stream",
+          ...extraHeaders,
+          "SIGN-IN-WITH-X": await createSiwxHeader(this.o.account, url),
+        },
+        body: JSON.stringify({ ...body, stream: true }),
+        signal: ctl.signal,
+      });
+    } catch (e) {
+      clearTimeout(silence);
+      throw e;
+    }
+    if (!res.ok || !res.body) clearTimeout(silence);
     if (res.status === 402) throw new VeniceInsufficientBalance(await res.text());
     if (!res.ok) throw new HttpError(res.status, await res.text(), url);
-    return res;
+    if (!res.body) return res;
+    const watched = res.body.pipeThrough(
+      new TransformStream<Uint8Array, Uint8Array>({
+        transform(chunk, out) {
+          arm();
+          out.enqueue(chunk);
+        },
+        flush() {
+          clearTimeout(silence);
+        },
+      }),
+    );
+    return new Response(watched, { status: res.status, headers: res.headers });
   }
 
   /** Fresh SIWX headers for an arbitrary Venice URL (e.g. /tee/attestation). */

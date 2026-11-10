@@ -36,9 +36,10 @@ export function buildContext(history: Msg[], next: { text: string; mode: Privacy
   }
   if (!usable.length) return [...head, { role: "user", content: next.text }];
   const transcript = usable.map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`).join("\n\n");
+  const soFar = `Conversation so far (continue it naturally; do not repeat it):\n\n${transcript}`;
+  // One system message only: Venice answers 400 "Encrypted field is not valid hex" to two in a row.
   return [
-    ...head,
-    { role: "system", content: `Conversation so far (continue it naturally; do not repeat it):\n\n${transcript}` },
+    { role: "system", content: id ? `${id}\n\n${soFar}` : soFar },
     { role: "user", content: next.text },
   ];
 }

@@ -12,7 +12,7 @@ export function useChat(onCreditChange: () => void) {
   const w = useWallet();
   const [messages, setMessages] = useState<Msg[]>([]);
   const [attestations, setAttestations] = useState<Record<string, AttestationReport>>({});
-  const stopRef = useRef(false);
+  const run = useRef<AbortController | null>(null); // the one reply being generated
   const busy = messages.some((m) => m.status === "streaming");
 
   // Truly private: every attestation's Intel signature is also verified here, in a sandboxed worker.
@@ -33,12 +33,11 @@ export function useChat(onCreditChange: () => void) {
 
   const send = useCallback(
     async (text: string, mode: PrivacyMode, modelKey: string) => {
-      if (!text.trim() || busy) return;
+      if (!text.trim() || busy || run.current) return;
       const user: Msg = { id: newId(), role: "user", text, mode, modelKey, status: "done" };
       const reply: Msg = { id: newId(), role: "assistant", text: "", mode, modelKey, status: "streaming" };
       const context = buildContext(messages, { text, mode, modelKey });
       setMessages((ms) => [...ms, user, reply]);
-      stopRef.current = false;
 
       if (!w.source || !w.inference || !chat) {
         patch(reply.id, {
@@ -48,8 +47,12 @@ export function useChat(onCreditChange: () => void) {
         return;
       }
 
+      const ctl = new AbortController();
+      run.current = ctl;
+      let chunks: () => number | undefined = () => undefined;
       try {
-        const { meta, deltas } = await chat.stream({ mode, model: modelKey, messages: context, maxTokens: 4096 });
+        const { meta, deltas } = await chat.stream({ mode, model: modelKey, messages: context, maxTokens: 4096, signal: ctl.signal });
+        chunks = () => meta.plaintextChunks;
         if (meta.attestation) {
           const aid = `${meta.attestation.model}:${meta.attestation.nonce.slice(0, 8)}`;
           setAttestations((a) => ({ ...a, [aid]: meta.attestation! }));
@@ -59,27 +62,33 @@ export function useChat(onCreditChange: () => void) {
         let out = "";
         let reasoning = "";
         for await (const d of deltas) {
-          if (stopRef.current) break;
           if (d.type === "text") out += d.text;
           else if (d.type === "reasoning") reasoning += d.text;
           else if (d.type === "usage") patch(reply.id, { costUsd: d.costUsd });
           if (d.type !== "usage") patch(reply.id, { text: out, reasoning: reasoning || undefined });
         }
-        patch(reply.id, { status: stopRef.current ? "stopped" : "done", plaintextChunks: meta.plaintextChunks });
+        patch(reply.id, { status: "done", plaintextChunks: chunks() });
         onCreditChange();
       } catch (e) {
+        if (ctl.signal.aborted) {
+          patch(reply.id, { status: "stopped", plaintextChunks: chunks() });
+          onCreditChange();
+          return;
+        }
         const code = e instanceof RailError ? e.code : undefined;
         patch(reply.id, {
           status: "error",
           error: code === "VENICE_402" ? { code, text: "You're out of credit." } : { code, text: friendly(e) },
         });
+      } finally {
+        if (run.current === ctl) run.current = null;
       }
     },
     [busy, messages, w.source, w.inference, chat, onCreditChange],
   );
 
-  const stop = () => (stopRef.current = true);
-  const clear = () => setMessages([]);
+  const stop = () => run.current?.abort();
+  const clear = () => (run.current?.abort(), setMessages([]));
 
   return { messages, attestations, busy, send, stop, clear, prepare };
 }

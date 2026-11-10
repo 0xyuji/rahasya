@@ -20,6 +20,8 @@ export interface ChatRequest {
   noThinking?: boolean;
   /** Ask for JSON; uses json_schema when supported, else prompt instructions (caller validates). */
   json?: { name: string; schema: Record<string, unknown> };
+  /** Aborting ends the request and the stream, so Venice stops generating (and billing). */
+  signal?: AbortSignal;
 }
 
 export type ChatDelta = { type: "text" | "reasoning"; text: string } | { type: "usage"; usage: StreamUsage; costUsd?: number };
@@ -125,16 +127,17 @@ export class VeniceChat {
     }
 
     if (!model.e2ee) {
-      const res = await this.withRefill(() => this.o.venice.chatStream(body));
+      const res = await this.withRefill(() => this.o.venice.chatStream(body, {}, req.signal));
       const meta: ChatMeta = { model, mode: req.mode, e2ee: false, plaintextChunks: 0 };
       return { meta, deltas: withCost(plainDeltas(res), model, await this.livePrices()) };
     }
 
     const report = await this.attestation(model);
     if (!report.ok) throw new Error(`attestation failed for ${model.label}; not sending`);
+    req.signal?.throwIfAborted(); // stopped while attesting: the paid request never goes out
     const session = newSession(report);
     const enc = e2eeRequest(session, body as never);
-    const res = await this.withRefill(() => this.o.venice.chatStream(enc.body, enc.headers));
+    const res = await this.withRefill(() => this.o.venice.chatStream(enc.body, enc.headers, req.signal));
     const meta: ChatMeta = { model, mode: req.mode, e2ee: true, attestation: report, plaintextChunks: 0 };
     const deltas = (async function* () {
       try {
@@ -190,25 +193,29 @@ async function* plainDeltas(res: Response): AsyncGenerator<ChatDelta> {
   const reader = res.body!.getReader();
   const dec = new TextDecoder();
   let buf = "";
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) return;
-    buf += dec.decode(value, { stream: true });
-    let nl: number;
-    while ((nl = buf.indexOf("\n")) >= 0) {
-      const line = buf.slice(0, nl).trim();
-      buf = buf.slice(nl + 1);
-      if (!line.startsWith("data:")) continue;
-      const data = line.slice(5).trim();
-      if (data === "[DONE]") return;
-      try {
-        const chunk = JSON.parse(data) as { choices?: Array<{ delta?: { content?: string; reasoning_content?: string } }>; usage?: StreamUsage };
-        if (chunk.usage) yield { type: "usage", usage: chunk.usage };
-        const delta = chunk.choices?.[0]?.delta;
-        if (delta?.reasoning_content) yield { type: "reasoning", text: delta.reasoning_content };
-        if (delta?.content) yield { type: "text", text: delta.content };
-      } catch {}
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) return;
+      buf += dec.decode(value, { stream: true });
+      let nl: number;
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line.startsWith("data:")) continue;
+        const data = line.slice(5).trim();
+        if (data === "[DONE]") return;
+        try {
+          const chunk = JSON.parse(data) as { choices?: Array<{ delta?: { content?: string; reasoning_content?: string } }>; usage?: StreamUsage };
+          if (chunk.usage) yield { type: "usage", usage: chunk.usage };
+          const delta = chunk.choices?.[0]?.delta;
+          if (delta?.reasoning_content) yield { type: "reasoning", text: delta.reasoning_content };
+          if (delta?.content) yield { type: "text", text: delta.content };
+        } catch {}
+      }
     }
+  } finally {
+    await reader.cancel().catch(() => {}); // a consumer that stops early must hang up, or Venice keeps generating
   }
 }
 

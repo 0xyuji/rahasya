@@ -11,6 +11,7 @@ import {
 } from "../oneclick/types.ts";
 import type { JsonStore } from "../store.ts";
 import { RailError, sleep, toUnits } from "../util.ts";
+import { defineMachine } from "../machine.ts";
 import { validateQuote } from "../oneclick/validate.ts";
 
 export { validateQuote };
@@ -38,14 +39,21 @@ export type SwapState =
   | "CANCELLED"
   | "NEEDS_REVIEW";
 
-export const FINAL_STATES: ReadonlySet<SwapState> = new Set([
-  "SUCCESS",
-  "REFUNDED",
-  "FAILED",
-  "EXPIRED",
-  "CANCELLED",
-  "NEEDS_REVIEW",
-]);
+export const SWAP_MACHINE = defineMachine<SwapState>("swap", {
+  QUOTED: ["DEPOSIT_SIGNED", "EXPIRED", "CANCELLED"],
+  DEPOSIT_SIGNED: ["DEPOSIT_SENT"],
+  DEPOSIT_SENT: ["DEPOSIT_CONFIRMED", "DEPOSIT_SIGNED", "FAILED", "EXPIRED", "NEEDS_REVIEW"],
+  DEPOSIT_CONFIRMED: ["PROCESSING", "SUCCESS", "REFUNDED", "FAILED"],
+  PROCESSING: ["SUCCESS", "REFUNDED", "FAILED"],
+  SUCCESS: [],
+  REFUNDED: [],
+  FAILED: [],
+  EXPIRED: [],
+  CANCELLED: [],
+  NEEDS_REVIEW: [],
+});
+
+export const FINAL_STATES: ReadonlySet<SwapState> = SWAP_MACHINE.final;
 
 export interface AssetRef {
   chain: Chain;
@@ -324,7 +332,7 @@ export class SwapEngine {
           return a;
         }
         say("Deposit didn't land (network dropped it). Re-signing — the old one can no longer execute.", a);
-        return this.signDeposit({ ...a, state: "QUOTED" });
+        return this.signDeposit(a);
       }
       // pending: periodically rebroadcast the SAME signed tx (harmless if already seen)
       if (++rebroadcasts % 5 === 0) await d.broadcast(a.deposit!).catch(() => {});
@@ -383,6 +391,7 @@ export class SwapEngine {
   }
 
   private transition(a: SwapAction, state: SwapState, note?: string): SwapAction {
+    SWAP_MACHINE.assert(a.state, state);
     const at = new Date().toISOString();
     return this.o.store.put({ ...a, state, updatedAt: at, history: [...a.history, { at, state, note }] });
   }

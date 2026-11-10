@@ -310,30 +310,34 @@ export async function* decryptStream(
   const reader = res.body!.getReader();
   const dec = new TextDecoder();
   let buf = "";
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, { stream: true });
-    let nl: number;
-    while ((nl = buf.indexOf("\n")) >= 0) {
-      const line = buf.slice(0, nl).trim();
-      buf = buf.slice(nl + 1);
-      if (!line.startsWith("data:")) continue;
-      const data = line.slice(5).trim();
-      if (data === "[DONE]") return;
-      let chunk: { choices?: Array<{ delta?: { content?: string; reasoning_content?: string } }>; usage?: StreamUsage };
-      try {
-        chunk = JSON.parse(data);
-      } catch {
-        continue;
-      }
-      if (chunk.usage) yield { field: "usage", usage: chunk.usage, text: "", encrypted: false };
-      const delta = chunk.choices?.[0]?.delta ?? {};
-      for (const [field, v] of [["content", delta.content], ["reasoning", delta.reasoning_content]] as const) {
-        if (!v) continue;
-        if (isHexEncrypted(v)) yield { text: decryptFromModel(v, s.clientPriv), encrypted: true, field };
-        else yield { text: v, encrypted: false, field };
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let nl: number;
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line.startsWith("data:")) continue;
+        const data = line.slice(5).trim();
+        if (data === "[DONE]") return;
+        let chunk: { choices?: Array<{ delta?: { content?: string; reasoning_content?: string } }>; usage?: StreamUsage };
+        try {
+          chunk = JSON.parse(data);
+        } catch {
+          continue;
+        }
+        if (chunk.usage) yield { field: "usage", usage: chunk.usage, text: "", encrypted: false };
+        const delta = chunk.choices?.[0]?.delta ?? {};
+        for (const [field, v] of [["content", delta.content], ["reasoning", delta.reasoning_content]] as const) {
+          if (!v) continue;
+          if (isHexEncrypted(v)) yield { text: decryptFromModel(v, s.clientPriv), encrypted: true, field };
+          else yield { text: v, encrypted: false, field };
+        }
       }
     }
+  } finally {
+    await reader.cancel().catch(() => {}); // a consumer that stops early must hang up, or Venice keeps generating
   }
 }

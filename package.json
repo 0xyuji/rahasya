@@ -19,7 +19,7 @@
     "audit:pack": "node scripts/audit/pack.ts"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22.18"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

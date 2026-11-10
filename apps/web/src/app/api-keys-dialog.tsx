@@ -3,12 +3,14 @@
 import { MODELS } from "@pay/rail/browser";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { opencodeConfig } from "./opencode-config";
+import { walletUid } from "../wallet/session";
 import { useWallet } from "../wallet/wallet-context";
 import { appFetch } from "./app-fetch";
 import s from "./credit-dialog.module.css";
 import k from "./api-keys.module.css";
 
 interface Account {
+  uid: string;
   apiWallet: string;
   creditUsd: number | null;
   idleUsdc: number | null;
@@ -46,7 +48,7 @@ export function ApiKeysDialog({ open, onClose }: { open: boolean; onClose: () =>
   const w = useWallet();
   const ref = useRef<HTMLDialogElement>(null);
   const [account, setAccount] = useState<Account | null>(null);
-  const [needsLogin, setNeedsLogin] = useState(false);
+  const [phase, setPhase] = useState<"loading" | "needs-login" | "ready" | "failed">("loading");
   const [keys, setKeys] = useState<KeyView[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -64,18 +66,26 @@ export function ApiKeysDialog({ open, onClose }: { open: boolean; onClose: () =>
     if (!open) (setFresh(null), setDraft(null), setEditing(null), setErr(null));
   }, [open]);
 
+  const expectedUid = w.source ? walletUid(w.source) : null;
   const load = useCallback(async () => {
     setErr(null);
     try {
       const [a, ks] = await Promise.all([api<Account>("/api/account", { method: "POST" }), api<{ keys: KeyView[] }>("/api/keys")]);
+      // A session left by another wallet on this browser: don't show or spend from its account.
+      if (expectedUid && a.uid !== expectedUid) {
+        setAccount(null);
+        setKeys([]);
+        return setPhase("needs-login");
+      }
       setAccount(a);
       setKeys(ks.keys);
-      setNeedsLogin(false);
+      setPhase("ready");
     } catch (e) {
-      if ((e as { status?: number }).status === 401) setNeedsLogin(true);
-      else setErr((e as Error).message);
+      if ((e as { status?: number }).status === 401) return setPhase("needs-login");
+      setErr((e as Error).message);
+      setPhase((p) => (p === "ready" ? "ready" : "failed")); // keep showing what we already have
     }
-  }, []);
+  }, [expectedUid]);
 
   useEffect(() => {
     if (open) void load();
@@ -143,7 +153,7 @@ export function ApiKeysDialog({ open, onClose }: { open: boolean; onClose: () =>
     await api(`/api/auth/logout${everywhere ? "?everywhere=1" : ""}`, { method: "POST" }).catch(() => {});
     setAccount(null);
     setKeys([]);
-    setNeedsLogin(true);
+    setPhase("needs-login");
   }
 
   // Same value on the server and the first client render (no hydration mismatch), then the real origin.
@@ -152,7 +162,7 @@ export function ApiKeysDialog({ open, onClose }: { open: boolean; onClose: () =>
   const opencode = (f: { token: string; models: string[] }) => opencodeConfig({ baseURL: base, keyHint: f.token, allowed: f.models });
 
   return (
-    <dialog ref={ref} className={`${s.dialog} ${k.wide}`} onClose={onClose} onCancel={onClose}>
+    <dialog ref={ref} className={`${s.dialog} ${k.wide}`} onClose={onClose} onCancel={onClose} data-keys-phase={phase}>
       <div className={s.head}>
         <h2 className={s.title}>API keys</h2>
         <button className={s.x} onClick={onClose} aria-label="Close">
@@ -178,14 +188,18 @@ export function ApiKeysDialog({ open, onClose }: { open: boolean; onClose: () =>
             </button>
           </div>
         </>
-      ) : needsLogin ? (
+      ) : phase === "needs-login" ? (
         <>
           <p className={s.p}>Sign a message with your wallet to manage keys. It&apos;s not a transaction and costs nothing.</p>
           <button className={s.primary} onClick={signIn} disabled={busy}>
             {busy ? "Check your wallet…" : "Sign in with your wallet"}
           </button>
         </>
-      ) : !account ? (
+      ) : phase === "failed" ? (
+        <button className={s.secondary} onClick={() => (setPhase("loading"), void load())}>
+          Try again
+        </button>
+      ) : phase === "loading" || !account ? (
         <p className={s.fine}>Loading…</p>
       ) : (
         <>

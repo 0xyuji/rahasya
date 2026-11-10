@@ -8,7 +8,7 @@ Uncensored and abliterated models, paid with whatever token you hold. No account
 2. **Unlock.** Sign one message. Your browser derives a private **inference wallet** from it; it never leaves your browser.
 3. **Add credit** from the account menu: from your connected wallet, from any token on any chain (via NEAR Intents), or by sending USDC on Base. Minimum $5.
 4. **Chat.** Pick a model and a mode in the prompt bar:
-   - **Anonymous**: every model. You're unlinkable, but the model host can read the prompt.
+   - **Anonymous**: every model. No account, email or card (pseudonymous), but the model host can read the prompt.
    - **Truly private**: enclave (TEE) models only. Messages are encrypted in your browser and only the attested enclave can read them. Click **Verified enclave** under a reply to see every check.
 
 ## Quick start: API keys

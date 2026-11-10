@@ -14,6 +14,7 @@ import {
   runCredit,
   type CreditAction,
 } from "../funding/flow";
+import { creditSteps } from "../funding/machines";
 import { useCreditTarget } from "../funding/target";
 import { useWallet } from "../wallet/wallet-context";
 import { AnywherePanel } from "./anywhere-panel";
@@ -24,21 +25,12 @@ const PRESETS = [5, 10, 20];
 const short = (a: string) => (a.length > 16 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a);
 const explorer = (chain: Chain, tx: string) => (chain === "sol" ? `https://solscan.io/tx/${tx}` : `https://basescan.org/tx/${tx}`);
 
-type Step = { label: string; status: "todo" | "now" | "done" | "fail" };
-
-function steps(a: CreditAction): Step[] {
-  const order = ["SENDING", "SWAPPING", "TOPPING_UP", "DONE"];
-  const at = a.state === "DEPOSIT_SENT" ? "SWAPPING" : a.state === "SWAPPED" ? "TOPPING_UP" : a.state;
-  const idx = order.indexOf(at);
-  const fail = a.state === "FAILED" || a.state === "REFUNDED";
-  const mk = (i: number, label: string): Step => ({
-    label,
-    status: fail && i === 1 ? "fail" : idx > i || a.state === "DONE" ? "done" : idx === i ? "now" : "todo",
-  });
+function steps(a: CreditAction) {
+  const status = creditSteps(a);
   return [
-    mk(0, `Send ${a.quote.quote.amountInFormatted} ${a.origin.symbol} from your wallet`),
-    mk(1, "Swap to USDC on Base through NEAR Intents (about 1–2 min)"),
-    mk(2, `Add $${a.usd.toFixed(2)} of credit (signed in your browser)`),
+    { label: `Send ${a.quote.quote.amountInFormatted} ${a.origin.symbol} from your wallet`, status: status[0] },
+    { label: "Swap to USDC on Base through NEAR Intents (about 1–2 min)", status: status[1] },
+    { label: `Add $${a.usd.toFixed(2)} of credit (signed in your browser)`, status: status[2] },
   ];
 }
 
@@ -60,6 +52,18 @@ export function CreditDialog({ open, onClose, onCredited }: { open: boolean; onC
     if (open && !d.open) d.showModal();
     if (!open && d.open) d.close();
   }, [open]);
+
+  // NEAR wallets can't use "From your wallet" yet, so don't open on a dead end.
+  useEffect(() => {
+    if (open && w.source?.chain === "near") setTab("anywhere");
+  }, [open, w.source?.chain]);
+
+  // Only ever show an action for the wallet this dialog is funding right now.
+  const targetAddress = useRef(t.address);
+  useEffect(() => {
+    targetAddress.current = t.address;
+    if (t.address) setAction((c) => (c && c.inferenceAddress !== t.address ? null : c));
+  }, [t.address]);
 
   // Resume an unfinished deposit for this wallet instead of starting a new one.
   useEffect(() => {
@@ -88,13 +92,17 @@ export function CreditDialog({ open, onClose, onCredited }: { open: boolean; onC
     }
   }
 
-  async function drive(id: string) {
+  async function drive(id: string, unconfirmedWatchMs?: number) {
     if (!w.sender || (!w.inference && !t.topUp)) return;
+    if (actions.get(id)?.inferenceAddress !== t.address) return; // a quote made for the other wallet
+    const show = (a: CreditAction) => {
+      if (a.inferenceAddress === targetAddress.current) setAction(a);
+    };
     setBusy(true);
     setErr(null);
     try {
-      const done = await runCredit(id, { send: w.sender, inference: w.inference, onUpdate: setAction, topUp: t.topUp });
-      setAction(done);
+      const done = await runCredit(id, { send: w.sender, inference: w.inference, onUpdate: show, topUp: t.topUp, unconfirmedWatchMs });
+      show(done);
       if (done.error && !CREDIT_FINAL.has(done.state)) setErr(done.error);
       if (done.state === "DONE") onCredited();
     } catch (e) {
@@ -113,7 +121,7 @@ export function CreditDialog({ open, onClose, onCredited }: { open: boolean; onC
   const feeUsd = q ? Number(q.amountInUsd) - (action?.usd ?? 0) : 0;
 
   return (
-    <dialog ref={ref} className={s.dialog} onClose={close} onCancel={close}>
+    <dialog ref={ref} className={s.dialog} onClose={close} onCancel={close} data-credit-state={action?.state ?? "NEW"}>
       <div className={s.head}>
         <h2 className={s.title}>{t.kind === "api" ? "Add credit to API wallet" : "Add credit"}</h2>
         <button className={s.x} onClick={close} aria-label="Close">
@@ -139,11 +147,16 @@ export function CreditDialog({ open, onClose, onCredited }: { open: boolean; onC
       ) : !w.source || !t.address ? (
         <p className={s.p}>Connect and unlock your wallet first.</p>
       ) : !w.sender ? (
-        <p className={s.p}>
-          {w.source.chain === "near"
-            ? "Funding from NEAR wallets is coming next. For now, connect an EVM or Solana wallet."
-            : "Your wallet isn't ready to send yet. Reconnect and try again."}
-        </p>
+        w.source.chain === "near" ? (
+          <>
+            <p className={s.p}>NEAR wallets pay through a deposit address: pick the amount, then send from your wallet.</p>
+            <button className={s.primary} onClick={() => setTab("anywhere")}>
+              Pay with NEAR
+            </button>
+          </>
+        ) : (
+          <p className={s.p}>Your wallet isn&apos;t ready to send yet. Reconnect and try again.</p>
+        )
       ) : !action || action.state === "EXPIRED" ? (
         <>
           <p className={s.p}>Credit is prepaid and spent per message. It lives on your own inference wallet, not with us.</p>
@@ -252,12 +265,14 @@ export function CreditDialog({ open, onClose, onCredited }: { open: boolean; onC
           {action.state === "SEND_UNCONFIRMED" && (
             <>
               <p className={s.warn}>
-                We never got a transaction back from your wallet, and 1Click hasn't seen a deposit yet. If your wallet shows it as sent, keep waiting. If not, send
-                again; an extra deposit is refunded automatically.
+                {action.depositTx
+                  ? "Your wallet sent a transaction, but 1Click hasn't seen the deposit yet. Check the link above. If it went through, keep waiting."
+                  : "We never got a transaction back from your wallet, and 1Click hasn't seen a deposit yet. If your wallet shows it as sent, keep waiting."}{" "}
+                If it didn&apos;t, send again. An extra deposit is normally refunded, minus a refund fee.
               </p>
               <div className={s.row}>
-                <button className={s.secondary} onClick={() => drive(action.id)} disabled={busy}>
-                  Keep waiting
+                <button className={s.secondary} onClick={() => drive(action.id, 60_000)} disabled={busy}>
+                  {busy ? "Looking for your deposit…" : "Keep waiting"}
                 </button>
                 <button className={s.primary} onClick={() => (setAction(resend(action.id)), void drive(action.id))} disabled={busy}>
                   Send again

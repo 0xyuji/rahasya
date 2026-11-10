@@ -110,3 +110,30 @@ test("K14: DNS rebinding is refused (Host must be localhost / 127.0.0.1)", async
   assert.equal(await status(`127.0.0.1:${port}`), 200);
   assert.equal(await status(`localhost:${port}`), 200);
 });
+
+test("when the tool hangs up mid-stream, the proxy hangs up on Venice", async () => {
+  let upstream: AbortSignal | undefined;
+  const venice = {
+    ...fakeVenice,
+    chatStream: async (_b: unknown, _h: unknown, signal: AbortSignal) => {
+      upstream = signal;
+      return new Response(new ReadableStream({ start: (c) => c.enqueue(new TextEncoder().encode("data: {}\n\n")) }));
+    },
+  } as unknown as VeniceClient;
+  const proxy = createProxy({ venice, token: TOKEN });
+  await new Promise<void>((r) => proxy.listen(0, "127.0.0.1", () => r()));
+  const client = new AbortController();
+  const res = await fetch(`http://127.0.0.1:${(proxy.address() as AddressInfo).port}/v1/chat/completions`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${TOKEN}`, "content-type": "application/json" },
+    body: JSON.stringify({ model: "large-v2", stream: true, messages: [] }),
+    signal: client.signal,
+  });
+  await res.body!.getReader().read();
+  assert.equal(upstream!.aborted, false);
+  client.abort();
+  for (let i = 0; i < 100 && !upstream!.aborted; i++) await new Promise((r) => setTimeout(r, 10));
+  assert.equal(upstream!.aborted, true);
+  proxy.closeAllConnections();
+  proxy.close();
+});

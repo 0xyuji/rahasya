@@ -109,3 +109,8 @@
   border: 1px solid rgba(232, 180, 164, 0.3);
   border-radius: 12px;
 }
+
+.notice {
+  color: var(--paper-faint);
+  border-color: var(--line, rgba(255, 255, 255, 0.12));
+}

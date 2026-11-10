@@ -2,6 +2,7 @@
 
 import {
   RailError,
+  checkMaxInput,
   planSweep,
   randomActionId,
   sleep,
@@ -11,8 +12,11 @@ import {
   type TokenResponse,
 } from "@pay/rail/browser";
 import type { LocalAccount } from "viem";
-import { LocalStore } from "./local-store";
-import { MAX_CREDIT_USD, MIN_CREDIT_USD, inferenceUsdc, oneclick, topups as idleTopups, veniceFor } from "./flow";
+import { LocalStore } from "./local-store.ts";
+import { MAX_CREDIT_USD, MIN_CREDIT_USD, inferenceUsdc, oneclick, topUpOnce, topups as idleTopups, veniceFor } from "./flow.ts";
+import { ANYWHERE_FINAL, ANYWHERE_MACHINE, type AnywhereState } from "./machines.ts";
+
+export { ANYWHERE_FINAL, type AnywhereState };
 
 /**
  * "Send from anywhere": deposit any 1Click-supported token from any source
@@ -54,9 +58,6 @@ export function refundAddressProblem(bc: string, addr: string): string | null {
   return null;
 }
 
-export type AnywhereState = "AWAITING_DEPOSIT" | "INCOMPLETE" | "RECEIVED" | "SWAPPED" | "TOPPING_UP" | "DONE" | "IDLE" | "REFUNDED" | "FAILED" | "EXPIRED" | "CANCELLED";
-export const ANYWHERE_FINAL: ReadonlySet<AnywhereState> = new Set(["DONE", "IDLE", "REFUNDED", "FAILED", "EXPIRED", "CANCELLED"]);
-
 export interface AnywhereAction {
   id: string;
   kind: "anywhere";
@@ -78,7 +79,8 @@ export interface AnywhereAction {
 export const anywhereActions = new LocalStore<AnywhereAction>("anywhere");
 
 function move(a: AnywhereAction, state: AnywhereState, patch: Partial<AnywhereAction> = {}): AnywhereAction {
-  return anywhereActions.put({ ...a, ...patch, state, history: [...a.history, { at: new Date().toISOString(), state }] });
+  ANYWHERE_MACHINE.assert(a.state, state);
+  return anywhereActions.put({ ...a, error: undefined, ...patch, state, history: [...a.history, { at: new Date().toISOString(), state }] });
 }
 
 /** 1Click says "Amount is too low for bridge, try at least 8300": surface that as a usable minimum. */
@@ -87,6 +89,20 @@ export function parseMinimum(message: string, token: Pick<TokenResponse, "decima
   if (!m) return null;
   const units = Number(m[1]) / 10 ** token.decimals;
   return `The minimum for ${token.symbol} here is ${units} ${token.symbol} (≈ $${(units * token.price).toFixed(2)}).`;
+}
+
+/** Code decides: the quote must deliver to OUR inference wallet, refund to THEIR address, and not ask for more than the credit is worth. */
+export function checkAnywhereQuote(req: QuoteRequest, quote: QuoteResponse, token: Pick<TokenResponse, "decimals" | "price" | "symbol">, usd: number): void {
+  const echo = quote.quoteRequest;
+  const bad: string[] = (["originAsset", "destinationAsset", "recipient", "refundTo", "swapType", "amount"] as const).filter(
+    (k) => String(echo?.[k]).toLowerCase() !== String(req[k]).toLowerCase(),
+  );
+  const q = quote.quote;
+  if (!q.depositAddress) bad.push("depositAddress");
+  if (BigInt(q.amountIn) > BigInt(req.amount)) bad.push("amountIn");
+  if (BigInt(q.minAmountIn ?? "0") > BigInt(q.amountIn)) bad.push("minAmountIn");
+  if (bad.length) throw new RailError("QUOTE_MISMATCH", `1Click quote doesn't match the request (${bad.join(", ")}). Not showing it.`);
+  checkMaxInput({ decimals: token.decimals, priceUsd: token.price, symbol: token.symbol }, q.amountIn, usd);
 }
 
 export async function quoteAnywhere(p: {
@@ -127,13 +143,7 @@ export async function quoteAnywhere(p: {
     } catch {}
     throw new RailError("QUOTE_FAILED", parseMinimum(msg, p.token) ?? (msg || (e as Error).message));
   }
-  // Code decides: the quote must deliver to OUR inference wallet and refund to THEIR address.
-  const echo = quote.quoteRequest;
-  const bad = (["originAsset", "destinationAsset", "recipient", "refundTo", "swapType"] as const).filter(
-    (k) => String(echo?.[k]).toLowerCase() !== String(req[k]).toLowerCase(),
-  );
-  if (!quote.quote.depositAddress) bad.push("depositAddress" as never);
-  if (bad.length) throw new RailError("QUOTE_MISMATCH", `1Click quote doesn't match the request (${bad.join(", ")}). Not showing it.`);
+  checkAnywhereQuote(req, quote, p.token, p.usd);
 
   const now = new Date().toISOString();
   return anywhereActions.put({
@@ -178,10 +188,10 @@ export async function runAnywhere(
       const usd = Math.min(Math.floor(Number(a.delivered ?? "0") / 1e4) / 100, MAX_CREDIT_USD);
       if (usd < MIN_CREDIT_USD) return emit(move(a, "IDLE", { error: `Only $${usd.toFixed(2)} arrived; Venice's minimum top-up is $${MIN_CREDIT_USD}. It's waiting as idle USDC.` }));
       a = emit(move(a, "TOPPING_UP"));
-      for (let i = 0; i < 30 && (await inferenceUsdc(a.inferenceAddress)) < BigInt(Math.round(usd * 1e6)); i++) await sleep(2_000);
+      for (let i = 0; i < 30 && (await inferenceUsdc(a.inferenceAddress).catch(() => 0n)) < BigInt(Math.round(usd * 1e6)); i++) await sleep(2_000);
       try {
-        if (deps.topUp) await deps.topUp(`topup_${a.id}`, usd);
-        else await veniceFor(deps.inference!).topUp(`topup_${a.id}`, usd);
+        const topUpId = `topup_${a.id}`;
+        await topUpOnce(topUpId, () => (deps.topUp ? deps.topUp(topUpId, usd) : veniceFor(deps.inference!).topUp(topUpId, usd)));
         return emit(move(a, "DONE", { creditedUsd: usd }));
       } catch (e) {
         return emit({ ...a, error: (e as Error).message });

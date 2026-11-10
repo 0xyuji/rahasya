@@ -90,8 +90,8 @@ export const MODELS: Record<string, ModelDef> = Object.fromEntries(
 
 /**
  * The toggle in the chat prompt bar.
- *  - anonymous (default): every allowed model. You're unlinkable (wallet auth,
- *    no account), but the model host may see prompt text.
+ *  - anonymous (default): every allowed model. Pseudonymous (wallet auth, no
+ *    account or card), and the model host may see prompt text.
  *  - private: TEE-only + E2EE. Only the attested enclave can read prompts.
  *    Fewer, smaller models -> lower intelligence.
  */

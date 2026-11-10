@@ -21,8 +21,11 @@ import {
 import { createPublicClient, erc20Abi, http, type LocalAccount } from "viem";
 import { base } from "viem/chains";
 import type { Source } from "../wallet/wallet-context";
-import { LocalStore } from "./local-store";
+import { LocalStore } from "./local-store.ts";
+import { CREDIT_FINAL, CREDIT_MACHINE, DepositBroadcastError, type CreditState } from "./machines.ts";
 import type { DepositSender } from "./senders";
+
+export { CREDIT_FINAL, type CreditState };
 
 export const MIN_CREDIT_USD = 5; // Venice minimum top-up
 export const MAX_CREDIT_USD = 50; // our cap: the inference wallet is for spending, not saving
@@ -41,21 +44,6 @@ export const PAY_OPTIONS: Record<Source["chain"], Array<{ chain: Chain; symbol: 
   ],
   near: [],
 };
-
-export type CreditState =
-  | "QUOTED"
-  | "SENDING"
-  | "SEND_UNCONFIRMED"
-  | "DEPOSIT_SENT"
-  | "SWAPPING"
-  | "SWAPPED"
-  | "TOPPING_UP"
-  | "DONE"
-  | "REFUNDED"
-  | "FAILED"
-  | "EXPIRED";
-
-export const CREDIT_FINAL: ReadonlySet<CreditState> = new Set(["DONE", "REFUNDED", "FAILED", "EXPIRED"]);
 
 export interface CreditAction {
   id: string;
@@ -135,27 +123,48 @@ export async function quoteCredit(p: {
 }
 
 function move(a: CreditAction, state: CreditState, patch: Partial<CreditAction> = {}): CreditAction {
-  return actions.put({ ...a, ...patch, state, history: [...a.history, { at: new Date().toISOString(), state }] });
+  CREDIT_MACHINE.assert(a.state, state);
+  // An error describes the state it happened in, so it doesn't carry over to the next one.
+  return actions.put({ ...a, error: undefined, ...patch, state, history: [...a.history, { at: new Date().toISOString(), state }] });
 }
+
+export interface RunCreditDeps {
+  send: DepositSender;
+  inference: LocalAccount | null;
+  onUpdate: (a: CreditAction) => void;
+  /** Override how the delivered USDC becomes credit (API wallet: server-side x402 sweep). */
+  topUp?: (id: string, usd: number) => Promise<void>;
+  /** In SEND_UNCONFIRMED, how long to keep looking for the deposit before asking the user again (default: one check). */
+  unconfirmedWatchMs?: number;
+  /** How long 1Click may keep reporting no deposit before we ask the user what happened (default 5 min). */
+  pendingDepositLimitMs?: number;
+}
+
+const runs = new Map<string, { done: Promise<CreditAction>; listeners: Set<(a: CreditAction) => void> }>();
 
 /**
  * Drive one credit action to a final state. Resumable: call again after a
  * reload and it continues from the saved state. `send` is only ever called
  * from QUOTED (or after the user explicitly chooses "send again").
+ * One run per action: a second call joins the first, so reopening the dialog
+ * during a wallet prompt can't mistake that send for an interrupted one.
  */
-export async function runCredit(
-  id: string,
-  deps: {
-    send: DepositSender;
-    inference: LocalAccount | null;
-    onUpdate: (a: CreditAction) => void;
-    /** Override how the delivered USDC becomes credit (API wallet: server-side x402 sweep). */
-    topUp?: (id: string, usd: number) => Promise<void>;
-  },
-): Promise<CreditAction> {
+export function runCredit(id: string, deps: RunCreditDeps): Promise<CreditAction> {
+  const live = runs.get(id);
+  if (live) {
+    live.listeners.add(deps.onUpdate);
+    return live.done;
+  }
+  const listeners = new Set([deps.onUpdate]);
+  const done = driveCredit(id, deps, (a) => listeners.forEach((l) => l(a))).finally(() => runs.delete(id));
+  runs.set(id, { done, listeners });
+  return done;
+}
+
+async function driveCredit(id: string, deps: RunCreditDeps, onUpdate: (a: CreditAction) => void): Promise<CreditAction> {
   let a = actions.get(id);
   if (!a) throw new Error("unknown credit action");
-  const emit = (next: CreditAction) => (deps.onUpdate(next), next);
+  const emit = (next: CreditAction) => (onUpdate(next), next);
   const depositAddress = a.quote.quote.depositAddress!;
 
   while (!CREDIT_FINAL.has(a.state)) {
@@ -182,7 +191,13 @@ export async function runCredit(
           a = emit(move(a, "DEPOSIT_SENT", { depositTx: tx }));
           oneclick.submitDeposit({ txHash: tx, depositAddress }).catch(() => {});
         } catch (e) {
-          // The wallet refused or failed before broadcasting: nothing moved, back to the quote.
+          if (e instanceof DepositBroadcastError) {
+            // It's on the network; only confirming it failed. Sending again could pay twice, so track it.
+            a = emit(move(a, "DEPOSIT_SENT", { depositTx: e.txHash }));
+            oneclick.submitDeposit({ txHash: e.txHash, depositAddress }).catch(() => {});
+            break;
+          }
+          // The wallet refused, or the deposit provably failed: nothing moved, back to the quote.
           a = emit(move(a, "QUOTED", { error: friendly(e) }));
           return a;
         }
@@ -196,11 +211,24 @@ export async function runCredit(
         if (a.state === "SEND_UNCONFIRMED") return a;
         break;
       }
-      case "SEND_UNCONFIRMED":
-        return a; // UI asks: wait, or send again (an extra deposit is refunded by 1Click)
+      case "SEND_UNCONFIRMED": {
+        // Never sends. The UI asks: keep waiting, or send again (an extra deposit is refunded by 1Click).
+        const until = Date.now() + (deps.unconfirmedWatchMs ?? 0);
+        for (;;) {
+          const st = await oneclick.status(depositAddress).catch(() => undefined);
+          if (st && st.status !== "PENDING_DEPOSIT") {
+            a = emit(move(a, "SWAPPING", { oneclickStatus: st.status }));
+            break;
+          }
+          if (Date.now() >= until) return a;
+          await sleep(5_000);
+        }
+        break;
+      }
       case "DEPOSIT_SENT":
       case "SWAPPING": {
         let delay = 3_000;
+        const watchingSince = Date.now();
         for (;;) {
           const st = await oneclick.status(depositAddress).catch(() => undefined);
           if (st) {
@@ -211,6 +239,10 @@ export async function runCredit(
               else a = emit(move(a, "FAILED", { error: "1Click reported the swap as failed; funds are refunded to your wallet." }));
               break;
             }
+            // Don't watch forever for a deposit that may never have landed; the user decides what's next.
+            if (st.status === "PENDING_DEPOSIT" && Date.now() - watchingSince >= (deps.pendingDepositLimitMs ?? 5 * 60_000)) {
+              return emit(move(a, "SEND_UNCONFIRMED"));
+            }
           }
           await sleep(delay);
           delay = Math.min(delay * 1.4, 10_000);
@@ -219,7 +251,8 @@ export async function runCredit(
       }
       case "SWAPPED": {
         const need = BigInt(Math.round(a.usd * 1e6));
-        for (let i = 0; i < 30 && (await inferenceUsdc(a.inferenceAddress)) < need; i++) await sleep(2_000);
+        // A failed balance read counts as "not yet": the top-up below is safe to try either way.
+        for (let i = 0; i < 30 && (await inferenceUsdc(a.inferenceAddress).catch(() => 0n)) < need; i++) await sleep(2_000);
         a = emit(move(a, "TOPPING_UP"));
         break;
       }
@@ -239,10 +272,32 @@ export async function runCredit(
   return a;
 }
 
+const toppingUp = new Map<string, Promise<void>>();
+
+/** Share one in-progress top-up per id, so a second watcher of the same deposit doesn't race the first. */
+export function topUpOnce(id: string, run: () => Promise<unknown>): Promise<void> {
+  let p = toppingUp.get(id);
+  if (!p) {
+    p = run().then(() => {}).finally(() => toppingUp.delete(id));
+    toppingUp.set(id, p);
+  }
+  return p;
+}
+
 /** User chose "send again" after an unconfirmed send. */
 export function resend(id: string): CreditAction {
   const a = actions.get(id)!;
-  return move(a, "QUOTED", { error: undefined });
+  return move(a, "QUOTED", { depositTx: undefined });
+}
+
+/**
+ * The API wallet's sweep can return $0: either the USDC was already swept (by a
+ * retry, or automatically on a 402), which is fine, or it's still sitting there
+ * uncredited, which must not be reported as success.
+ */
+export async function confirmSweep(sweptUsd: number, idleUsdc: () => Promise<bigint>): Promise<void> {
+  if (sweptUsd > 0) return;
+  if ((await idleUsdc()) >= BigInt(MIN_CREDIT_USD * 1e6)) throw new Error("Your USDC arrived but hasn't been credited yet. Try again in a minute.");
 }
 
 export function friendly(e: unknown): string {

@@ -57,7 +57,12 @@ async function readHidden(prompt: string): Promise<string> {
 
 async function login() {
   const key = await readHidden("Paste your inference wallet key (input hidden): ");
-  saveInferenceKey(key);
+  try {
+    saveInferenceKey(key);
+  } catch (e) {
+    console.error(`${(e as Error).message} Copy it from the website: account menu → Local proxy → Copy key.`);
+    process.exit(1);
+  }
   const address = privateKeyToAccount(key as `0x${string}`).address;
   console.log(`Saved to ${home()} (only your user can read it). Inference wallet: ${address}`);
 }

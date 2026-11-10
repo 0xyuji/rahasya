@@ -7,6 +7,7 @@ import { getAccount, sendTransaction, switchChain, waitForTransactionReceipt, wr
 import { erc20Abi, type Hex } from "viem";
 import { base } from "viem/chains";
 import { wagmiAdapter } from "../wallet/appkit";
+import { DepositBroadcastError } from "./machines";
 
 /** Sends a deposit from the user's own wallet and returns the tx hash/signature. */
 export type DepositSender = (asset: ResolvedAsset, to: string, amount: bigint) => Promise<string>;
@@ -24,7 +25,9 @@ export const evmSender: DepositSender = async (asset, to, amount) => {
         args: [to as Hex, amount],
       });
   // Don't hand back until it's mined: the deposit isn't real before that.
-  const receipt = await waitForTransactionReceipt(config, { hash, chainId: base.id });
+  const receipt = await waitForTransactionReceipt(config, { hash, chainId: base.id }).catch((e: unknown) => {
+    throw new DepositBroadcastError(hash, e);
+  });
   if (receipt.status !== "success") throw new Error("Deposit transaction reverted; no funds moved.");
   return hash;
 };
@@ -51,7 +54,10 @@ export function solanaSender(wallet: SolanaWallet, connection: Connection, owner
     tx.recentBlockhash = blockhash;
     tx.feePayer = from;
     const sig = await wallet.signAndSendTransaction(tx);
-    const res = await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");
+    // This can throw on a flaky RPC even though the transaction landed.
+    const res = await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed").catch((e: unknown) => {
+      throw new DepositBroadcastError(sig, e);
+    });
     if (res.value.err) throw new Error("Deposit transaction failed on Solana; no funds moved.");
     return sig;
   };
