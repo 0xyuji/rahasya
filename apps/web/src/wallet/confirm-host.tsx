@@ -18,7 +18,7 @@ export function ConfirmHost() {
   return (
     <dialog
       ref={ref}
-      className={s.dialog}
+      className={`${s.dialog} ${s.confirm}`}
       onCancel={(e) => {
         e.preventDefault(); // Escape is a "no", and the question has to be cleared either way
         question?.answer(false);

@@ -7,6 +7,7 @@ import { MIN_CREDIT_USD, friendly, inferenceUsdc } from "../funding/flow";
 import { sweepApiWallet, useCreditTarget } from "../funding/target";
 import { useWallet } from "../wallet/wallet-context";
 import s from "./credit-dialog.module.css";
+import { CopyButton } from "./dialog-parts";
 
 export function UsdcPanel({ onCredited }: { onCredited: () => void }) {
   const w = useWallet();
@@ -52,9 +53,7 @@ export function UsdcPanel({ onCredited }: { onCredited: () => void }) {
         <div className={s.depositInfo}>
           <div className={s.label}>{t.kind === "api" ? "Your API wallet (Base)" : "Your inference wallet (Base)"}</div>
           <code className={s.addr}>{t.address}</code>
-          <button type="button" className={s.copyBtn} onClick={() => navigator.clipboard.writeText(t.address!)}>
-            Copy
-          </button>
+          <CopyButton text={t.address} />
         </div>
       </div>
       <p className={s.fine}>Only send USDC on Base here. Other tokens or networks can be lost.</p>

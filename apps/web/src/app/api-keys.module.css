@@ -1,40 +1,24 @@
 .wide {
-  width: min(620px, calc(100vw - 32px));
-  max-height: calc(100vh - 48px);
-  overflow-y: auto;
-}
-
-.inline {
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 12.5px;
-  padding: 1px 6px;
-  border-radius: 6px;
-  background: rgba(236, 231, 222, 0.07);
-  color: var(--paper-dim);
+  width: min(640px, calc(100vw - 32px));
 }
 
 .wallet {
   display: flex;
   justify-content: space-between;
-  align-items: flex-end;
+  align-items: center;
   gap: 16px;
-  padding: 14px 16px;
+  margin-top: 16px;
+  padding: 16px 18px;
   border: 1px solid var(--line);
   border-radius: 14px;
 }
 .big {
   font-family: var(--font-display);
-  font-size: 30px;
+  font-size: 32px;
   line-height: 1.1;
-  font-variant-numeric: tabular-nums;
 }
-.walletActions {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 6px;
-}
-.walletActions button {
+.wallet button {
+  flex: none;
   margin-top: 0;
 }
 
@@ -43,13 +27,12 @@
   background: transparent;
   padding: 0;
   font-size: 12.5px;
-  color: var(--paper-faint);
+  color: var(--paper-dim);
   cursor: pointer;
-  text-decoration: underline dotted var(--paper-faint);
-  text-underline-offset: 3px;
+  white-space: nowrap;
 }
 .link:hover {
-  color: var(--paper-dim);
+  color: var(--paper);
 }
 .danger,
 .danger:hover {
@@ -57,103 +40,232 @@
 }
 
 .fresh {
-  margin-top: 16px;
-  padding: 14px 16px;
-  border: 1px solid rgba(200, 164, 106, 0.45);
+  padding: 16px 18px;
+  border: 1px solid rgba(200, 164, 106, 0.4);
   border-radius: 14px;
+  background: rgba(200, 164, 106, 0.05);
 }
-.fresh .label:first-child {
-  margin-top: 0;
+.freshTitle {
+  margin: 0 0 12px;
+  font-size: 14px;
 }
 
 .listHead {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-top: 16px;
+  gap: 12px;
+  margin: 24px 0 10px;
 }
-.listHead button {
-  margin-top: 0;
+.listHead > div {
+  margin: 0;
 }
 
-.form {
-  margin-top: 8px;
-  padding: 14px 16px;
+/* minmax(0, 1fr): without it a wide config block stretches the row out of the dialog. */
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
   border: 1px solid var(--line);
   border-radius: 14px;
 }
-.row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 10px;
-}
-.field {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: var(--paper-dim);
-}
-.field input,
-.field select {
-  width: 84px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: transparent;
-  color: var(--paper);
-  font: inherit;
-  padding: 5px 8px;
-}
-.field select {
-  width: auto;
-  background: var(--ink-2);
-}
-.models {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
-  gap: 4px 12px;
-  font-size: 13px;
-}
-.check {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--paper-dim);
-}
-
-.list {
-  list-style: none;
-  margin: 8px 0 0;
-  padding: 0;
-  display: grid;
-  gap: 8px;
-}
 .item {
-  padding: 12px 14px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
+  min-width: 0;
+  padding: 14px 16px;
+}
+.item + .item {
+  border-top: 1px solid var(--line);
 }
 .itemHead {
   display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  font-size: 14px;
-}
-.itemHead strong {
-  font-weight: 500;
-}
-.meta {
-  display: flex;
   flex-wrap: wrap;
-  gap: 4px 12px;
-  margin-top: 6px;
-  font-size: 12.5px;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 4px 16px;
+}
+.itemName {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  font-size: 14.5px;
+}
+.itemName strong {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.itemName code {
+  flex: none;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 12px;
   color: var(--paper-faint);
-  font-variant-numeric: tabular-nums;
 }
 .actions {
   display: flex;
   gap: 14px;
-  margin-top: 8px;
+}
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  margin-top: 4px;
+  font-size: 12.5px;
+  color: var(--paper-faint);
+}
+.itemConfig {
+  margin-top: 12px;
+}
+.empty {
+  margin: 0;
+  padding: 22px 16px;
+  border: 1px dashed var(--line);
+  border-radius: 14px;
+  text-align: center;
+  font-size: 13.5px;
+  color: var(--paper-faint);
+}
+
+.accountFoot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px 16px;
+  margin-top: 16px;
+}
+
+/* New / edit key */
+.block {
+  display: block;
+  min-width: 0;
+}
+.input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.18);
+  padding: 0 12px;
+  font-size: 13px;
+  color: var(--paper-faint);
+}
+.input:focus-within {
+  border-color: var(--line-strong);
+}
+.input input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--paper);
+  font: inherit;
+  font-size: 14.5px;
+  padding: 10px 0;
+  appearance: textfield;
+}
+.input input::-webkit-outer-spin-button,
+.input input::-webkit-inner-spin-button {
+  appearance: none;
+  margin: 0;
+}
+.input input::placeholder {
+  color: var(--paper-faint);
+}
+.pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.segment {
+  margin-bottom: 0;
+}
+.modelsHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin: 18px 0 8px;
+}
+.modelsHead > div {
+  margin: 0;
+}
+.modelsState {
+  display: flex;
+  gap: 12px;
+  font-size: 12.5px;
+  color: var(--paper-faint);
+  white-space: nowrap;
+}
+.models {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  font-size: 14px;
+  color: var(--paper-dim);
+  cursor: pointer;
+}
+.check + .check {
+  border-top: 1px solid var(--line);
+}
+.check:hover {
+  color: var(--paper);
+  background: rgba(236, 231, 222, 0.03);
+}
+.check input {
+  appearance: none;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
+  background: transparent;
+  cursor: pointer;
+}
+.check input:checked {
+  border-color: var(--paper);
+  background: var(--paper);
+}
+.check input:checked::after {
+  content: "";
+  width: 8px;
+  height: 4px;
+  margin-top: -2px;
+  border-left: 1.6px solid var(--ink);
+  border-bottom: 1.6px solid var(--ink);
+  transform: rotate(-45deg);
+}
+.check:has(input:checked) {
+  color: var(--paper);
+}
+.modelName {
+  flex: 1;
+  min-width: 0;
+}
+.tag {
+  flex: none;
+  font-size: 11.5px;
+  color: var(--paper-faint);
+}
+
+@media (max-width: 520px) {
+  .wallet {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .actions {
+    margin-top: 6px;
+  }
 }

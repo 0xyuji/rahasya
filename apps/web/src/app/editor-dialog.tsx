@@ -3,6 +3,7 @@
 import { PRIVACY_MODES } from "@pay/rail/browser";
 import { useEffect, useRef, useState } from "react";
 import { brand } from "../brand";
+import { CodeBlock, CopyRow, DialogHead } from "./dialog-parts";
 import { opencodeConfig } from "./opencode-config";
 import { useWallet } from "../wallet/wallet-context";
 import s from "./credit-dialog.module.css";
@@ -74,7 +75,6 @@ export function EditorDialog({ open, onClose }: { open: boolean; onClose: () => 
 
   useEffect(() => setReveal(false), [w.inferenceKey]); // a revealed key never carries over to another wallet
 
-  const copy = (t: string) => void navigator.clipboard.writeText(t);
   const id = brand.repo;
   // Same value on the server and the first client render (no hydration mismatch), then the real origin.
   const [site, setSite] = useState(`https://${brand.domain}`);
@@ -82,28 +82,17 @@ export function EditorDialog({ open, onClose }: { open: boolean; onClose: () => 
   const download = `curl -fsSLO ${site}/rahasya.mjs\nnode rahasya.mjs`;
 
   return (
-    <dialog ref={ref} className={s.dialog} onClose={onClose} onCancel={onClose}>
-      <div className={s.head}>
-        <h2 className={s.title}>Local proxy</h2>
-        <button className={s.x} onClick={onClose} aria-label="Close">
-          ×
-        </button>
-      </div>
+    <dialog ref={ref} className={`${s.dialog} ${s.dialogWide}`} onClose={onClose} onCancel={onClose}>
+      <DialogHead title="Local proxy" onClose={onClose} />
       <p className={s.p}>
         Run a small proxy on your own computer. Your tools talk to it on localhost; it signs each request with your inference wallet and spends your credit.
         Nothing goes through us.
       </p>
 
       <div className={s.label}>1. Start it (needs Node.js 22 or newer)</div>
-      <pre className={s.code}>{NPX}</pre>
-      <button className={s.copyBtn} onClick={() => copy(NPX)}>
-        Copy command
-      </button>
+      <CopyRow text={NPX} />
       <div className={s.label}>Or download it as one readable file</div>
-      <pre className={s.code}>{download}</pre>
-      <button className={s.copyBtn} onClick={() => copy(download)}>
-        Copy commands
-      </button>
+      <CodeBlock label="Terminal" text={download} />
       <p className={s.fine}>
         The first run asks for the key from step 2 (input hidden). One readable file, built from our repo. Later runs start straight away;{" "}
         add <code>--help</code> to see the other commands.
@@ -133,10 +122,7 @@ export function EditorDialog({ open, onClose }: { open: boolean; onClose: () => 
         )
       ) : reveal ? (
         <>
-          <code className={s.addr}>{w.inferenceKey}</code>
-          <button className={s.copyBtn} onClick={() => copy(w.inferenceKey!)}>
-            Copy
-          </button>
+          <CopyRow text={w.inferenceKey} />
           <p className={s.warn}>
             Anyone with this key can spend your credit. Paste it only into the proxy&apos;s login prompt, never into a website or chat.
           </p>
@@ -151,14 +137,17 @@ export function EditorDialog({ open, onClose }: { open: boolean; onClose: () => 
       <div className={s.tabs} role="tablist">
         {(Object.keys(TOOLS) as Array<keyof typeof TOOLS>).map((k) => (
           <button key={k} role="tab" aria-selected={tool === k} className={`${s.tab} ${tool === k ? s.tabOn : ""}`} onClick={() => setTool(k)}>
-            {TOOLS[k].label}
+            {k === "generic" ? (
+              <>
+                Cursor<span className={s.wideOnly}> &amp; others</span>
+              </>
+            ) : (
+              TOOLS[k].label
+            )}
           </button>
         ))}
       </div>
-      <pre className={s.code}>{TOOLS[tool].text(id)}</pre>
-      <button className={s.copyBtn} onClick={() => copy(TOOLS[tool].text(id))}>
-        Copy
-      </button>
+      <CodeBlock label={TOOLS[tool].label} text={TOOLS[tool].text(id)} />
 
       <p className={s.fine}>
         The proxy only listens on 127.0.0.1, needs its local API key on every request, and refuses requests from web pages. Agentic tools (tool calls) work with

@@ -32,7 +32,7 @@ Working state of the project: what's done, what's left, and decisions made. Upda
 
 ## Next steps (in order)
 
-0. ~~Real-wallet test of the final code~~ ✅ 11-10 (`cf887e7`): $5 top-up through the new checks, API key call, Truly private with Verified enclave, Lock and Disconnect. Code freeze from here: real bugs only.
+0. ~~Real-wallet test of the final code~~ ✅ 11-10 (`cf887e7`): $5 top-up through the new checks, API key call, Truly private with Verified enclave, Lock and Disconnect. Code freeze from here: real bugs only. Shipped after it on 11-10: dialog redesign (pinned header, nothing past the edges) and a fix for key edits removing the expiry.
    ~~Deploy the state-machine work and Fable review fixes~~ ✅ 11-10. ~~Merge to master, add CI~~ ✅ 11-10. Before going public: trim this file. Real-wallet run must also cover: Cancel unlock, an API-wallet top-up.
 1. Owner reviews the new landing page on rahasya.chat; adjust if wanted. Click the dialogs' Connect wallet / NEAR wallet / Unlock buttons with a real wallet.
 2. Pick tracks (unanswered). Suggested: privacy (primary), agents, maybe security.

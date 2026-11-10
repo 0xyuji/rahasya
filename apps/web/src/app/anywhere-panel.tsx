@@ -23,6 +23,7 @@ import { anywhereSteps } from "../funding/machines";
 import { useCreditTarget } from "../funding/target";
 import { useWallet } from "../wallet/wallet-context";
 import s from "./credit-dialog.module.css";
+import { CopyButton } from "./dialog-parts";
 
 const PRESETS = [5, 10, 20];
 const fmtUnits = (u: string, d: number) => (Number(u) / 10 ** d).toLocaleString(undefined, { maximumFractionDigits: Math.min(d, 8) });
@@ -38,23 +39,6 @@ function useCountdown(deadline?: string) {
   const h = Math.floor(ms / 3600_000);
   const m = Math.floor((ms % 3600_000) / 60_000);
   return h ? `${h}h ${m}m` : `${m}m ${Math.floor((ms % 60_000) / 1000)}s`;
-}
-
-function Copy({ text, label }: { text: string; label?: string }) {
-  const [done, setDone] = useState(false);
-  return (
-    <button
-      type="button"
-      className={s.copyBtn}
-      onClick={() => {
-        void navigator.clipboard.writeText(text);
-        setDone(true);
-        setTimeout(() => setDone(false), 1200);
-      }}
-    >
-      {done ? "Copied" : (label ?? "Copy")}
-    </button>
-  );
 }
 
 export function AnywherePanel({ onCredited }: { onCredited: () => void }) {
@@ -177,12 +161,12 @@ export function AnywherePanel({ onCredited }: { onCredited: () => void }) {
               <div className={s.depositInfo}>
                 <div className={s.label}>Deposit address</div>
                 <code className={s.addr}>{q.depositAddress}</code>
-                <Copy text={q.depositAddress!} />
+                <CopyButton text={q.depositAddress!} />
                 {q.depositMemo && (
                   <>
                     <div className={s.label}>Memo (required)</div>
                     <code className={s.addr}>{q.depositMemo}</code>
-                    <Copy text={q.depositMemo} />
+                    <CopyButton text={q.depositMemo} />
                   </>
                 )}
               </div>

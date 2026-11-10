@@ -20,6 +20,7 @@ import { creditSteps } from "../funding/machines";
 import { useCreditTarget } from "../funding/target";
 import { useWallet } from "../wallet/wallet-context";
 import { AnywherePanel } from "./anywhere-panel";
+import { DialogHead } from "./dialog-parts";
 import s from "./credit-dialog.module.css";
 import { UsdcPanel } from "./usdc-panel";
 
@@ -125,16 +126,11 @@ export function CreditDialog({ open, onClose, onCredited }: { open: boolean; onC
 
   return (
     <dialog ref={ref} className={s.dialog} onClose={close} onCancel={close} data-credit-state={action?.state ?? "NEW"}>
-      <div className={s.head}>
-        <h2 className={s.title}>{t.kind === "api" ? "Add credit to API wallet" : "Add credit"}</h2>
-        <button className={s.x} onClick={close} aria-label="Close">
-          ×
-        </button>
-      </div>
+      <DialogHead title={t.kind === "api" ? "Add credit to API wallet" : "Add credit"} onClose={close} />
       <div className={s.tabs} role="tablist" aria-label="How to pay">
         {([
           ["wallet", "From your wallet"],
-          ["anywhere", "Any token, anywhere"],
+          ["anywhere", <>Any token<span className={s.wideOnly}>, anywhere</span></>],
           ["usdc", "USDC on Base"],
         ] as const).map(([k, label]) => (
           <button key={k} role="tab" aria-selected={tab === k} className={`${s.tab} ${tab === k ? s.tabOn : ""}`} onClick={() => setTab(k)}>

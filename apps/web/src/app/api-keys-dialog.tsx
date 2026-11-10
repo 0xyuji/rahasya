@@ -2,6 +2,7 @@
 
 import { MODELS } from "@pay/rail/browser";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { CodeBlock, CopyRow, DialogHead } from "./dialog-parts";
 import { opencodeConfig } from "./opencode-config";
 import { walletUid } from "../wallet/session";
 import { useWallet } from "../wallet/wallet-context";
@@ -137,7 +138,8 @@ export function ApiKeysDialog({ open, onClose }: { open: boolean; onClose: () =>
     name: d.name,
     limits: { dailyUsd: d.dailyUsd || undefined, totalUsd: d.totalUsd || undefined },
     models: d.models,
-    expiresAt: d.expiryDays ? Date.now() + Number(d.expiryDays) * 86_400_000 : null,
+    // The edit form has no expiry field: sending null here would silently remove the key's expiry.
+    expiresAt: editing ? undefined : d.expiryDays ? Date.now() + Number(d.expiryDays) * 86_400_000 : null,
   });
 
   async function save() {
@@ -188,24 +190,33 @@ export function ApiKeysDialog({ open, onClose }: { open: boolean; onClose: () =>
   useEffect(() => setBase(`${window.location.origin}/api/v1`), []);
   const opencode = (f: { token: string; models: string[] }) => opencodeConfig({ baseURL: base, keyHint: f.token, allowed: f.models });
 
+  const inForm = !!draft && !!account && phase !== "needs-login";
+
+  // The form and a just-created key both replace what was on screen: start them at the top.
+  const showingForm = !!draft;
+  useEffect(() => {
+    if (ref.current) ref.current.scrollTop = 0;
+  }, [showingForm]);
+
   return (
     <dialog ref={ref} className={`${s.dialog} ${k.wide}`} onClose={onClose} onCancel={onClose} data-keys-phase={phase}>
-      <div className={s.head}>
-        <h2 className={s.title}>API keys</h2>
-        <button className={s.x} onClick={onClose} aria-label="Close">
-          ×
-        </button>
-      </div>
-      <p className={s.p}>
-        Use your credit from opencode, Cursor, SillyTavern or any OpenAI-compatible tool. Base URL <code className={k.inline}>{base}</code> ·{" "}
-        <a href="/docs/integrations" target="_blank" rel="noreferrer">
-          setup guides
-        </a>
-      </p>
+      <DialogHead title={inForm ? (editing ? "Edit key" : "New API key") : "API keys"} onClose={onClose} />
+
+      {!inForm && (
+        <>
+          <p className={s.p}>
+            Use your credit from opencode, Cursor, SillyTavern or any OpenAI-compatible tool.{" "}
+            <a href="/docs/integrations" target="_blank" rel="noreferrer">
+              Setup guides
+            </a>
+          </p>
+          <CopyRow label="Base URL" text={base} />
+        </>
+      )}
 
       {!w.source ? (
         <>
-          <p className={s.p}>Your wallet is your login: no email, no password. Connect it to create keys and add credit.</p>
+          <p className={s.fine}>Your wallet is your login: no email, no password. Connect it to create keys and add credit.</p>
           <div className={s.row}>
             <button className={s.primary} onClick={() => (onClose(), w.connectEvmOrSolana())}>
               Connect wallet
@@ -217,7 +228,7 @@ export function ApiKeysDialog({ open, onClose }: { open: boolean; onClose: () =>
         </>
       ) : phase === "needs-login" || (loaded && !account) ? (
         <>
-          <p className={s.p}>Sign a message with your wallet to manage keys. It&apos;s not a transaction and costs nothing.</p>
+          <p className={s.fine}>Sign a message with your wallet to manage keys. It&apos;s not a transaction and costs nothing.</p>
           <button className={s.primary} onClick={signIn} disabled={busy}>
             {busy ? "Check your wallet…" : "Sign in with your wallet"}
           </button>
@@ -228,25 +239,112 @@ export function ApiKeysDialog({ open, onClose }: { open: boolean; onClose: () =>
         </button>
       ) : phase === "loading" || !account ? (
         <p className={s.fine}>Loading…</p>
+      ) : draft ? (
+        <>
+          <label className={k.block}>
+            <span className={`${s.label} ${s.flush}`}>Name</span>
+            <span className={k.input}>
+              <input autoFocus maxLength={60} placeholder="e.g. opencode laptop" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
+              {draft.name.length}/60
+            </span>
+          </label>
+
+          <div className={k.pair}>
+            <label className={k.block}>
+              <span className={s.label}>Daily limit</span>
+              <span className={k.input}>
+                <input type="number" min="0" step="0.5" placeholder="No limit" value={draft.dailyUsd} onChange={(e) => setDraft({ ...draft, dailyUsd: e.target.value })} />
+                USD
+              </span>
+            </label>
+            <label className={k.block}>
+              <span className={s.label}>Total limit</span>
+              <span className={k.input}>
+                <input type="number" min="0" step="1" placeholder="No limit" value={draft.totalUsd} onChange={(e) => setDraft({ ...draft, totalUsd: e.target.value })} />
+                USD
+              </span>
+            </label>
+          </div>
+
+          {!editing && (
+            <>
+              <div className={s.label}>Expires</div>
+              <div className={`${s.tabs} ${k.segment}`} role="radiogroup" aria-label="Expires">
+                {[
+                  ["", "Never"],
+                  ["7", "7 days"],
+                  ["30", "30 days"],
+                  ["90", "90 days"],
+                ].map(([v, label]) => (
+                  <button key={v} type="button" role="radio" aria-checked={draft.expiryDays === v} className={`${s.tab} ${draft.expiryDays === v ? s.tabOn : ""}`} onClick={() => setDraft({ ...draft, expiryDays: v! })}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
+          <div className={k.modelsHead}>
+            <div className={s.label}>Allowed models</div>
+            <div className={k.modelsState}>
+              {draft.models.length ? (
+                <>
+                  {draft.models.length} selected
+                  <button type="button" className={k.link} onClick={() => setDraft({ ...draft, models: [] })}>
+                    Clear
+                  </button>
+                </>
+              ) : (
+                "All models, unless you pick some"
+              )}
+            </div>
+          </div>
+          <div className={k.models}>
+            {Object.values(MODELS).map((m) => (
+              <label key={m.key} className={k.check}>
+                <input
+                  type="checkbox"
+                  checked={draft.models.includes(m.key)}
+                  onChange={(e) => setDraft({ ...draft, models: e.target.checked ? [...draft.models, m.key] : draft.models.filter((x) => x !== m.key) })}
+                />
+                <span className={k.modelName}>{m.label.replace(" (TEE)", "")}</span>
+                {m.e2ee && <span className={k.tag}>TEE, no tools</span>}
+              </label>
+            ))}
+          </div>
+          {err && <p className={s.warn}>{err}</p>}
+
+          <div className={s.footer}>
+            <button className={s.secondary} onClick={() => (setDraft(null), setEditing(null))} disabled={busy}>
+              Cancel
+            </button>
+            <button className={s.primary} onClick={save} disabled={busy}>
+              {busy ? "Saving…" : editing ? "Save changes" : "Create key"}
+            </button>
+          </div>
+        </>
       ) : (
         <>
+          {fresh && (
+            <div className={k.fresh} style={{ marginTop: 16 }}>
+              <p className={k.freshTitle}>“{fresh.name}” is ready. Copy the key now; it won&apos;t be shown again.</p>
+              <CopyRow text={fresh.token} />
+              <div className={k.itemConfig}>
+                <CodeBlock label="opencode.jsonc" text={opencode(fresh)} />
+              </div>
+              <p className={s.fine}>Other tools: the base URL above, this key, and a model such as large-v2.</p>
+            </div>
+          )}
+
           <div className={k.wallet}>
             <div>
-              <div className={s.label}>API wallet credit</div>
+              <div className={`${s.label} ${s.flush}`}>API wallet credit</div>
               <div className={k.big}>{usd(account.creditUsd, 4)}</div>
               {!!account.idleUsdc && account.idleUsdc > 0 && <div className={s.fine}>+ {account.idleUsdc.toFixed(2)} USDC waiting to be credited</div>}
             </div>
-            <div className={k.walletActions}>
-              <button className={s.secondary} onClick={() => w.openCredit({ kind: "api", address: account.apiWallet, uid: account.uid })}>
-                Add credit
-              </button>
-              <button className={k.link} onClick={() => signOut()}>
-                Sign out
-              </button>
-              <button className={k.link} onClick={() => signOut(true)} title="End every signed-in session for this wallet, on all devices">
-                Sign out everywhere
-              </button>
-            </div>
+            <button className={s.secondary} onClick={() => w.openCredit({ kind: "api", address: account.apiWallet, uid: account.uid })}>
+              Add credit
+            </button>
           </div>
           <p className={s.fine}>
             Your keys spend from a separate API wallet ({account.apiWallet.slice(0, 6)}…{account.apiWallet.slice(-4)}) that our server signs for. It only ever holds
@@ -254,138 +352,80 @@ export function ApiKeysDialog({ open, onClose }: { open: boolean; onClose: () =>
             encryption, use Truly private mode on this site.
           </p>
 
-          {fresh && (
-            <div className={k.fresh}>
-              <div className={s.label}>New key “{fresh.name}”. Copy it now; it won&apos;t be shown again.</div>
-              <code className={s.addr}>{fresh.token}</code>
-              <button className={s.copyBtn} onClick={() => navigator.clipboard.writeText(fresh.token)}>
-                Copy key
-              </button>
-              <div className={s.label}>opencode</div>
-              <pre className={s.code}>{opencode(fresh)}</pre>
-              <button className={s.copyBtn} onClick={() => navigator.clipboard.writeText(opencode(fresh))}>
-                Copy config
-              </button>
-              <p className={s.fine}>Other tools: base URL {base}, API key above, model e.g. large-v2.</p>
-            </div>
-          )}
-
           <div className={k.listHead}>
             <div className={s.label}>Your keys</div>
-            {!draft && (
-              <button className={s.copyBtn} onClick={() => (setDraft({ ...EMPTY }), setEditing(null), setFresh(null))}>
-                New key
-              </button>
-            )}
+            <button className={s.small} onClick={() => (setDraft({ ...EMPTY }), setEditing(null), setFresh(null))}>
+              New key
+            </button>
           </div>
 
-          {draft && (
-            <div className={k.form}>
-              <input className={s.search} placeholder="Name (e.g. opencode laptop)" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
-              <div className={k.row}>
-                <label className={k.field}>
-                  Daily limit $
-                  <input type="number" min="0" step="0.5" placeholder="none" value={draft.dailyUsd} onChange={(e) => setDraft({ ...draft, dailyUsd: e.target.value })} />
-                </label>
-                <label className={k.field}>
-                  Total limit $
-                  <input type="number" min="0" step="1" placeholder="none" value={draft.totalUsd} onChange={(e) => setDraft({ ...draft, totalUsd: e.target.value })} />
-                </label>
-                {!editing && (
-                  <label className={k.field}>
-                    Expires
-                    <select value={draft.expiryDays} onChange={(e) => setDraft({ ...draft, expiryDays: e.target.value })}>
-                      <option value="">never</option>
-                      <option value="7">in 7 days</option>
-                      <option value="30">in 30 days</option>
-                      <option value="90">in 90 days</option>
-                    </select>
-                  </label>
-                )}
-              </div>
-              <div className={s.label}>Allowed models (none selected = all)</div>
-              <div className={k.models}>
-                {Object.values(MODELS).map((m) => (
-                  <label key={m.key} className={k.check}>
-                    <input
-                      type="checkbox"
-                      checked={draft.models.includes(m.key)}
-                      onChange={(e) =>
-                        setDraft({ ...draft, models: e.target.checked ? [...draft.models, m.key] : draft.models.filter((x) => x !== m.key) })
-                      }
-                    />
-                    {m.label.replace(" (TEE)", "")}
-                    {m.e2ee && <span className={s.dim}> · TEE, no tools</span>}
-                  </label>
-                ))}
-              </div>
-              <div className={s.row}>
-                <button className={s.secondary} onClick={() => (setDraft(null), setEditing(null))} disabled={busy}>
-                  Cancel
-                </button>
-                <button className={s.primary} onClick={save} disabled={busy}>
-                  {busy ? "Saving…" : editing ? "Save changes" : "Create key"}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {keys.length === 0 && !draft ? (
-            <p className={s.fine}>No keys yet.</p>
+          {keys.length === 0 ? (
+            <p className={k.empty}>No keys yet.</p>
           ) : (
             <ul className={k.list}>
-              {keys.map((key) => (
-                <li key={key.id} className={k.item}>
-                  <div className={k.itemHead}>
-                    <strong>{key.name}</strong>
-                    <code className={k.inline}>{key.prefix}…</code>
-                  </div>
-                  <div className={k.meta}>
-                    <span>
-                      today {usd(key.spentTodayUsd, 4)}
-                      {key.limits.dailyUsd ? ` / ${usd(key.limits.dailyUsd)}` : ""}
-                    </span>
-                    <span>
-                      total {usd(key.spentTotalUsd, 4)}
-                      {key.limits.totalUsd ? ` / ${usd(key.limits.totalUsd)}` : ""}
-                    </span>
-                    <span>{key.models.length ? `${key.models.length} model${key.models.length > 1 ? "s" : ""}` : "all models"}</span>
-                    <span>used {ago(key.lastUsedAt)}</span>
-                    {key.expiresAt && <span>{key.expiresAt < Date.now() ? "expired" : `expires ${new Date(key.expiresAt).toLocaleDateString()}`}</span>}
-                  </div>
-                  <div className={k.actions}>
-                    <button className={k.link} onClick={() => setConfigFor(configFor === key.id ? null : key.id)}>
-                      {configFor === key.id ? "Hide config" : "opencode config"}
-                    </button>
-                    <button
-                      className={k.link}
-                      onClick={() => {
-                        setEditing(key.id);
-                        setFresh(null);
-                        setDraft({ name: key.name, dailyUsd: key.limits.dailyUsd?.toString() ?? "", totalUsd: key.limits.totalUsd?.toString() ?? "", models: key.models, expiryDays: "" });
-                      }}
-                    >
-                      Edit
-                    </button>
-                    <button className={`${k.link} ${confirmDel === key.id ? k.danger : ""}`} onClick={() => remove(key.id)}>
-                      {confirmDel === key.id ? "Click again to delete" : "Delete"}
-                    </button>
-                  </div>
-                  {configFor === key.id && (
-                    <div className={k.fresh}>
-                      <pre className={s.code}>{opencode({ token: `${key.prefix}…(your full key)`, models: key.models })}</pre>
-                      <button className={s.copyBtn} onClick={() => navigator.clipboard.writeText(opencode({ token: `${key.prefix}…(your full key)`, models: key.models }))}>
-                        Copy config
-                      </button>
+              {keys.map((key) => {
+                const template = { token: `${key.prefix}…(your full key)`, models: key.models };
+                return (
+                  <li key={key.id} className={k.item}>
+                    <div className={k.itemHead}>
+                      <div className={k.itemName}>
+                        <strong>{key.name}</strong>
+                        <code>{key.prefix}…</code>
+                      </div>
+                      <div className={k.actions}>
+                        <button className={k.link} onClick={() => setConfigFor(configFor === key.id ? null : key.id)}>
+                          {configFor === key.id ? "Hide config" : "Config"}
+                        </button>
+                        <button
+                          className={k.link}
+                          onClick={() => {
+                            setEditing(key.id);
+                            setFresh(null);
+                            setDraft({ name: key.name, dailyUsd: key.limits.dailyUsd?.toString() ?? "", totalUsd: key.limits.totalUsd?.toString() ?? "", models: key.models, expiryDays: "" });
+                          }}
+                        >
+                          Edit
+                        </button>
+                        <button className={`${k.link} ${confirmDel === key.id ? k.danger : ""}`} onClick={() => remove(key.id)}>
+                          {confirmDel === key.id ? "Click again to delete" : "Delete"}
+                        </button>
+                      </div>
                     </div>
-                  )}
-                </li>
-              ))}
+                    <div className={k.meta}>
+                      <span>
+                        today {usd(key.spentTodayUsd, 4)}
+                        {key.limits.dailyUsd ? ` / ${usd(key.limits.dailyUsd)}` : ""}
+                      </span>
+                      <span>
+                        total {usd(key.spentTotalUsd, 4)}
+                        {key.limits.totalUsd ? ` / ${usd(key.limits.totalUsd)}` : ""}
+                      </span>
+                      <span>{key.models.length ? `${key.models.length} model${key.models.length > 1 ? "s" : ""}` : "all models"}</span>
+                      <span>used {ago(key.lastUsedAt)}</span>
+                      {key.expiresAt && <span>{key.expiresAt < Date.now() ? "expired" : `expires ${new Date(key.expiresAt).toLocaleDateString()}`}</span>}
+                    </div>
+                    {configFor === key.id && (
+                      <div className={k.itemConfig}>
+                        <CodeBlock label="opencode.jsonc" text={opencode(template)} />
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
+
+          <div className={k.accountFoot}>
+            <button className={k.link} onClick={() => signOut()}>
+              Sign out
+            </button>
+            <button className={k.link} onClick={() => signOut(true)} title="End every signed-in session for this wallet, on all devices">
+              Sign out everywhere
+            </button>
+          </div>
         </>
       )}
-      {err && <p className={s.warn}>{err}</p>}
+      {!inForm && err && <p className={s.warn}>{err}</p>}
     </dialog>
   );
 }
