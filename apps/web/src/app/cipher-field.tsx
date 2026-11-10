@@ -1,13 +1,15 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { FIGURE, FIGURE_H, FIGURE_W } from "./hooded-figure";
 
 /**
  * Landing backdrop, symbols only. Every glyph is a particle on a spring:
  * the pointer pushes glyphs out of its way and sweeps them along with its
  * motion; they spring back home. While moving, a glyph turns into a stroke
  * (- / | \) aligned with its motion. Click for a shockwave. A hooded figure
- * with an empty face (heavier glyphs, stiffer springs) sits on wide screens.
+ * with an empty face, in finer and brighter glyphs on stiffer springs, stands
+ * to the right on wide screens.
  * Canvas 2D, paused when hidden, static under prefers-reduced-motion.
  */
 const RAMP = ".,:;'-+/\\|!*=%#&$@";
@@ -16,6 +18,15 @@ const HEAVY = RAMP.slice(10); // hooded figure
 
 const CELL_W = 11;
 const CELL_H = 18;
+const FINE_W = 4; // the figure's grid, far finer than the field's, so folds and cords survive
+const FINE_H = 6.5;
+const FONT = `13px ui-monospace, "SF Mono", Menlo, monospace`;
+const FINE_FONT = `7px ui-monospace, "SF Mono", Menlo, monospace`;
+const COLUMN = 380; // half the width of the headline and prompt
+const HOOD_LEFT = 262; // in figure units
+const HOOD_BOTTOM = 470; // in figure units
+const UNDER_COLUMN = 70; // px of hood allowed to pass behind the prompt
+const FIGURE_MIN_SCALE = 0.45; // any smaller and the detail is lost
 const RADIUS = 110; // px, cursor push radius
 const FPS = 45;
 
@@ -28,7 +39,7 @@ type Cell = {
   vy: number;
   ch: string;
   dense: boolean; // part of the figure
-  face: boolean; // the empty face: never drawn
+  fade: number; // 0..1, kept down near the headline and prompt
 };
 
 /** Stroke glyph for a motion direction (screen y points down). */
@@ -58,36 +69,47 @@ export function CipherField() {
 
     const rand = (s: string) => s[(Math.random() * s.length) | 0]!;
 
-    /** Hooded figure as a density mask, sampled from an offscreen path. */
-    function figureMask(w: number) {
+    /** Paints the figure into a mask with one pixel per fine cell. */
+    function figureMask(w: number, h: number) {
+      const fineCols = Math.ceil(w / FINE_W);
+      const fineRows = Math.ceil(h / FINE_H);
+      // As large as the height allows, while the empty face stays clear of the text column.
+      const scale = Math.min((h * 0.87) / FIGURE_H, (w / 2 - COLUMN + UNDER_COLUMN) / (FIGURE_W - HOOD_LEFT));
+      if (scale < FIGURE_MIN_SCALE) return null;
       const m = document.createElement("canvas");
-      m.width = cols;
-      m.height = rows;
-      const g = m.getContext("2d")!;
-      if (w >= 900) {
-        const fh = rows * 0.78;
-        const fw = fh * 0.62 * (CELL_H / CELL_W);
-        const ox = cols * 0.8 - fw / 2;
-        const oy = rows - fh;
-        const P = (x: number, y: number) => [ox + x * fw, oy + y * fh] as const;
-        g.fillStyle = "#fff";
-        g.beginPath();
-        g.moveTo(...P(-0.08, 1));
-        g.bezierCurveTo(...P(0.02, 0.82), ...P(0.12, 0.74), ...P(0.18, 0.66));
-        g.bezierCurveTo(...P(0.1, 0.42), ...P(0.18, 0.08), ...P(0.5, 0.02));
-        g.bezierCurveTo(...P(0.82, 0.08), ...P(0.9, 0.42), ...P(0.82, 0.66));
-        g.bezierCurveTo(...P(0.88, 0.74), ...P(0.98, 0.82), ...P(1.08, 1));
-        g.closePath();
-        g.fill();
-        g.fillStyle = "#f00"; // the empty face: anonymity
-        g.beginPath();
-        g.ellipse(...P(0.5, 0.36), fw * 0.17, fh * 0.17, 0, 0, Math.PI * 2);
-        g.fill();
+      m.width = fineCols;
+      m.height = fineRows;
+      const g = m.getContext("2d", { willReadFrequently: true })!;
+      const fh = FIGURE_H * scale;
+      const left = w - FIGURE_W * scale;
+      g.fillStyle = "#000";
+      g.fillRect(0, 0, fineCols, fineRows);
+      g.setTransform(scale / FINE_W, 0, 0, scale / FINE_H, left / FINE_W, (h - fh) / FINE_H);
+      g.lineCap = "round";
+      const color = { shape: "#0f0", lit: "#fff", shadow: "#0f0", face: "#f00" };
+      for (const p of FIGURE) {
+        const path = new Path2D(p.d);
+        if (p.width) {
+          g.strokeStyle = color[p.tone];
+          g.lineWidth = p.width;
+          g.stroke(path);
+        } else {
+          g.fillStyle = color[p.tone];
+          g.fill(path);
+        }
       }
-      const data = g.getImageData(0, 0, cols, rows).data;
-      return (c: number, r: number) => {
-        const i = (r * cols + c) * 4;
-        return { dense: data[i + 1]! > 128, face: data[i]! > 128 && data[i + 1]! < 128 };
+      const data = g.getImageData(0, 0, fineCols, fineRows).data;
+      const at = (c: number, r: number) => (r * fineCols + c) * 4;
+      return {
+        fineCols,
+        fineRows,
+        shoulders: h - fh + HOOD_BOTTOM * scale,
+        lit: (c: number, r: number) => data[at(c, r)]! > 128 && data[at(c, r) + 1]! > 128,
+        /** Any part of the figure, so the field stays out and the body reads as dark. */
+        solid: (px: number, py: number) => {
+          const i = at(Math.floor(px / FINE_W), Math.floor(py / FINE_H));
+          return data[i]! > 128 || data[i + 1]! > 128;
+        },
       };
     }
 
@@ -100,28 +122,40 @@ export function CipherField() {
       canvas.style.width = `${w}px`;
       canvas.style.height = `${h}px`;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.font = `13px ui-monospace, "SF Mono", Menlo, monospace`;
       ctx.textBaseline = "middle";
       ctx.textAlign = "center";
       cols = Math.ceil(w / CELL_W);
       rows = Math.ceil(h / CELL_H);
-      const mask = figureMask(w);
-      cells = Array.from({ length: cols * rows }, (_, i) => {
-        const c = i % cols;
-        const r = (i / cols) | 0;
-        const { dense, face } = mask(c, r);
-        return {
-          hx: c * CELL_W + CELL_W / 2,
-          hy: r * CELL_H + CELL_H / 2,
-          ox: 0,
-          oy: 0,
-          vx: 0,
-          vy: 0,
-          ch: dense ? rand(HEAVY) : rand(LIGHT),
-          dense,
-          face,
-        };
-      });
+      const mask = figureMask(w, h);
+      const cell = (hx: number, hy: number, ch: string, dense: boolean, fade: number): Cell => ({ hx, hy, ox: 0, oy: 0, vx: 0, vy: 0, ch, dense, fade });
+      const next: Cell[] = [];
+      const cx = w / 2;
+      const cy = h * 0.46;
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const hx = c * CELL_W + CELL_W / 2;
+          const hy = r * CELL_H + CELL_H / 2;
+          if (mask?.solid(hx, hy)) continue;
+          // Stay quiet behind the headline + prompt so text remains readable.
+          const fade = Math.min(1, Math.max(0, Math.hypot((hx - cx) / (w * 0.32), (hy - cy) / (h * 0.3)) - 0.55));
+          if (fade > 0) next.push(cell(hx, hy, rand(LIGHT), false, fade));
+        }
+      }
+      // Sorted after the field: draw() switches font once, at the first figure cell.
+      if (mask) {
+        const edge = cx + COLUMN;
+        for (let r = 0; r < mask.fineRows; r++) {
+          for (let c = 0; c < mask.fineCols; c++) {
+            if (!mask.lit(c, r)) continue;
+            const hx = c * FINE_W + FINE_W / 2;
+            const hy = r * FINE_H + FINE_H / 2;
+            // His body drops to a trace behind the chips; the hood is level with no text but the prompt, which has its own background.
+            const fade = hy < mask.shoulders ? 1 : 0.22 + 0.78 * Math.min(1, Math.max(0, (hx - edge) / 40));
+            next.push(cell(hx, hy, rand(HEAVY), true, fade));
+          }
+        }
+      }
+      cells = next;
       draw();
     }
 
@@ -141,7 +175,6 @@ export function CipherField() {
 
       const R2 = RADIUS * RADIUS;
       for (const c of cells) {
-        if (c.face) continue;
         const x = c.hx + c.ox;
         const y = c.hy + c.oy;
         const heavy = c.dense ? 0.45 : 1; // the figure resists more
@@ -176,26 +209,20 @@ export function CipherField() {
     }
 
     function draw() {
-      const w = window.innerWidth;
-      const h = window.innerHeight;
-      ctx.clearRect(0, 0, w, h);
-      const cx = w / 2;
-      const cy = h * 0.46;
+      ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+      ctx.font = FONT;
+      let fine = false;
       for (const c of cells) {
-        if (c.face) continue;
-        const x = c.hx + c.ox;
-        const y = c.hy + c.oy;
-        // Stay quiet behind the headline + prompt so text remains readable.
-        const calm = Math.min(1, Math.max(0, Math.hypot((c.hx - cx) / (w * 0.32), (c.hy - cy) / (h * 0.3)) - 0.55));
-        if (calm <= 0) continue;
+        if (c.dense && !fine) {
+          fine = true;
+          ctx.font = FINE_FONT;
+        }
         const disp = Math.hypot(c.ox, c.oy);
         const speed = Math.hypot(c.vx, c.vy);
         const ch = speed > 0.9 ? stroke(c.vx, c.vy) : disp > 3 ? stroke(c.ox, c.oy) : c.ch;
-        const base = c.dense ? 0.17 : 0.06;
-        const glow = c.dense ? 1.2 : 1; // the figure reads 20% brighter than the field
-        const a = Math.min(0.5, base + disp * 0.006 + speed * 0.02) * glow * calm;
-        ctx.fillStyle = `rgba(236,231,222,${a})`;
-        ctx.fillText(ch, x, y);
+        const a = c.dense ? Math.min(0.7, 0.36 + disp * 0.006 + speed * 0.02) : Math.min(0.5, 0.06 + disp * 0.006 + speed * 0.02);
+        ctx.fillStyle = `rgba(236,231,222,${a * c.fade})`;
+        ctx.fillText(ch, c.hx + c.ox, c.hy + c.oy);
       }
     }
 
@@ -207,7 +234,7 @@ export function CipherField() {
       // Ciphertext keeps changing, a little at a time (only glyphs at rest).
       for (let i = 0; i < cells.length * 0.01; i++) {
         const c = cells[(Math.random() * cells.length) | 0]!;
-        if (!c.face && Math.abs(c.ox) + Math.abs(c.oy) < 1) c.ch = c.dense ? rand(HEAVY) : rand(LIGHT);
+        if (Math.abs(c.ox) + Math.abs(c.oy) < 1) c.ch = c.dense ? rand(HEAVY) : rand(LIGHT);
       }
       draw();
     }
