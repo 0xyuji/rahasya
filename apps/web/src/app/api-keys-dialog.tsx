@@ -52,6 +52,10 @@ export function ApiKeysDialog({ open, onClose }: { open: boolean; onClose: () =>
   const [loaded, setAccount] = useState<Account | null>(null);
   const account = loaded?.uid === expectedUid ? loaded : null;
   const loadSeq = useRef(0);
+  const currentUid = useRef(expectedUid);
+  useEffect(() => {
+    currentUid.current = expectedUid;
+  }, [expectedUid]);
   const [phase, setPhase] = useState<"loading" | "needs-login" | "ready" | "failed">("loading");
   const [keys, setKeys] = useState<KeyView[]>([]);
   const [busy, setBusy] = useState(false);
@@ -80,11 +84,12 @@ export function ApiKeysDialog({ open, onClose }: { open: boolean; onClose: () =>
   }, [expectedUid]);
 
   const { noteApiSession } = w;
+  const call = <T,>(path: string, init?: RequestInit) => api<T>(path, { ...init, headers: { ...(expectedUid ? { "x-wallet-uid": expectedUid } : {}), ...(init?.headers ?? {}) } });
   const load = useCallback(async () => {
     const seq = ++loadSeq.current;
     setErr(null);
     try {
-      const [a, ks] = await Promise.all([api<Account>("/api/account", { method: "POST" }), api<{ keys: KeyView[] }>("/api/keys")]);
+      const [a, ks] = await Promise.all([call<Account>("/api/account", { method: "POST" }), call<{ keys: KeyView[] }>("/api/keys")]);
       if (seq !== loadSeq.current) return; // a newer load (another wallet) has taken over
       // A session left by another wallet on this browser: don't show or spend from its account.
       if (expectedUid && a.uid !== expectedUid) {
@@ -98,10 +103,11 @@ export function ApiKeysDialog({ open, onClose }: { open: boolean; onClose: () =>
       setPhase("ready");
     } catch (e) {
       if (seq !== loadSeq.current) return;
-      if ((e as { status?: number }).status === 401) return setPhase("needs-login");
+      if ([401, 409].includes((e as { status?: number }).status ?? 0)) return setPhase("needs-login");
       setErr((e as Error).message);
       setPhase((p) => (p === "ready" ? "ready" : "failed")); // keep showing what we already have
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `call` only depends on expectedUid
   }, [expectedUid, noteApiSession]);
 
   useEffect(() => {
@@ -136,14 +142,15 @@ export function ApiKeysDialog({ open, onClose }: { open: boolean; onClose: () =>
 
   async function save() {
     if (!draft) return;
+    const owner = currentUid.current;
     setBusy(true);
     setErr(null);
     try {
       if (editing) {
-        await api(`/api/keys/${editing}`, { method: "PATCH", body: JSON.stringify(toBody(draft)) });
+        await call(`/api/keys/${editing}`, { method: "PATCH", body: JSON.stringify(toBody(draft)) });
       } else {
-        const r = await api<{ token: string; key: KeyView }>("/api/keys", { method: "POST", body: JSON.stringify(toBody(draft)) });
-        setFresh({ token: r.token, name: r.key.name, models: r.key.models });
+        const r = await call<{ token: string; key: KeyView }>("/api/keys", { method: "POST", body: JSON.stringify(toBody(draft)) });
+        if (owner === currentUid.current) setFresh({ token: r.token, name: r.key.name, models: r.key.models }); // never under another wallet
       }
       setDraft(null);
       setEditing(null);
@@ -159,7 +166,7 @@ export function ApiKeysDialog({ open, onClose }: { open: boolean; onClose: () =>
     if (confirmDel !== id) return setConfirmDel(id);
     setConfirmDel(null);
     try {
-      await api(`/api/keys/${id}`, { method: "DELETE" });
+      await call(`/api/keys/${id}`, { method: "DELETE" });
       await load();
     } catch (e) {
       setErr((e as Error).message);

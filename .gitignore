@@ -22,6 +22,7 @@ packages/proxy/dist/
 apps/web/public/rahasya.mjs
 apps/web/public/rahasya.mjs.sha256
 apps/web/public/agents.md
+apps/web/public/llms.txt
 
 # npm package contents (copied by the publish workflow)
 packages/proxy/npm/rahasya.mjs

@@ -171,6 +171,15 @@ function recordSent(a: CreditAction, depositTx: string, depositConfirmed: boolea
   return actions.put({ ...saved, depositTx, depositConfirmed, priorTxs });
 }
 
+/** Anything with page access can edit a saved action; 1Click's copy can't be. The deposit address must be present. */
+function matchesRemote(a: CreditAction, remote: QuoteResponse): boolean {
+  const same = (mine: unknown, theirs: unknown) => theirs === undefined || String(mine).toLowerCase() === String(theirs).toLowerCase();
+  const q = remote.quote;
+  const r = remote.quoteRequest;
+  if (!q?.depositAddress) return false;
+  return same(a.quote.quote.depositAddress, q.depositAddress) && same(a.quote.quote.amountIn, q?.amountIn) && same(a.quoteRequest.recipient, r?.recipient) && same(a.quoteRequest.refundTo, r?.refundTo) && same(a.quoteRequest.originAsset, r?.originAsset);
+}
+
 /** 1Click has seen something at this address. Anything but a real status string says nothing. */
 const arrived = (st: { status?: unknown } | undefined): boolean => typeof st?.status === "string" && st.status !== "PENDING_DEPOSIT";
 
@@ -222,7 +231,16 @@ async function driveCredit(id: string, deps: RunCreditDeps, onUpdate: (a: Credit
           a = emit(move(a, "SWAPPING", { oneclickStatus: before!.status }));
           break;
         }
-        if (!before?.status && a.resent) return emit(move(a, "SEND_UNCONFIRMED", { error: "We couldn't check whether your first deposit arrived, so nothing was sent. Try again in a moment." }));
+        // After "Send again" the first deposit may still land, so a doubt here goes back to watching it.
+        if (a.resent && (!before?.status || !before.quoteResponse || !matchesRemote(a, before.quoteResponse))) {
+          return emit(move(a, "SEND_UNCONFIRMED", { error: "We couldn't check whether your first deposit arrived, so nothing was sent. Try again in a moment." }));
+        }
+        // No money moves on a quote 1Click can't vouch for: a failed read is a "try again", never a pass.
+        if (!before?.quoteResponse) return emit({ ...a, error: "We couldn't confirm this quote with 1Click, so nothing was sent. Try again in a moment." });
+        if (!matchesRemote(a, before.quoteResponse)) {
+          a = emit(move(a, "FAILED", { error: "Refusing to send: this saved quote doesn't match 1Click's own copy." }));
+          break;
+        }
 
         a = emit(move(a, "SENDING"));
         let tx: string;

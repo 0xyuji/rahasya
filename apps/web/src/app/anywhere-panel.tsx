@@ -12,6 +12,7 @@ import {
   dismissAnywhere,
   isEvmChain,
   quoteAnywhere,
+  recheckClosed,
   refundAddressProblem,
   runAnywhere,
   sendableTokens,
@@ -80,9 +81,17 @@ export function AnywherePanel({ onCredited }: { onCredited: () => void }) {
     if (!t.address) return;
     const pending = anywhereActions
       .all()
-      .filter((a) => a.inferenceAddress === t.address && !ANYWHERE_FINAL.has(a.state))
+      .filter((a) => a.inferenceAddress === t.address && !ANYWHERE_FINAL.has(a.state) && !(a.state === "INCOMPLETE" && Date.now() > anywhereDeadline(a)))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
     setAction(pending ?? null); // never keep showing an action for a different wallet
+    let current = true;
+    const address = t.address;
+    void recheckClosed(address).then((late) => {
+      if (current && late?.inferenceAddress === address) setAction((c) => c ?? late);
+    }, () => {});
+    return () => {
+      current = false;
+    };
   }, [t.address]);
 
   // A connected NEAR wallet starts with NEAR selected (once, so "change" still works).
@@ -95,7 +104,7 @@ export function AnywherePanel({ onCredited }: { onCredited: () => void }) {
 
   // Watch the deposit while this panel is open.
   useEffect(() => {
-    if (!action || ANYWHERE_FINAL.has(action.state)) return;
+    if (!action || ANYWHERE_FINAL.has(action.state) || action.inferenceAddress !== t.address) return; // only ever for the wallet being funded
     const ctl = new AbortController();
     const onUpdate = (a: AnywhereAction) => {
       if (!ctl.signal.aborted) setAction(a);
@@ -199,7 +208,11 @@ export function AnywherePanel({ onCredited }: { onCredited: () => void }) {
               </p>
             )}
             {action.state === "INCOMPLETE" && (
-              <p className={s.warn}>Less than the minimum has arrived so far. Send the rest before the timer ends, or it's refunded to your refund address.</p>
+              <p className={s.warn}>
+                {Date.now() > anywhereDeadline(action)
+                  ? "Less than the minimum arrived and this deposit has expired, so it will be refunded to your refund address."
+                  : "Less than the minimum has arrived so far. Send the rest before the timer ends, or it's refunded to your refund address."}
+              </p>
             )}
             <p className={s.fine}>
               Only send {t.symbol} on {chainName(t.blockchain)}. Other tokens or networks sent here can be lost. Waiting for your deposit; you can close this and come back.
@@ -237,6 +250,11 @@ export function AnywherePanel({ onCredited }: { onCredited: () => void }) {
         {!live && (
           <button className={s.primary} onClick={() => setAction(null)}>
             {action.state === "DONE" ? "Add more" : "Start over"}
+          </button>
+        )}
+        {action.state === "INCOMPLETE" && Date.now() > anywhereDeadline(action) && (
+          <button className={s.primary} onClick={() => setAction(null)}>
+            Start over
           </button>
         )}
         {live && action.state === "AWAITING_DEPOSIT" && (

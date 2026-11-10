@@ -14,7 +14,7 @@ Working state of the project: what's done, what's left, and decisions made. Upda
 | API keys (hosted) | ✅ Mostly tested | curl, opencode, daily limit (429), model allowlist (403) verified. Deleted key (401) and sign out everywhere are covered by the live probe (40/40, 11-09). Open: second same-amount top-up on mainnet (offline test F-02 passes) |
 | opencode integration | ✅ Done | Generated config lists all non-TEE models, prices, `enabled_providers`. Needs `opencode.jsonc` + `--standalone` |
 | Local proxy | ✅ One-file download: `curl -fsSLO https://rahasya.chat/rahasya.mjs && node rahasya.mjs` (Node 22+). First run asks for the key | Tested from the live site with a throwaway key. npm: account made with passkey 2FA (11-08); package `packages/proxy/npm` + workflow `.github/workflows/publish-proxy.yml` ready, first publish after the repo is public (see "npm release") |
-| Security audit | ✅ Audit 1 (F-01..F-13), audit 2 (V2-01..V2-08) and the fix review (R-01, R-02, T-01, T-02, notes) fixed, with regression tests. 160 tests (rail 48, web 102, proxy 10) | Residual: two colluding NEAR RPCs (K10); set trusted `BASE_RPC_URL` / `NEAR_RPC_URL` for production |
+| Security audit | ✅ Audit 1 (F-01..F-13), audit 2 (V2-01..V2-08) and the fix review (R-01, R-02, T-01, T-02, notes) fixed, with regression tests. 173 tests (rail 48, web 115, proxy 10) | Residual: two colluding NEAR RPCs (K10); set trusted `BASE_RPC_URL` / `NEAR_RPC_URL` for production |
 | Name / brand | ✅ **Rahasya**, `rahasya.chat` bought | `rahasya.ai` only if we win |
 | GitHub | ✅ Private repo `0xyuji/rahasya` | Must be **public** by the deadline (ask first) |
 | Cloudflare deploy | ✅ Live at **https://rahasya.chat** (+ www, + rahasya.itadori.workers.dev). Probe 40/40 on rahasya.chat (11-09) | Domain at Namecheap, DNS on Cloudflare (MX/TXT email forwarding kept) |
@@ -23,6 +23,7 @@ Working state of the project: what's done, what's left, and decisions made. Upda
 | Audit kit | ✅ v3 built 11-10 (`npm run audit:pack`): 24 invariants, delta guide `audit-kit/06-changes-since-v2.md`, prompt `focused/7-changes-since-v2.md` | Owner is sending it for audit; fix findings before the 11-12 freeze |
 | Agent guide | ✅ 11-10, live at `/docs/agents` and `/agents.md` (Copy and Download buttons); a test keeps its model table in sync | Source: `apps/web/content/docs/agents.md` |
 | Audit v3 fixes | 11-10: both Highs and most Mediums/Lows fixed, then reviewed by Fable and its regressions fixed. Deployed 11-10 from branch `audit-v3-fixes` | Left open: known issues K26-K32. Not yet used with a real wallet |
+| K26-K32 | 11-10: closed in the working tree of `audit-v3-fixes`, reviewed by Fable and its findings fixed. **Uncommitted, not deployed**, needs a real-wallet unlock test across wallet types | K27 partly: Workers memory unmeasured |
 | Body limit | ✅ 8 MB (gateway + proxy), raised from 4 MB after a 413 | Owner hasn't said what they were doing when it hit; ask if it recurs |
 | Demo video | ⬜ Script + narration lines written (in chat, 11-08); owner records, ElevenLabs voice | Show the new header links |
 | X post | ⬜ Not started | Must say it was built at NEAR HACKATHON, tag @NEARProtocol and #NEARHackathon, with the video. Optional tags: @NearLegion, @NearBuilders. Owner posts |
@@ -30,7 +31,7 @@ Working state of the project: what's done, what's left, and decisions made. Upda
 
 ## Next steps (in order)
 
-0. ~~Deploy the state-machine work and Fable review fixes~~ ✅ 11-10. ~~Merge to master, add CI~~ ✅ 11-10. Before going public: trim this file, rotate the Upstash token and 1Click partner key. Real-wallet run must also cover: Cancel unlock, an API-wallet top-up.
+0. ~~Deploy the state-machine work and Fable review fixes~~ ✅ 11-10. ~~Merge to master, add CI~~ ✅ 11-10. Before going public: trim this file. Real-wallet run must also cover: Cancel unlock, an API-wallet top-up.
 1. Owner reviews the new landing page on rahasya.chat; adjust if wanted. Click the dialogs' Connect wallet / NEAR wallet / Unlock buttons with a real wallet.
 2. Pick tracks (unanswered). Suggested: privacy (primary), agents, maybe security.
 3. ~~Probe rahasya.chat~~ ✅ 40/40. ~~Venice accepts both output-limit fields~~ ✅.
@@ -59,7 +60,7 @@ npm run cf:deploy                      # builds, then deploys (plain `opennextjs
 
 ## npm release (after the repo is public)
 
-**State (11-10):** 0.1.0 is already on npm, published by hand by the owner on 11-08, so step 5 below is done. It predates the 11-10 proxy fixes (no upstream hang-up). Next release is 0.1.1, after the repo is public and the audit is back.
+**State (11-10):** 0.1.0 is already on npm, published by hand by the owner on 11-08, so step 5 below is done. It predates the 11-10 proxy fixes (no upstream hang-up). **Owner wants `npx` offered by the time judges look (judging 11-16).** Plan for 11-13, right after the repo goes public: re-add the trusted publisher if it expired, tag `proxy-v0.1.1` (version already bumped), approve the staged release with the passkey, confirm with `npm view rahasya version`, then add `npx rahasya@0.1.1` next to the curl command in the Local proxy dialog, the API docs and the agent guide, and deploy. Fallback if the workflow fails: publish 0.1.1 by hand (step 5), no provenance.
 
 Trusted publisher set up on npmjs.com (11-08): GitHub Actions, 0xyuji/rahasya, `publish-proxy.yml`, **stage only** (both "Allow" boxes unchecked). Status: pending validation until 2026-11-10 16:32 UTC. Owner chose to release later, once fully confident; if it expires, delete it on npmjs.com and add it again (same values).
 
@@ -79,7 +80,9 @@ Trusted publisher set up on npmjs.com (11-08): GitHub Actions, 0xyuji/rahasya, `
 
 | Date | Decision | Why |
 |---|---|---|
-| 11-10 | Tracks: `privacy`, `security`, `agents`. README says "three rounds of review", no claim about who | Owner said go; who ran the audits is unconfirmed |
+| 11-10 | Tracks: `privacy`, `security`, `agents`. README says "AI-assisted security audits" | Owner confirmed the audits were run with AI |
+| 11-10 | Demo uses a fresh NEAR wallet, about $7 of NEAR, paying through Any token | NEAR hackathon; also keeps the owner's main account out of public transaction links |
+| 11-10 | Upstash token and 1Click partner key rotate after results, not before the demo | Neither is in the repo; a bad rotation would break sign-in at the worst time |
 | 11-10 | State machines are a small in-repo table (`defineMachine`), no XState; audited top-up, sweep and metering code left as is | Bundle is near the 3 MB limit; those paths are already explicit and regression-tested. State names are persisted in browsers: never rename them |
 | 11-08 | Domain stays registered at Namecheap; DNS moves to Cloudflare | Workers custom domains need a Cloudflare zone |
 | 11-08 | Host on Cloudflare Workers, not Vercel | Owner's choice; the domain is there. Server code was kept fetch-only for this |

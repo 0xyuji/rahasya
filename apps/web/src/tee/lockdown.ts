@@ -74,11 +74,17 @@ for (const name of ["storage", "storageBuckets", "serviceWorker", "locks"]) {
   } catch {}
 }
 
-const relayOnly = (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+const relayOnly = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
   const url = new URL(input instanceof Request ? input.url : String(input), self.location.origin);
   const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
-  if (method !== "GET" || !url.href.startsWith(RELAY)) return Promise.reject(new TypeError("network access is limited to the collateral relay"));
-  return realFetch(url.href, { method: "GET", credentials: "omit", redirect: "error", referrerPolicy: "no-referrer" });
+  if (method !== "GET" || !url.href.startsWith(RELAY)) throw new TypeError("network access is limited to the collateral relay");
+  try {
+    // The whole body is read here, so every transport failure reaches the verifier as one known message.
+    const res = await realFetch(url.href, { method: "GET", credentials: "omit", redirect: "error", referrerPolicy: "no-referrer" });
+    return new Response(await res.arrayBuffer(), { status: res.status, statusText: res.statusText, headers: res.headers });
+  } catch {
+    throw new TypeError("collateral relay unreachable");
+  }
 };
 
 Object.defineProperty(self, "fetch", { value: relayOnly, writable: false, configurable: false });

@@ -13,3 +13,23 @@ writeFileSync(join(import.meta.dirname, "..", "src", "app", "docs", "docs.genera
 // The agent guide is also served as a plain file, for agents to fetch: /agents.md
 const agents = readFileSync(join(dir, "agents.md"), "utf8").replaceAll("https://<your-deployment>", "https://rahasya.chat");
 writeFileSync(join(import.meta.dirname, "..", "public", "agents.md"), agents);
+
+// A short index for agents and crawlers looking for the docs (llmstxt.org).
+const site = "https://rahasya.chat";
+writeFileSync(
+  join(import.meta.dirname, "..", "public", "llms.txt"),
+  `# Rahasya
+
+> OpenAI-compatible chat API for uncensored and abliterated models, paid with any token through NEAR Intents. No account or card. A person creates the API key and adds credit on the site.
+
+- Base URL: ${site}/api/v1
+- Auth: Authorization: Bearer nsk_...
+
+## Docs
+
+- [Agent guide](${site}/agents.md): everything an agent needs, in one Markdown file
+- [API reference](${site}/docs/api): endpoints, models, limits, errors
+- [Integrations](${site}/docs/integrations): opencode, Cursor, Continue, Cline, Aider, Zed, SillyTavern and others
+- [How it works](${site}/docs/protocol): wallets, payments, attestation, who can see what
+`,
+);

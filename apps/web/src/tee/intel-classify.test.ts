@@ -54,4 +54,12 @@ test("T-01: Intel's 'not found' for the quote's platform fails; network trouble 
   assert.equal(classifyCollateralError("Failed to fetch QE identity: 502"), "unavailable");
   assert.equal(classifyCollateralError("network access is limited to the collateral relay"), "unavailable");
   assert.equal(classifyCollateralError("Failed to fetch"), "unavailable");
+  assert.equal(classifyCollateralError("Failed to fetch https://relay/x: 503"), "unavailable");
+  assert.equal(classifyCollateralError("Load failed"), "unavailable");
+  assert.equal(classifyCollateralError("collateral relay unreachable"), "unavailable");
+  assert.equal(classifyCollateralError("Missing TCB-Info-Issuer-Chain"), "unavailable", "about Intel's reply, not the quote");
+  assert.equal(classifyCollateralError("Unexpected token < in JSON at position 0"), "unavailable");
+  assert.equal(classifyCollateralError("certificate JSON field is invalid"), "fail", "patterns are anchored");
+  assert.equal(classifyCollateralError("quote parse timeout"), "fail");
+  assert.equal(classifyCollateralError("some new library error"), "fail");
 });

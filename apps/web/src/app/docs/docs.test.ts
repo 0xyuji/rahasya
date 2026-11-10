@@ -17,3 +17,9 @@ test("the agent guide's model table matches the catalog", () => {
   assert.deepEqual(rows.map(([id]) => id).sort(), Object.keys(MODELS).sort());
   for (const [id, tools] of rows) assert.equal(tools, MODELS[id]!.e2ee ? "no" : "yes", id);
 });
+
+test("the API docs' structured-output claim matches the catalog", () => {
+  assert.match(DOCS["api.md"]!, /Structured output \(`response_format`\) \| Every model except the two TEE models/);
+  for (const m of Object.values(MODELS)) assert.equal(m.structuredOutputs, !m.e2ee, m.key);
+  assert.equal(Object.values(MODELS).filter((m) => m.e2ee).length, 2);
+});

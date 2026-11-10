@@ -1,6 +1,7 @@
 import { silentLogger, type Logger } from "../log.ts";
 import { VeniceInsufficientBalance, type VeniceClient } from "../venice/client.ts";
 import { INTEL_CHECK, attest, decryptStream, e2eeRequest, newSession, withQuoteVerdict, type AttestationReport, type QuoteVerifier, type StreamUsage } from "../venice/e2ee.ts";
+import { RailError } from "../util.ts";
 import { costUsd, parseVenicePrices, resolveModel, type LivePrices, type ModelDef, type PrivacyMode } from "./models.ts";
 
 export interface ChatMessage {
@@ -20,6 +21,10 @@ export interface ChatRequest {
   noThinking?: boolean;
   /** Ask for JSON; uses json_schema when supported, else prompt instructions (caller validates). */
   json?: { name: string; schema: Record<string, unknown> };
+  /** Truly private only: Intel's check couldn't run even after a retry. Return true to send anyway. */
+  confirmUnverified?: () => boolean | Promise<boolean>;
+  /** The user already agreed for this conversation: no retry, no asking again. */
+  unverifiedAccepted?: boolean;
   /** Aborting ends the request and the stream, so Venice stops generating (and billing). */
   signal?: AbortSignal;
 }
@@ -97,8 +102,8 @@ export class VeniceChat {
           await this.o.verifyQuote(report.quoteHex).catch((e: unknown) => ({ status: "unavailable" as const, detail: `Couldn't check right now (${(e as Error)?.message ?? "error"}).` })),
         );
       }
-      // "Couldn't check" is retried on the next send rather than remembered for ten minutes.
-      if (report.checks.find((c) => c.name === INTEL_CHECK)?.status !== "unavailable") this.attestations.set(model.id, report);
+      // Only a clean result is remembered: "couldn't check" or a failure is re-tried on the next send.
+      if (report.ok && report.checks.find((c) => c.name === INTEL_CHECK)?.status !== "unavailable") this.attestations.set(model.id, report);
       return report;
     })();
     this.inflight.set(model.id, run);
@@ -133,9 +138,18 @@ export class VeniceChat {
       return { meta, deltas: withCost(plainDeltas(res), model, await this.livePrices()) };
     }
 
-    const report = await abortable(this.attestation(model), req.signal).catch((e: unknown) => {
-      throw beforeRequest(e);
-    });
+    const attest = (force = false) =>
+      abortable(this.attestation(model, force), req.signal).catch((e: unknown) => {
+        throw beforeRequest(e);
+      });
+    const unverified = (r: AttestationReport) => r.checks.find((c) => c.name === INTEL_CHECK)?.status === "unavailable";
+    let report = await attest();
+    if (req.confirmUnverified && !req.unverifiedAccepted && unverified(report)) {
+      report = await attest(true);
+      if (unverified(report) && !(await req.confirmUnverified())) {
+        throw beforeRequest(new RailError("INTEL_UNAVAILABLE", "Not sent: Intel's check couldn't run. Try again in a moment."));
+      }
+    }
     if (!report.ok) throw beforeRequest(new Error(`attestation failed for ${model.label}; not sending`));
     req.signal?.throwIfAborted(); // stopped while attesting: the paid request never goes out
     const session = newSession(report);

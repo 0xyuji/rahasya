@@ -9,7 +9,7 @@ For judges and screening agents, the fastest checks need no wallet and no money:
 | Do | See |
 |---|---|
 | Open https://rahasya.chat/docs | What it is, the API, and how the money and privacy flows work |
-| `npm install && npm test` | 160 offline tests pass |
+| `npm install && npm test` | 173 offline tests pass |
 | `npm run verify:tee` | A live TEE attestation from the NEAR AI enclave model, checked locally |
 | `npm run quote:dry` | Live NEAR Intents dry quotes for $5 of USDC on Base from SOL, ETH and NEAR |
 
@@ -54,7 +54,7 @@ npm install
 
 | Do | See |
 |---|---|
-| `npm test` | **160 tests pass** offline: swap state machine (crash-resume never double-sends, dropped deposits re-signed once, refunds, kill switch, spend cap, tampered quotes refused), E2EE round trip, attestation checks against a real captured quote (replayed nonce, swapped key and debug enclave all rejected), wallet derivation golden vector, x402 top-up idempotency, API-key limits and login, privacy-mode context rules, proxy auth/origin/Host guards, the in-browser Intel quote verifier against a real captured quote (tampering and forged collateral rejected) and its worker lockdown, plus a regression test for every audit finding. |
+| `npm test` | **173 tests pass** offline: swap state machine (crash-resume never double-sends, dropped deposits re-signed once, refunds, kill switch, spend cap, tampered quotes refused), E2EE round trip, attestation checks against a real captured quote (replayed nonce, swapped key and debug enclave all rejected), wallet derivation golden vector, x402 top-up idempotency, API-key limits and login, privacy-mode context rules, proxy auth/origin/Host guards, the in-browser Intel quote verifier against a real captured quote (tampering and forged collateral rejected) and its worker lockdown, plus a regression test for every audit finding. |
 | `npm run verify:tee` | A live attestation of the NEAR AI enclave model with a fresh nonce: 7 checks done locally from the raw Intel TDX quote, 3 reported by Venice. Uses a throwaway in-memory wallet. |
 | `npm run quote:dry` | Live dry quotes from NEAR Intents for $5 of USDC on Base from SOL, ETH and NEAR. |
 
@@ -127,7 +127,7 @@ Conversations live in browser memory only. Switching from Truly private back to 
 
 - **Website chat is non-custodial.** The inference key exists only in the browser's memory, or in `~/.rahasya` (mode 0600) for the local proxy; the server never sees it.
 - **API keys are server-assisted.** The server holds each user's API wallet key, AES-256-GCM sealed in Redis (`API_WALLET_ENC_KEY`, AAD bound to the user). That wallet only holds Venice credit, which can't be withdrawn; incoming USDC is swept into credit. API keys are stored as SHA-256 hashes only.
-- **Audits:** four rounds of review (findings F-01..F-13, V2-01..V2-08, R-01/R-02, T-01/T-02, and the v3 report). Fixes have regression tests. Findings left open or only partly closed are listed in the known issues. The record is in [`audit-kit/03-known-issues.md`](audit-kit/03-known-issues.md).
+- **Audits:** four rounds of AI-assisted security audits (findings F-01..F-13, V2-01..V2-08, R-01/R-02, T-01/T-02, and the v3 report). Fixes have regression tests. Findings left open or only partly closed are listed in the known issues. The record is in [`audit-kit/03-known-issues.md`](audit-kit/03-known-issues.md).
 - **Audit kit:** [`audit-kit/`](audit-kit/00-START-HERE.md) has the invariants, threat model, known issues, ready-made auditor prompts and a black-box probe (`npm run audit:probe -- https://rahasya.chat` runs 40 checks against a deployment; it creates throwaway test users and moves no funds). `npm run audit:pack` builds a shareable zip.
 - **Headers:** anti-framing (`frame-ancestors 'none'` + `X-Frame-Options: DENY`), so wallet prompts can't be clickjacked; `Referrer-Policy: no-referrer`; `nosniff`; HSTS; a locked-down `Permissions-Policy`. The pages have no strict `default-src` CSP because the WalletConnect modal loads from many origins, but the Intel-verifier worker gets its own (`script-src`/`connect-src 'self'`, `apps/web/public/_headers`), and cookie-authenticated routes only answer the site's own `fetch()`.
 - **Local proxy:** binds to 127.0.0.1, requires a local bearer token (constant-time compare), refuses any request with a browser `Origin`, and never logs prompts.

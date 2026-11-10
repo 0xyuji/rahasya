@@ -59,11 +59,12 @@ export const ANYWHERE_MACHINE = defineMachine<AnywhereState>("anywhere", {
   IDLE: [],
   REFUNDED: [],
   FAILED: [],
-  EXPIRED: [],
-  CANCELLED: [],
+  // A deposit can still land after we stop watching; re-checked when the panel opens.
+  EXPIRED: ["INCOMPLETE", "RECEIVED", "SWAPPED", "REFUNDED", "FAILED"],
+  CANCELLED: ["INCOMPLETE", "RECEIVED", "SWAPPED", "REFUNDED", "FAILED"],
 });
 
-export const ANYWHERE_FINAL: ReadonlySet<AnywhereState> = ANYWHERE_MACHINE.final;
+export const ANYWHERE_FINAL: ReadonlySet<AnywhereState> = new Set([...ANYWHERE_MACHINE.final, "EXPIRED", "CANCELLED"]);
 
 /** The wallet broadcast the deposit, then confirming it failed. Funds may have moved, so this is never "nothing was sent". */
 export class DepositBroadcastError extends Error {

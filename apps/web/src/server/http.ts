@@ -32,6 +32,9 @@ export async function withUser(req: Request, fn: (uid: string) => Promise<Respon
     if (!fromOurPage(req)) return json(403, { message: "Cross-site request refused." });
     const uid = await sessionUser(req);
     if (!uid) return json(401, { message: "Sign in with your wallet first." });
+    // The page says which wallet it's acting for. A session left by another wallet is refused.
+    const claimed = req.headers.get("x-wallet-uid");
+    if (claimed && claimed !== uid) return json(409, { message: "This session belongs to another wallet. Sign in again.", code: "wallet_mismatch" });
     return await fn(uid);
   } catch (e) {
     if (e instanceof KeyError) return json(e.status, { message: e.message, code: e.code });

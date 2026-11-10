@@ -7,6 +7,8 @@ import { confirmSweep, inferenceUsdc } from "./flow";
 
 export interface ResolvedTarget {
   kind: "inference" | "api";
+  /** API wallet only: whose account it is. */
+  uid?: string;
   /** Base address that receives the USDC, or null if not available yet (locked). */
   address: string | null;
   label: string;
@@ -15,8 +17,8 @@ export interface ResolvedTarget {
 }
 
 /** API wallet: the server signs the x402 top-up for the USDC that landed on it. */
-export async function sweepApiWallet(): Promise<number> {
-  const r = await appFetch("/api/account/sweep", { method: "POST" });
+export async function sweepApiWallet(uid?: string): Promise<number> {
+  const r = await appFetch("/api/account/sweep", { method: "POST", headers: uid ? { "x-wallet-uid": uid } : {} });
   const j = (await r.json().catch(() => ({}))) as { toppedUpUsd?: number; message?: string };
   if (!r.ok) throw new Error(j.message ?? `Top-up failed (${r.status})`);
   return j.toppedUpUsd ?? 0;
@@ -28,10 +30,11 @@ export function useCreditTarget(): ResolvedTarget {
     const { address, uid } = w.creditTarget;
     return {
       kind: "api",
+      uid,
       // Only while the wallet that opened this API account is still the connected one.
       address: w.source && walletUid(w.source) === uid ? address : null,
       label: "your API wallet",
-      topUp: async (_id, usd) => confirmSweep(await sweepApiWallet(), () => inferenceUsdc(address), usd),
+      topUp: async (_id, usd) => confirmSweep(await sweepApiWallet(uid), () => inferenceUsdc(address), usd),
     };
   }
   return { kind: "inference", address: w.inference?.address ?? null, label: "your inference wallet" };

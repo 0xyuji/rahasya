@@ -1,7 +1,9 @@
 import { strict as assert } from "node:assert";
 import { beforeEach, test } from "node:test";
-import { ANYWHERE_MACHINE, CREDIT_MACHINE, DepositBroadcastError, DepositNotSentError, anywhereSteps, creditSteps, type CreditState } from "./machines.ts";
-import { attemptGuard, walletSession, walletUid } from "../wallet/session.ts";
+import { ANYWHERE_FINAL, ANYWHERE_MACHINE, CREDIT_MACHINE, DepositBroadcastError, DepositNotSentError, anywhereSteps, creditSteps, type CreditState } from "./machines.ts";
+import { attemptGuard, recoverSigner, solanaSignatureValid, walletSession, walletUid } from "../wallet/session.ts";
+import { ed25519 } from "@noble/curves/ed25519.js";
+import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import type { Machine } from "@pay/rail/browser";
 
 // flow.ts talks to localStorage, 1Click and a Base RPC: all faked here, before it loads.
@@ -24,14 +26,14 @@ globalThis.fetch = (async (url: string, init?: RequestInit) => {
   const u = String(url);
   const scripted = u.includes("/v0/status") ? onStatus?.() : undefined;
   if (scripted) return scripted;
-  if (u.includes("/v0/status")) return reply({ status: statuses.shift() ?? "PENDING_DEPOSIT", swapDetails: { destinationChainTxHashes: [{ hash: "0xdelivered" }] } });
+  if (u.includes("/v0/status")) return reply({ status: statuses.shift() ?? "PENDING_DEPOSIT", swapDetails: { destinationChainTxHashes: [{ hash: "0xdelivered" }] }, quoteResponse: { quote: { depositAddress: "dep", amountIn: "5100000" }, quoteRequest: { recipient: ADDRESS } } });
   if (u.includes("/v0/deposit/submit")) return reply({});
   const rpc = JSON.parse(String(init?.body)) as { id: number };
   return reply({ jsonrpc: "2.0", id: rpc.id, result: `0x${(10n ** 12n).toString(16).padStart(64, "0")}` }); // USDC balance
 }) as typeof fetch;
 
 const { actions, confirmSweep, dismiss, recoverResend, resend, runCredit, topUpOnce } = await import("./flow.ts");
-const { anywhereActions, checkAnywhereQuote, isEvmChain, refundAddressProblem, runAnywhere } = await import("./anywhere.ts");
+const { anywhereActions, checkAnywhereQuote, isEvmChain, recheckClosed, refundAddressProblem, runAnywhere } = await import("./anywhere.ts");
 type CreditAction = import("./flow.ts").CreditAction;
 
 const ADDRESS = "0x418abf35BE5F2078667b4996a67a37c5F7b8740D";
@@ -78,7 +80,7 @@ test("funding machines: every state is reachable, finals are the documented ones
   assertSound(CREDIT_MACHINE, "QUOTED");
   assertSound(ANYWHERE_MACHINE, "AWAITING_DEPOSIT");
   assert.deepEqual([...CREDIT_MACHINE.final].sort(), ["DISMISSED", "DONE", "EXPIRED", "FAILED", "REFUNDED"]);
-  assert.deepEqual([...ANYWHERE_MACHINE.final].sort(), ["CANCELLED", "DONE", "EXPIRED", "FAILED", "IDLE", "REFUNDED"]);
+  assert.deepEqual([...ANYWHERE_FINAL].sort(), ["CANCELLED", "DONE", "EXPIRED", "FAILED", "IDLE", "REFUNDED"]);
 });
 
 test("money can only be sent from QUOTED", () => {
@@ -228,14 +230,24 @@ test("a deposit that was really sent is recorded even if another tab moved the a
   assert.equal(sends, 1);
 });
 
-test("a 1Click reply with no status isn't taken for a deposit", async () => {
+test("a 1Click reply with no status isn't taken for a deposit, and nothing is sent on it", async () => {
   const id = seed("QUOTED");
-  let answered = false;
-  onStatus = () => (answered ? undefined : ((answered = true), reply({})));
-  statuses = ["SUCCESS"];
+  onStatus = () => reply({});
   let sends = 0;
-  assert.equal((await runCredit(id, deps(async () => (sends++, "0x")).d)).state, "DONE");
-  assert.equal(sends, 1);
+  const a = await runCredit(id, deps(async () => (sends++, "0x")).d);
+  assert.equal(a.state, "QUOTED");
+  assert.match(a.error!, /couldn't confirm/);
+  assert.equal(sends, 0);
+});
+
+test("K32: a failed read never lets a send through (unknown address, rate limit, outage)", async () => {
+  for (const status of [404, 429, 500]) {
+    const id = seed("QUOTED");
+    onStatus = () => new Response("{}", { status });
+    let sends = 0;
+    assert.equal((await runCredit(id, deps(async () => (sends++, "0x")).d)).state, "QUOTED", String(status));
+    assert.equal(sends, 0, String(status));
+  }
 });
 
 test("a reload between 'Send again' and the prompt goes back to watching, without sending", () => {
@@ -285,6 +297,72 @@ test("an EVM address is refused as a refund address on non-EVM chains", () => {
   assert.equal(refundAddressProblem("hypercore", ADDRESS), null);
   assert.equal(refundAddressProblem("qtc", ADDRESS), null, "chains we can't classify aren't refused");
   assert.equal(isEvmChain("qtc"), false, "but the connected address isn't prefilled there");
+});
+
+test("K32: a saved quote that differs from 1Click's own copy is refused before sending", async () => {
+  const id = seed("QUOTED");
+  onStatus = () => reply({ status: "PENDING_DEPOSIT", quoteResponse: { quote: { depositAddress: "attacker" }, quoteRequest: { recipient: ADDRESS } } });
+  let sends = 0;
+  const a = await runCredit(id, deps(async () => (sends++, "0x")).d);
+  assert.equal(a.state, "FAILED");
+  assert.equal(sends, 0);
+});
+
+test("K32: a matching copy goes through, whatever the address casing", async () => {
+  const id = seed("QUOTED");
+  let reads = 0;
+  onStatus = () => (reads++ ? reply({ status: "SUCCESS", swapDetails: {} }) : reply({ status: "PENDING_DEPOSIT", quoteResponse: { quote: { depositAddress: "DEP", amountIn: "5100000" }, quoteRequest: { recipient: ADDRESS.toLowerCase() } } }));
+  let sends = 0;
+  assert.equal((await runCredit(id, deps(async () => (sends++, "0x")).d)).state, "DONE");
+  assert.equal(sends, 1);
+});
+
+test("K31: a deposit that lands after expiry or cancel is picked up when the panel opens", async () => {
+  const inferenceAddress = `0x${"ab".repeat(20)}`;
+  const quoteRequest = { deadline: "t" };
+  const a = anywhereActions.put({ id: `late_${++n}`, kind: "anywhere", createdAt: new Date().toISOString(), state: "EXPIRED", token: {}, refundTo: "r", inferenceAddress, quoteRequest, quote: { quoteRequest, quote: { depositAddress: "d" } }, history: [] } as never);
+  statuses = ["PENDING_DEPOSIT"];
+  assert.equal(await recheckClosed(inferenceAddress), undefined, "nothing arrived yet");
+  statuses = ["SUCCESS"];
+  const late = await recheckClosed(inferenceAddress);
+  assert.equal(late?.id, a.id);
+  assert.equal(late?.state, "SWAPPED");
+});
+
+test("a partial deposit finished after the deadline is picked up, not left looking lost", async () => {
+  const inferenceAddress = `0x${"cd".repeat(20)}`;
+  const past = new Date(Date.now() - 3600_000).toISOString();
+  const quoteRequest = { deadline: past };
+  const a = anywhereActions.put({ id: `partial_${++n}`, kind: "anywhere", createdAt: new Date().toISOString(), state: "INCOMPLETE", token: {}, refundTo: "r", inferenceAddress, quoteRequest, quote: { quoteRequest, quote: { depositAddress: "d", deadline: past } }, history: [] } as never);
+  statuses = ["INCOMPLETE_DEPOSIT"];
+  assert.equal(await recheckClosed(inferenceAddress), undefined, "still partial: no state change");
+  statuses = ["SUCCESS"];
+  assert.equal((await recheckClosed(inferenceAddress))?.id, a.id);
+});
+
+test("after 'Send again', a quote 1Click can't vouch for goes back to watching, not to the quote screen", async () => {
+  for (const r of [reply({ status: "PENDING_DEPOSIT" }), reply({ status: "PENDING_DEPOSIT", quoteResponse: { quote: { depositAddress: "other" } } })]) {
+    const id = seed("SEND_UNCONFIRMED");
+    resend(id);
+    onStatus = () => r.clone();
+    let sends = 0;
+    assert.equal((await runCredit(id, deps(async () => (sends++, "0x")).d)).state, "SEND_UNCONFIRMED");
+    assert.equal(sends, 0);
+  }
+});
+
+test("K29: the unlock signature must come from the connected account", async () => {
+  const signer = privateKeyToAccount(generatePrivateKey());
+  const sig = await signer.signMessage({ message: "m" });
+  assert.equal(await recoverSigner("m", sig), signer.address.toLowerCase());
+  assert.notEqual(await recoverSigner("m", sig), ADDRESS.toLowerCase());
+  assert.equal(await recoverSigner("m", "0x1234"), null, "an odd encoding isn't treated as the wrong signer");
+  const priv = ed25519.utils.randomPrivateKey();
+  const msg = new TextEncoder().encode("m");
+  const good = ed25519.sign(msg, priv);
+  assert.equal(solanaSignatureValid(good, msg, ed25519.getPublicKey(priv)), true);
+  assert.equal(solanaSignatureValid(good, msg, ed25519.getPublicKey(ed25519.utils.randomPrivateKey())), false);
+  assert.equal(solanaSignatureValid(new Uint8Array(3), msg, ed25519.getPublicKey(priv)), false);
 });
 
 test("a corrupted saved record is skipped instead of crashing the dialogs", () => {

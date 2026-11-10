@@ -1,4 +1,4 @@
-# Security audit kit v3: Rahasya
+# Security audit kit (final): Rahasya
 
 Thanks for reviewing this. This folder has everything you need: what the system does, what must never break, what to attack first, what we already know is weak, how to run it without spending money, ready-made prompts for AI agents, and the report format.
 
@@ -12,7 +12,8 @@ Thanks for reviewing this. This folder has everything you need: what the system 
 | **Running an AI agent with repo access** (Claude Code, Codex, Cursor agent…) | This file | Paste `prompts/full-audit.md` into the agent, run inside the source folder |
 | **Running several agents in parallel** | This file | One agent per file in `prompts/focused/`. Each one is self-contained |
 | **Using a chat model without tools** (ChatGPT, Claude.ai…) | This file | `prompts/chat-only.md`; paste the files it asks for |
-| **Reviewed kit v2 already, or short on time** | `06-changes-since-v2.md` | `prompts/focused/7-changes-since-v2.md` (delta audit; the newest code has had no outside review) |
+| **Reviewed kit v3 already, or short on time** | `07-changes-since-v3.md` | `prompts/focused/8-changes-since-v3.md` (delta audit; the newest code has had no outside audit) |
+| **Reviewed kit v2** | `06-changes-since-v2.md` | `prompts/focused/7-changes-since-v2.md`, then `8-changes-since-v3.md` |
 | **Only reviewed kit v1** | `05-changes-since-v1.md`, then `06-changes-since-v2.md` | `prompts/focused/6-changes-since-v1.md` and `7-changes-since-v2.md` |
 | **Checking findings someone else reported** | `03-known-issues.md` | `prompts/triage-findings.md` |
 
@@ -21,14 +22,15 @@ Thanks for reviewing this. This folder has everything you need: what the system 
 ```
 00-START-HERE.md          this file
 01-overview.md            architecture, components, trust boundaries, assets
-02-what-to-check.md       the 24 invariants + prioritized attack checklist
+02-what-to-check.md       the 28 invariants + prioritized attack checklist
 03-known-issues.md        accepted risks: don't re-report unless worse than stated
 04-how-to-run.md          setup, tests, Cloudflare runtime, black-box probe, safe-testing rules
 05-changes-since-v1.md    what changed between kits v1 and v2
-06-changes-since-v2.md    what's new since the last outside review, and the questions we most want answered
+06-changes-since-v2.md    what changed between kits v2 and v3
+07-changes-since-v3.md    status of every v3 finding, what's new and unverified, and the questions we most want answered
 prompts/
   full-audit.md           one agent, whole codebase
-  focused/                seven area-specific prompts for parallel agents (6, 7 = delta audits)
+  focused/                eight area-specific prompts for parallel agents (6, 7, 8 = delta audits)
   chat-only.md            for chat models: paste-in review
   triage-findings.md      verify and de-duplicate a findings report
 templates/
@@ -50,4 +52,4 @@ Commit under review: see `source/COMMIT.txt`, or `git rev-parse HEAD` in the rep
 
 ## What we need back
 
-One report per auditor, following `templates/findings-template.md`: a summary, findings (most severe first, each with file:line, exploit scenario, proof and fix), and the invariant checklist (I1–I24 holding or broken, and how you checked).
+One report per auditor, following `templates/findings-template.md`: a summary, findings (most severe first, each with file:line, exploit scenario, proof and fix), and the invariant checklist (I1–I28 holding or broken, and how you checked).

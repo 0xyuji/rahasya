@@ -1,3 +1,24 @@
+import { ed25519 } from "@noble/curves/ed25519.js";
+import { recoverMessageAddress, type Hex } from "viem";
+
+/** Which address signed the message? A smart account can legitimately sign with an owner key, so callers ask rather than refuse; a wallet signing with the wrong account would create a wallet the user can't get back to. */
+export async function recoverSigner(message: string, signature: Hex): Promise<string | null> {
+  try {
+    return (await recoverMessageAddress({ message, signature })).toLowerCase();
+  } catch {
+    return null; // an unusual encoding says nothing about who signed
+  }
+}
+
+/** False for a wrong signer, and also for a Ledger, which signs a different message format (so callers ask rather than refuse). */
+export function solanaSignatureValid(signature: Uint8Array, message: Uint8Array, publicKey: Uint8Array): boolean {
+  try {
+    return ed25519.verify(signature, message, publicKey);
+  } catch {
+    return false;
+  }
+}
+
 /** Where the user is in the wallet lifecycle. Everything else (buttons, labels) follows from this. */
 export type WalletSession = "disconnected" | "locked" | "unlocking" | "unlocked";
 

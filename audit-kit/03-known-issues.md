@@ -29,13 +29,9 @@ No need to report these again. **Do** tell us if one is worse than described, an
 | K23 | The UI says an extra deposit to a used 1Click address is "normally refunded, minus a refund fee". 1Click's docs don't cover a second deposit after a completed swap | Not tested with a real second deposit |
 | K24 | Local development and production currently share one Upstash database and `API_WALLET_ENC_KEY` | Operational, not a code issue. To be separated and rotated |
 | K25 | The local proxy cancels upstream only for streamed requests; a non-streamed request finishes after the client disconnects | Bounded by that one request |
-| K26 | Non-streamed API requests stay non-streamed upstream, so one that outlives the 2-minute timeout keeps its reservation and returns an error (audit B-01's preferred fix, collecting a stream, wasn't done) | Fails safe for the API wallet; the key is charged |
-| K27 | Body limit stays 8 MB. The key is checked before the body is read, and large bodies share a 24 MB per-isolate budget (503 when full). Several copies are still held per request, and Workers memory wasn't measured (B-02) | The owner raised the limit after real 413s |
-| K28 | The session/wallet match is client-side; the server has no `x-wallet-uid` check (D-02, part) | The cookie alone authorizes, as designed |
-| K29 | The unlock signature isn't verified against the connected account (D-01). A wrong signer gives the user an unrecoverable-looking wallet, never another user's | Not changed right before release: a false mismatch would lock users out |
-| K30 | "Couldn't check" still sends in Truly private mode with a post-hoc label; it's no longer cached (A-01). The classifier still defaults to "unavailable" (A-04), with no CI guard on the worker CSP (A-02) | Roadmap |
-| K31 | A late deposit after an any-token action EXPIRED or CANCELLED isn't recorded; the USDC is usable from the USDC on Base tab (C-05, part) | Expiry now needs a successful read |
-| K32 | Saved credit actions aren't compared with 1Click's own copy of the quote before sending, so anything that can write localStorage can change them (audit question 3) | Needs XSS or a malicious extension |
+| K33 | NEAR unlock compares the wallet-reported `accountId` only. Signer prompts use `window.confirm`, which some webviews suppress (read as declined) | No in-page dialog yet |
+| K34 | npm `rahasya@0.1.0` predates the 11-10 proxy fixes, and a release from the private repo has no provenance record | 0.1.1 and a provenance release are planned |
+| K27 | Body limit stays 8 MB. The key is checked before the body is read, and large bodies share a 16 MB per-isolate budget (503 when full). At most one large body per key (held for a whole non-streamed generation), a body-read limit of 30 s idle and 120 s total, and several copies still held per request. Workers memory wasn't measured (B-02) | The owner raised the limit after real 413s |
 
 ## Fixed after the first audit (2026-11-08, report against commit 6be0d23)
 
@@ -56,6 +52,17 @@ Each fix has a regression test; please re-check them.
 | F-11: no upper bound on `amountIn` | Quote input priced independently (token list) and capped at +5% + $0.50; re-validated right before sending | `audit-regressions.test.ts` |
 | F-12: login message not domain-bound | EIP-4361 (SIWE) for EVM, the same format for Solana, NEP-413 recipient = our host | `server.test.ts` (incl. NEAR full-access check) |
 | F-13 | `GETDEL` for challenges; per-user lock on key creation; rate-limit TTL always set; `GET /api/account` is read-only (POST opens the wallet); expired keys can be renamed; x402 `payTo` pinned to Venice's address; client `appFees` stripped; body read with a streaming 4 MB cap; E2EE non-streamed requests reserve too; proxy logs no upstream error bodies; `__Host-` session cookie over HTTPS; "sign out everywhere" | `server.test.ts`, `topup.test.ts`, probe |
+
+## Closed after audit v3 (2026-11-10), not yet re-reviewed by anyone outside
+
+| Was | Now |
+|---|---|
+| K26 non-streamed requests timing out | Upstream is always streamed and collected (`collectStream`), so usage always arrives and only silence can time out |
+| K28 no server-side wallet check | Pages send `x-wallet-uid`; `withUser` answers 409 on a mismatch. A new sign-in ends the browser's earlier session. Clients that omit the header (the probe, tools) are unaffected: the cookie still authorizes |
+| K29 unlock signer unchecked | EVM signer recovered and compared; Solana signature verified. EVM, Solana and NEAR mismatches ask once per account and signer rather than refuse, because smart accounts, Ledgers and multi-account wallets are legitimate. NEAR compares the self-reported `accountId` only. `window.confirm` may be suppressed in some webviews |
+| K30 Intel check | "Couldn't check" retries once, then asks before sending (once per conversation). Collateral errors are an allowlist: anything unrecognised is "fail". Intel 4xx pass through as fail. CI checks the worker CSP after the build |
+| K31 late deposits | Re-checked for the newest few closed actions (under 7 days old) when the panel opens |
+| K32 saved quote tampering | Compared with 1Click's own copy before sending. If 1Click can't confirm the quote, nothing is sent. The any-token panel still shows the saved address without this check; a tamperer with that access could change the page too |
 
 ## Fixed after audit v3 (2026-11-10, report against d23024b), not yet re-reviewed
 

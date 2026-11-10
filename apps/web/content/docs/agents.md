@@ -73,7 +73,7 @@ Ask the person to do this. It takes a wallet and at least $5 in any token:
 
 ## Request rules
 
-- Use `stream: true` for long outputs. Non-streaming requests fail after 2 minutes. A stream ends after 3 minutes with no data, or 30 minutes in total. After a timeout or a late failure the key keeps its reservation, so retry with care.
+- A request ends after 3 minutes with no data from Venice, or 30 minutes in total, streaming or not. Streaming shows progress sooner. After a timeout or a late failure the key keeps its reservation, so retry with care.
 - `max_tokens` or `max_completion_tokens` must be 1 to 32768. **Always set one.** Without it the key is charged a reservation for the model's maximum until real usage arrives, which can use up a small limit.
 - `n` must be 1. The body limit is 8 MB, and images are sent base64-encoded.
 - The rate limit is 60 requests per minute per key.

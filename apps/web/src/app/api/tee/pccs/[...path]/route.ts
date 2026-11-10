@@ -68,9 +68,9 @@ export async function GET(req: Request, ctx: { params: Promise<{ path: string[] 
     } catch {
       return new Response("Intel's collateral service didn't answer", { status: 502 });
     }
-    // Intel's "not found" is an answer (no collateral for that FMSPC), passed through so the
-    // verifier can treat it as a fail; anything else is our or Intel's trouble (audit T-01).
-    if (res.status === 404) return new Response("not found at Intel", { status: 404 });
+    // Only these can be about the quote (no collateral for that FMSPC, a malformed query), so they
+    // reach the verifier as a fail. 401, 403, 429 and 5xx are about us or Intel (audit T-01, A-04).
+    if (res.status === 400 || res.status === 404 || res.status === 410) return new Response(`Intel answered ${res.status}`, { status: res.status });
     if (!res.ok) return new Response(`upstream ${res.status}`, { status: 502 });
     const raw = await res.arrayBuffer();
     if (raw.byteLength > 512 * 1024) return new Response("upstream too large", { status: 502 });

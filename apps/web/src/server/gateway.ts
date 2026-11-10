@@ -47,8 +47,22 @@ async function readBody(req: Request): Promise<string | null> {
   const reader = req.body.getReader();
   const chunks: Uint8Array[] = [];
   let size = 0;
+  const deadline = Date.now() + BODY_TOTAL_MS; // a slow sender can't hold its share of the budget open
   for (;;) {
-    const { done, value } = await reader.read();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const tooSlow = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(Object.assign(new Error("The request body took too long to arrive."), { status: 408 })), Math.max(0, Math.min(BODY_IDLE_MS, deadline - Date.now())));
+    });
+    let chunk: ReadableStreamReadResult<Uint8Array>;
+    try {
+      chunk = await Promise.race([reader.read(), tooSlow]);
+    } catch (e) {
+      await reader.cancel().catch(() => {});
+      throw e;
+    } finally {
+      clearTimeout(timer);
+    }
+    const { done, value } = chunk;
     if (done) break;
     size += value.byteLength;
     if (size > MAX_BODY) {
@@ -111,14 +125,23 @@ export async function handleModels(req: Request): Promise<Response> {
  * bodies share a per-isolate budget, so a few at once get a retryable 503 instead of taking down
  * everyone's in-flight streams. Ordinary requests are never affected.
  */
-const MAX_BUFFERED_BYTES = 24 * 1024 * 1024;
+const MAX_BUFFERED_BYTES = 16 * 1024 * 1024;
+const BODY_IDLE_MS = 30_000;
+const BODY_TOTAL_MS = 120_000;
 const LARGE_BODY_BYTES = 1024 * 1024;
 let bufferedBytes = 0;
+const largeBodyKeys = new Set<string>();
 
-export function takeBodyBudget(bytes: number): (() => void) | null {
-  if (bytes > LARGE_BODY_BYTES && bufferedBytes + bytes > MAX_BUFFERED_BYTES) return null;
+/** At most one large body per key, so one key can't hold the whole budget. */
+export function takeBodyBudget(bytes: number, keyId: string): (() => void) | null {
+  const large = bytes > LARGE_BODY_BYTES;
+  if (large && (largeBodyKeys.has(keyId) || bufferedBytes + bytes > MAX_BUFFERED_BYTES)) return null;
+  if (large) largeBodyKeys.add(keyId);
   bufferedBytes += bytes;
-  return () => void (bufferedBytes -= bytes);
+  return () => {
+    bufferedBytes -= bytes;
+    if (large) largeBodyKeys.delete(keyId);
+  };
 }
 
 const serverBusy = () => oaiError(503, "Too many large requests at once. Retry in a moment.", "busy");
@@ -128,13 +151,14 @@ export async function handleChat(req: Request): Promise<Response> {
   try {
     // The key comes first, so nobody without one can make us buffer and parse a large body.
     const rec = await authorize(bearer(req), null);
-    const declared = Math.min(Number(req.headers.get("content-length") ?? 0) || 0, MAX_BODY);
-    release = takeBodyBudget(declared);
+    const declared = Number(req.headers.get("content-length") ?? 0) || 0;
+    if (declared > MAX_BODY) return oaiError(413, "Request body too large.", "too_large"); // not retryable, so before the budget
+    release = takeBodyBudget(declared, rec.id);
     if (!release) return serverBusy();
-    const text = await readBody(req);
+    let text = await readBody(req);
     if (text === null) return oaiError(413, "Request body too large.", "too_large");
     if (!declared) {
-      release = takeBodyBudget(text.length); // no content-length: count what actually arrived
+      release = takeBodyBudget(text.length, rec.id); // no content-length: count what actually arrived
       if (!release) return serverBusy();
     }
     let body: Record<string, unknown>;
@@ -143,6 +167,7 @@ export async function handleChat(req: Request): Promise<Response> {
     } catch {
       return oaiError(400, "Request body is not valid JSON.", "bad_json");
     }
+    text = ""; // the parsed body is all we need from here; don't hold a second copy
     if (!body || typeof body !== "object" || Array.isArray(body)) return oaiError(400, "Request body must be a JSON object.", "bad_json");
     const def = resolveModel(body.model);
     if (!def) return oaiError(400, `Unknown model "${String(body.model).slice(0, 80)}". GET /v1/models lists the allowed ones.`, "unknown_model");
@@ -264,6 +289,93 @@ export function meterStream(onUsage: (usage: unknown, final: boolean) => Promise
   });
 }
 
+/**
+ * Assemble an OpenAI-style streamed reply into the non-streamed response shape. A stream that stops
+ * without a finish_reason or [DONE] is an error, never a short reply passed off as complete.
+ * `noContent` on the error says nothing had been generated yet.
+ */
+export async function collectStream(res: Response): Promise<Record<string, unknown>> {
+  if (!/event-stream/i.test(res.headers.get("content-type") ?? "")) return (await res.json()) as Record<string, unknown>;
+  type ToolCall = { id?: string; type: string; function: { name: string; arguments: string } };
+  type Delta = { content?: string | null; reasoning_content?: string | null; reasoning?: string | null; refusal?: string | null; tool_calls?: Array<{ index?: number; id?: string; type?: string; function?: { name?: string; arguments?: string } }> };
+  const tools: ToolCall[] = [];
+  const logprobs: unknown[] = [];
+  let text = "";
+  let reasoning = "";
+  let refusal = "";
+  let finish: unknown = null;
+  let done = false;
+  let usage: unknown;
+  let generated = false;
+  let first: { id?: unknown; created?: unknown; system_fingerprint?: unknown } | undefined;
+  const fail = (message: string) => Object.assign(new HttpError(502, message, "stream"), { noContent: !generated });
+  const take = (line: string) => {
+    if (!line.startsWith("data:")) return;
+    const data = line.slice(5).trim();
+    if (data === "[DONE]") return void (done = true);
+    if (!data) return;
+    let ev: { id?: unknown; created?: unknown; system_fingerprint?: unknown; error?: unknown; usage?: unknown; choices?: Array<{ finish_reason?: unknown; delta?: Delta; logprobs?: { content?: unknown[] } | null }> };
+    try {
+      ev = JSON.parse(data);
+    } catch {
+      return;
+    }
+    if (ev.error) throw fail(JSON.stringify(ev.error).slice(0, 300));
+    first ??= ev;
+    if (ev.usage) usage = ev.usage;
+    const choice = ev.choices?.[0];
+    if (choice?.finish_reason != null) finish = choice.finish_reason;
+    if (choice?.logprobs?.content) logprobs.push(...choice.logprobs.content);
+    const d = choice?.delta;
+    if (!d) return;
+    if (d.content) text += d.content;
+    if (d.reasoning_content ?? d.reasoning) reasoning += d.reasoning_content ?? d.reasoning;
+    if (d.refusal) refusal += d.refusal;
+    if (d.content || d.reasoning_content || d.reasoning || d.tool_calls?.length) generated = true;
+    for (const t of d.tool_calls ?? []) {
+      // A continuation without an index belongs to the call in progress.
+      const at = t.index ?? (t.id || !tools.length ? tools.length : tools.length - 1);
+      const call = (tools[at] ??= { type: "function", function: { name: "", arguments: "" } });
+      if (t.id) call.id = t.id;
+      if (t.type) call.type = t.type;
+      if (t.function?.name) call.function.name += t.function.name;
+      if (t.function?.arguments) call.function.arguments += t.function.arguments;
+    }
+  };
+  const reader = res.body!.getReader();
+  const dec = new TextDecoder();
+  let buf = "";
+  try {
+    for (;;) {
+      const { done: ended, value } = await reader.read();
+      if (ended) break;
+      buf += dec.decode(value, { stream: true });
+      let nl: number;
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        take(buf.slice(0, nl).trim());
+        buf = buf.slice(nl + 1);
+      }
+    }
+    take(buf.trim());
+  } finally {
+    await reader.cancel().catch(() => {});
+  }
+  if (!first) throw fail("Venice sent an empty stream.");
+  if (finish === null && !done) throw fail("Venice's reply was cut off before it finished.");
+  const message: Record<string, unknown> = { role: "assistant", content: text || (tools.length ? null : "") };
+  if (reasoning) message.reasoning_content = reasoning;
+  if (refusal) message.refusal = refusal;
+  if (tools.length) message.tool_calls = tools.filter(Boolean);
+  return {
+    id: first.id,
+    object: "chat.completion",
+    created: first.created ?? Math.floor(Date.now() / 1000),
+    ...(first.system_fingerprint ? { system_fingerprint: first.system_fingerprint } : {}),
+    choices: [{ index: 0, message, finish_reason: finish ?? "stop", ...(logprobs.length ? { logprobs: { content: logprobs } } : {}) }],
+    usage,
+  };
+}
+
 const FAST_FAILURE_MS = 10_000;
 
 /**
@@ -308,14 +420,23 @@ async function passthrough(rec: KeyRecord, venice: VeniceClient, def: ModelDef, 
   const started = Date.now();
 
   if (!body.stream) {
-    let json: { usage?: Parameters<typeof costUsd>[1] };
+    // Streamed upstream even here: usage always arrives, and only silence (not a slow reply) can time out.
+    let res: Response;
     try {
-      json = (await withTopUp(rec, () => venice.chat({ ...upstream, stream: false }))) as typeof json;
+      res = await withTopUp(rec, () => venice.chatStream({ ...upstream, stream_options: { include_usage: true } }));
     } catch (e) {
       if (nothingGenerated(e, Date.now() - started)) await recordSpend(rec, -held, day);
       throw e;
     }
-    const actual = costUsd(def, json.usage, live);
+    let json: Record<string, unknown>;
+    try {
+      json = await collectStream(res);
+    } catch (e) {
+      // Generation has started, so a failure keeps the reservation, unless it failed at once with nothing produced.
+      if ((e as { noContent?: unknown }).noContent === true && Date.now() - started <= FAST_FAILURE_MS) await recordSpend(rec, -held, day);
+      throw e;
+    }
+    const actual = costUsd(def, json.usage as Parameters<typeof costUsd>[1], live);
     // The reply is already paid for: a failed correction keeps the reservation, never a 502.
     if (actual !== undefined) await recordSpend(rec, actual - held, day).catch(() => {});
     return Response.json({ ...json, model: def.key });
@@ -446,5 +567,8 @@ function toResponse(e: unknown): Response {
   }
   if (e instanceof RailError) return oaiError(400, e.message, e.code.toLowerCase());
   const status = (e as { status?: number }).status;
-  return oaiError(status && status >= 400 && status < 600 ? status : 502, (e as Error)?.message?.slice(0, 300) ?? "Upstream error", "upstream_error");
+  const res = oaiError(status && status >= 400 && status < 600 ? status : 502, (e as Error)?.message?.slice(0, 300) ?? "Upstream error", "upstream_error");
+  // The key kept its reservation; an SDK's silent retry would hold another one.
+  if ((e as { noContent?: unknown })?.noContent === false || (e as Error)?.name === "TimeoutError") res.headers.set("x-should-retry", "false");
+  return res;
 }

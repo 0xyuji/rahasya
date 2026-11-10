@@ -244,6 +244,29 @@ export function cancelAnywhere(id: string): AnywhereAction | undefined {
   return move(a, "CANCELLED");
 }
 
+/**
+ * A deposit can land after we gave up on it (late withdrawals, an address the user cancelled but
+ * funded anyway, a top-up of a partial deposit that finished while the page was closed).
+ * Called when the panel opens: one status read for the newest few.
+ */
+export async function recheckClosed(inferenceAddress: string): Promise<AnywhereAction | undefined> {
+  const recent = anywhereActions
+    .all()
+    .filter((a) => a.inferenceAddress === inferenceAddress && (a.state === "EXPIRED" || a.state === "CANCELLED" || (a.state === "INCOMPLETE" && Date.now() > anywhereDeadline(a))) && Date.now() - Date.parse(a.createdAt) < 7 * 86_400_000)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, 3);
+  for (const a of recent) {
+    const st = await oneclick.status(a.quote.quote.depositAddress!, a.quote.quote.depositMemo).catch(() => undefined);
+    const s = st?.status;
+    if (s === "SUCCESS") return move(a, "SWAPPED", { oneclickStatus: s, delivered: st!.swapDetails?.amountOut });
+    if (s === "REFUNDED") return move(a, "REFUNDED", { oneclickStatus: s });
+    if (s === "FAILED") return move(a, "FAILED", { oneclickStatus: s, error: "1Click reported the swap as failed; funds are refunded to your refund address." });
+    if (s === "INCOMPLETE_DEPOSIT" && a.state !== "INCOMPLETE") return move(a, "INCOMPLETE", { oneclickStatus: s });
+    if (s === "KNOWN_DEPOSIT_TX" || s === "PROCESSING") return move(a, "RECEIVED", { oneclickStatus: s });
+  }
+  return undefined;
+}
+
 /** Stop retrying a top-up that isn't going to work. The USDC stays on the wallet, usable from the USDC on Base tab. */
 export function dismissAnywhere(id: string): AnywhereAction {
   return move(anywhereActions.get(id)!, "IDLE", { error: "Stopped retrying. Your USDC is waiting on the wallet; use the USDC on Base tab to turn it into credit." });

@@ -9,6 +9,7 @@ import {
   type SourceChain,
 } from "@pay/rail/browser";
 import { useAppKitConnection } from "@reown/appkit-adapter-solana/react";
+import { PublicKey } from "@solana/web3.js";
 import { useAppKit, useAppKitAccount, useAppKitProvider, useDisconnect } from "@reown/appkit/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
@@ -19,7 +20,7 @@ import { appFetch } from "../app/app-fetch";
 import { evmSender, solanaSender, type DepositSender, type SolanaWallet } from "../funding/senders";
 import { initAppKit, wagmiAdapter } from "./appkit";
 import { nearConnector } from "./near";
-import { attemptGuard, walletSession, walletUid, type WalletSession } from "./session";
+import { attemptGuard, recoverSigner, solanaSignatureValid, walletSession, walletUid, type WalletSession } from "./session";
 
 initAppKit();
 const queryClient = new QueryClient();
@@ -98,6 +99,17 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 const b64ToBytes = (b64: string) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 const evmVerifiedKey = (a: string) => `iw:evm-reproducible:${a.toLowerCase()}`;
 const short = (k: string) => `${k.slice(0, 14)}…${k.slice(-4)}`;
+/** Asks once per account and signer, so a smart account or Ledger isn't prompted on every unlock. Throws if declined. */
+function confirmSigner(account: string, signer: string, question: string) {
+  const key = `iw:signer-ok:${account}`;
+  try {
+    if (localStorage.getItem(key) === signer) return;
+  } catch {}
+  if (!window.confirm(question)) throw new Error("Cancelled. Check which account your wallet is using and try again.");
+  try {
+    localStorage.setItem(key, signer);
+  } catch {}
+}
 const endApiSession = () => appFetch("/api/auth/logout", { method: "POST", signal: AbortSignal.timeout(5_000) }).catch(() => undefined);
 
 function WalletStateProvider({ children }: { children: React.ReactNode }) {
@@ -177,6 +189,11 @@ function WalletStateProvider({ children }: { children: React.ReactNode }) {
       if (!isReproducibleEvmSignature(sig)) {
         throw new Error("This looks like a smart-contract wallet; its signatures change every time, so it can't recreate the same inference wallet. Use a regular wallet (MetaMask, Rabby, …), Solana or NEAR.");
       }
+      const signer = await recoverSigner(DERIVATION_MESSAGE, sig);
+      if (signer && signer !== s.address.toLowerCase()) {
+        // Not a hard stop: a smart account signing with its owner key is the right user, and may already hold credit.
+        confirmSigner(`evm:${s.address.toLowerCase()}`, signer, `This signature came from a different account than ${short(s.address)}. That's normal for some smart accounts; otherwise your wallet is using another account, which would create a different inference wallet.\n\nContinue?`);
+      }
       // First unlock on this address: sign twice and compare, once, to prove it's reproducible.
       if (localStorage.getItem(evmVerifiedKey(s.address)) !== "1") {
         setNotice("One more signature, only this first time. It proves your wallet always gives the same inference wallet.");
@@ -188,10 +205,19 @@ function WalletStateProvider({ children }: { children: React.ReactNode }) {
     }
     if (s.chain === "sol") {
       if (!solProvider) throw new Error("Solana wallet not ready");
-      return solProvider.signMessage(new TextEncoder().encode(DERIVATION_MESSAGE));
+      const message = new TextEncoder().encode(DERIVATION_MESSAGE);
+      const signature = await solProvider.signMessage(message);
+      if (!solanaSignatureValid(signature, message, new PublicKey(s.address).toBytes())) {
+        // Not a hard stop: a Ledger signs a different format and is still the right owner.
+        confirmSigner(`sol:${s.address}`, "unverified", `This signature couldn't be confirmed as coming from ${short(s.address)}. That's normal for a Ledger; otherwise your wallet may have signed with another account, which would create a different inference wallet.\n\nContinue?`);
+      }
+      return signature;
     }
     const wallet = await (await nearConnector()).wallet();
     const signed = await wallet.signMessage({ ...NEP413_PARAMS, nonce: new Uint8Array(NEP413_PARAMS.nonce) });
+    if (signed.accountId && signed.accountId.toLowerCase() !== s.address.toLowerCase()) {
+      confirmSigner(`near:${s.address}`, signed.accountId, `Your NEAR wallet signed as ${signed.accountId}, not ${s.address}. Signing as another account would create a different inference wallet.\n\nContinue?`);
+    }
     // A NEAR account has one key per device/wallet app, and each key gives a different inference
     // wallet. Remember which key unlocked last time and warn before switching to another one.
     // Storage key predates the rename; kept so existing users arent warned again.

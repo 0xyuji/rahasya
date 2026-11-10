@@ -13,6 +13,7 @@ export function useChat(onCreditChange: () => void) {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [attestations, setAttestations] = useState<Record<string, AttestationReport>>({});
   const run = useRef<AbortController | null>(null); // the one reply being generated
+  const sendUnverified = useRef(false); // this conversation's answer to "Intel's check couldn't run"
   const busy = messages.some((m) => m.status === "streaming");
 
   // Truly private: every attestation's Intel signature is also verified here, in a sandboxed worker.
@@ -47,11 +48,15 @@ export function useChat(onCreditChange: () => void) {
         return;
       }
 
+      const confirmUnverified = () => {
+        sendUnverified.current ||= window.confirm("Intel's hardware check couldn't run right now, so this enclave can't be fully confirmed. Your message would still be encrypted to it.\n\nSend anyway? (You won't be asked again in this conversation.)");
+        return sendUnverified.current;
+      };
       const ctl = new AbortController();
       run.current = ctl;
       let chunks: () => number | undefined = () => undefined;
       try {
-        const { meta, deltas } = await chat.stream({ mode, model: modelKey, messages: context, maxTokens: 4096, signal: ctl.signal });
+        const { meta, deltas } = await chat.stream({ mode, model: modelKey, messages: context, maxTokens: 4096, signal: ctl.signal, confirmUnverified, unverifiedAccepted: sendUnverified.current });
         chunks = () => meta.plaintextChunks;
         if (meta.attestation) {
           const aid = `${meta.attestation.model}:${meta.attestation.nonce.slice(0, 8)}`;
@@ -88,7 +93,11 @@ export function useChat(onCreditChange: () => void) {
   );
 
   const stop = () => run.current?.abort();
-  const clear = () => (run.current?.abort(), setMessages([]));
+  const clear = () => {
+    run.current?.abort();
+    sendUnverified.current = false;
+    setMessages([]);
+  };
 
   return { messages, attestations, busy, send, stop, clear, prepare };
 }
