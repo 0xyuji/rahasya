@@ -6,8 +6,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ANYWHERE_FINAL,
   anywhereActions,
+  anywhereDeadline,
   cancelAnywhere,
   chainName,
+  dismissAnywhere,
+  isEvmChain,
   quoteAnywhere,
   refundAddressProblem,
   runAnywhere,
@@ -66,7 +69,7 @@ export function AnywherePanel({ onCredited }: { onCredited: () => void }) {
   const [err, setErr] = useState<string | null>(null);
   const [qr, setQr] = useState("");
   const [retries, setRetries] = useState(0);
-  const countdown = useCountdown(action?.quote.quote.deadline);
+  const countdown = useCountdown(action ? new Date(anywhereDeadline(action)).toISOString() : undefined);
 
   useEffect(() => {
     oneclick.tokens().then((t) => setTokens(sendableTokens(t)), (e) => setErr(friendly(e)));
@@ -114,7 +117,7 @@ export function AnywherePanel({ onCredited }: { onCredited: () => void }) {
     if (!token || !w.source) return;
     const evm = /^0x[0-9a-fA-F]{40}$/.test(w.source.address);
     if ((w.source.chain === "sol" && token.blockchain === "sol") || (w.source.chain === "near" && token.blockchain === "near")) setRefundTo(w.source.address);
-    else if (evm && !refundAddressProblem(token.blockchain, w.source.address)) setRefundTo(w.source.address);
+    else if (evm && isEvmChain(token.blockchain)) setRefundTo(w.source.address);
     else setRefundTo("");
   }, [token, w.source]);
 
@@ -182,7 +185,7 @@ export function AnywherePanel({ onCredited }: { onCredited: () => void }) {
               </dd>
               <dt>Refunds</dt>
               <dd className={s.break}>{action.refundTo}</dd>
-              <dt>Valid for</dt>
+              <dt>Send within</dt>
               <dd>{countdown}</dd>
             </dl>
             {t.blockchain === "zec" && (
@@ -220,9 +223,14 @@ export function AnywherePanel({ onCredited }: { onCredited: () => void }) {
         {action.state === "TOPPING_UP" && action.error && (
           <>
             <p className={s.warn}>{action.error}</p>
-            <button className={s.primary} onClick={() => setRetries((n) => n + 1)}>
-              Retry adding credit
-            </button>
+            <div className={s.row}>
+              <button className={s.secondary} onClick={() => setAction(dismissAnywhere(action.id))}>
+                Stop, keep it as USDC
+              </button>
+              <button className={s.primary} onClick={() => setRetries((n) => n + 1)}>
+                Retry adding credit
+              </button>
+            </div>
           </>
         )}
         {live && action.oneclickStatus && <p className={s.fine}>1Click status: {action.oneclickStatus.replaceAll("_", " ").toLowerCase()}</p>}

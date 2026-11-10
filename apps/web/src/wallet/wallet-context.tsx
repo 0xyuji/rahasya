@@ -19,12 +19,12 @@ import { appFetch } from "../app/app-fetch";
 import { evmSender, solanaSender, type DepositSender, type SolanaWallet } from "../funding/senders";
 import { initAppKit, wagmiAdapter } from "./appkit";
 import { nearConnector } from "./near";
-import { attemptGuard, walletSession, type WalletSession } from "./session";
+import { attemptGuard, walletSession, walletUid, type WalletSession } from "./session";
 
 initAppKit();
 const queryClient = new QueryClient();
 
-export type CreditTarget = { kind: "inference" } | { kind: "api"; address: string };
+export type CreditTarget = { kind: "inference" } | { kind: "api"; address: string; uid: string };
 
 export interface LoginProof {
   challengeId: string;
@@ -53,6 +53,8 @@ interface WalletState {
   error: string | null;
   /** Something the user should know while a wallet prompt is open. */
   notice: string | null;
+  /** Which wallet the API-keys session belongs to, once known. */
+  noteApiSession: (uid: string | null) => void;
   /** Give up on a wallet prompt that never answered. */
   cancelUnlock: () => void;
   /** Sends a deposit from the connected wallet; null if this wallet type can't fund yet. */
@@ -96,6 +98,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 const b64ToBytes = (b64: string) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 const evmVerifiedKey = (a: string) => `iw:evm-reproducible:${a.toLowerCase()}`;
 const short = (k: string) => `${k.slice(0, 14)}…${k.slice(-4)}`;
+const endApiSession = () => appFetch("/api/auth/logout", { method: "POST", signal: AbortSignal.timeout(5_000) }).catch(() => undefined);
 
 function WalletStateProvider({ children }: { children: React.ReactNode }) {
   const { open } = useAppKit();
@@ -151,7 +154,15 @@ function WalletStateProvider({ children }: { children: React.ReactNode }) {
 
   // A different (or no) source wallet means the old inference key must go.
   const currentSource = useRef<Source | null>(null);
+  const apiSessionUid = useRef<string | null>(null);
+  const noteApiSession = useCallback((uid: string | null) => void (apiSessionUid.current = uid), []);
   useEffect(() => {
+    // Another wallet is connected now: the API-keys session was the old one's. Compared with the
+    // wallet the session was issued to, so namespaces restoring on page load can't end it.
+    if (source && apiSessionUid.current && walletUid(source) !== apiSessionUid.current) {
+      apiSessionUid.current = null;
+      void endApiSession();
+    }
     currentSource.current = source;
     unlockAttempt.cancel();
     setBusy(false);
@@ -245,13 +256,17 @@ function WalletStateProvider({ children }: { children: React.ReactNode }) {
 
   const disconnect = useCallback(async () => {
     setUnlocked(null);
-    // The API-keys session belongs to this wallet: it ends with it, or the next person inherits it.
-    await appFetch("/api/auth/logout", { method: "POST" }).catch(() => {});
-    if (source?.chain === "near") {
-      await (await nearConnector()).disconnect().catch(() => {});
-      setNearAccount(null);
-    } else {
-      await disconnectAppKit().catch(() => {});
+    try {
+      // The API-keys session belongs to this wallet: it ends with it, or the next person inherits it.
+      await endApiSession();
+      apiSessionUid.current = null;
+    } finally {
+      if (source?.chain === "near") {
+        await (await nearConnector()).disconnect().catch(() => {});
+        setNearAccount(null);
+      } else {
+        await disconnectAppKit().catch(() => {});
+      }
     }
   }, [source?.chain, disconnectAppKit]);
 
@@ -265,6 +280,10 @@ function WalletStateProvider({ children }: { children: React.ReactNode }) {
   const signLogin = useCallback(
     async (c: { id: string; message: string; nonce: string; recipient: string }): Promise<LoginProof> => {
       if (!source) throw new Error("Connect a wallet first.");
+      // Never let "sign in" double as the key-deriving signature, whatever the server sends.
+      if (c.message.includes(DERIVATION_MESSAGE) || !c.message.startsWith(`${window.location.host} wants you to sign in`) || (source.chain === "near" && c.recipient !== window.location.host)) {
+        throw new Error("This sign-in request doesn't look right, so it wasn't signed.");
+      }
       const base = { challengeId: c.id, chain: source.chain, address: source.address };
       if (source.chain === "evm") return { ...base, signature: await signMessageAsync({ message: c.message }) };
       if (source.chain === "sol") {
@@ -301,6 +320,7 @@ function WalletStateProvider({ children }: { children: React.ReactNode }) {
     busy,
     error,
     notice,
+    noteApiSession,
     cancelUnlock: () => {
       unlockAttempt.abandon();
       setBusy(false);
@@ -309,7 +329,11 @@ function WalletStateProvider({ children }: { children: React.ReactNode }) {
     connectEvmOrSolana: () => void open({ view: "Connect" }),
     connectNear,
     unlock,
-    lock: () => setUnlocked(null),
+    lock: () => {
+      unlockAttempt.abandon();
+      setBusy(false);
+      setUnlocked(null);
+    },
     disconnect,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

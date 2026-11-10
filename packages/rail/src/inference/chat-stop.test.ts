@@ -75,3 +75,40 @@ test("stopping early hangs up on Venice (Truly private stream)", async () => {
   for await (const _ of decryptStream(res, { clientPriv: new Uint8Array(32) } as never)) break;
   assert.ok(state.cancelled, "the upstream response was left open");
 });
+
+test("a keep-alive comment doesn't count as progress", async () => {
+  const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  let upstream: AbortSignal;
+  let running = true;
+  const body = new ReadableStream<Uint8Array>({
+    async pull(ctl) {
+      await pause(10);
+      if (running) ctl.enqueue(new TextEncoder().encode(": keep-alive\n\n"));
+      else ctl.close();
+    },
+  });
+  const client = new VeniceClient({
+    account: privateKeyToAccount(generatePrivateKey()),
+    topups: {} as never,
+    maxTopUpUsd: 1,
+    timeoutMs: 40,
+    fetch: (async (_u: unknown, init: RequestInit) => ((upstream = init.signal!), new Response(body))) as typeof fetch,
+  });
+  const reader = (await client.chatStream({})).body!.getReader();
+  void (async () => {
+    while (!(await reader.read()).done);
+  })();
+  await pause(150);
+  running = false;
+  assert.ok(upstream!.aborted, "only data lines should reset the silence timer");
+});
+
+test("Stop doesn't wait for a hung attestation", async () => {
+  const venice = { authHeaders: async () => ({}), models: async () => [] };
+  const chat = new VeniceChat({ venice: venice as never });
+  (chat as unknown as { attestation: () => Promise<never> }).attestation = () => new Promise(() => {});
+  const stop = new AbortController();
+  const pending = chat.stream({ mode: "private", messages: [{ role: "user", content: "x" }], signal: stop.signal });
+  stop.abort();
+  await assert.rejects(pending, (e: { name?: string }) => e.name === "AbortError");
+});

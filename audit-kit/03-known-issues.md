@@ -24,11 +24,18 @@ No need to report these again. **Do** tell us if one is worse than described, an
 | K18 | The Worker is also reachable on its `*.workers.dev` URL (same code, same secrets) | Same behaviour as `rahasya.chat`; tell us if anything differs there (e.g. client IP) |
 | K19 | The proxy download (`/rahasya.mjs`) and its SHA-256 come from the same site, so the checksum only catches a broken download, not a compromised deployment. The file is built from the public repo on every deploy, but the build isn't reproducible-verified | Users who don't want to trust the site can run it from a clone (`npm run proxy`). A signed release (or npm provenance) would close it |
 | K20 | After a $0 API-wallet sweep, the browser treats the top-up as already done if it also reads less than $5 of USDC. If both reads lag behind a just-arrived deposit, "Added" can appear before credit exists | Narrow. The USDC stays on the API wallet and is swept on the next out-of-credit request |
-| K21 | One run per credit action is enforced per browser tab. A second tab can mark a send unconfirmed while the first wallet prompt is open, and saved state is last-writer-wins | A double send still needs the user to click "Send again". The Web Locks API would close it |
+| K21 | One run per credit action is enforced per browser tab. A second tab can mark a send unconfirmed while the first wallet prompt is open. A stale copy can no longer overwrite newer state, and a deposit that was really sent is always recorded | A double send still needs the user to click "Send again". The Web Locks API would close it |
 | K22 | `tee_provider` ("near-ai") comes from Venice's attestation JSON and isn't bound to the hardware quote | Labelled in the UI and README as Venice's claim. A cross-check against NEAR AI's own attestation would close it |
 | K23 | The UI says an extra deposit to a used 1Click address is "normally refunded, minus a refund fee". 1Click's docs don't cover a second deposit after a completed swap | Not tested with a real second deposit |
 | K24 | Local development and production currently share one Upstash database and `API_WALLET_ENC_KEY` | Operational, not a code issue. To be separated and rotated |
 | K25 | The local proxy cancels upstream only for streamed requests; a non-streamed request finishes after the client disconnects | Bounded by that one request |
+| K26 | Non-streamed API requests stay non-streamed upstream, so one that outlives the 2-minute timeout keeps its reservation and returns an error (audit B-01's preferred fix, collecting a stream, wasn't done) | Fails safe for the API wallet; the key is charged |
+| K27 | Body limit stays 8 MB. The key is checked before the body is read, and large bodies share a 24 MB per-isolate budget (503 when full). Several copies are still held per request, and Workers memory wasn't measured (B-02) | The owner raised the limit after real 413s |
+| K28 | The session/wallet match is client-side; the server has no `x-wallet-uid` check (D-02, part) | The cookie alone authorizes, as designed |
+| K29 | The unlock signature isn't verified against the connected account (D-01). A wrong signer gives the user an unrecoverable-looking wallet, never another user's | Not changed right before release: a false mismatch would lock users out |
+| K30 | "Couldn't check" still sends in Truly private mode with a post-hoc label; it's no longer cached (A-01). The classifier still defaults to "unavailable" (A-04), with no CI guard on the worker CSP (A-02) | Roadmap |
+| K31 | A late deposit after an any-token action EXPIRED or CANCELLED isn't recorded; the USDC is usable from the USDC on Base tab (C-05, part) | Expiry now needs a successful read |
+| K32 | Saved credit actions aren't compared with 1Click's own copy of the quote before sending, so anything that can write localStorage can change them (audit question 3) | Needs XSS or a malicious extension |
 
 ## Fixed after the first audit (2026-11-08, report against commit 6be0d23)
 
@@ -49,6 +56,12 @@ Each fix has a regression test; please re-check them.
 | F-11: no upper bound on `amountIn` | Quote input priced independently (token list) and capped at +5% + $0.50; re-validated right before sending | `audit-regressions.test.ts` |
 | F-12: login message not domain-bound | EIP-4361 (SIWE) for EVM, the same format for Solana, NEP-413 recipient = our host | `server.test.ts` (incl. NEAR full-access check) |
 | F-13 | `GETDEL` for challenges; per-user lock on key creation; rate-limit TTL always set; `GET /api/account` is read-only (POST opens the wallet); expired keys can be renamed; x402 `payTo` pinned to Venice's address; client `appFees` stripped; body read with a streaming 4 MB cap; E2EE non-streamed requests reserve too; proxy logs no upstream error bodies; `__Host-` session cookie over HTTPS; "sign out everywhere" | `server.test.ts`, `topup.test.ts`, probe |
+
+## Fixed after audit v3 (2026-11-10, report against d23024b), not yet re-reviewed
+
+Tests in `apps/web/src/funding/flow.test.ts`, `apps/web/src/server/audit-v3.test.ts`, `packages/rail/src/inference/chat-stop.test.ts`.
+
+C-01, B-01, D-02 (client side and credit target), E-01, B-02 (auth before body), C-02, C-03, C-04, C-05 (expiry), C-06, C-07, C-08 (quote checks and deadlines), C-10, C-11, A-03, A-05, B-03, B-04, B-05, B-06, D-03 (Lock), D-04, E-02, E-03, E-04 (pins), E-05, A-06, D-05, D-08, E-09.
 
 ## Fixed after an internal AI review (2026-11-10), not yet reviewed by anyone else
 

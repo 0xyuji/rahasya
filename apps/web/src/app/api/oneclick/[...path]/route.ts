@@ -48,6 +48,8 @@ export async function GET(req: Request, ctx: Ctx) {
   });
 }
 
+const QUOTE_FIELDS = ["dry", "swapType", "slippageTolerance", "originAsset", "depositType", "destinationAsset", "amount", "refundTo", "refundType", "recipient", "recipientType", "deadline", "depositMode", "quoteWaitingTimeMs", "confidentiality", "sessionId"];
+
 export async function POST(req: Request, ctx: Ctx) {
   const path = (await ctx.params).path.join("/");
   if (ALLOWED[path] !== "POST") return json(404, { message: "not allowed" });
@@ -67,8 +69,9 @@ export async function POST(req: Request, ctx: Ctx) {
     if (body.destinationAsset !== BASE_USDC || body.recipientType !== "DESTINATION_CHAIN" || body.depositType !== "ORIGIN_CHAIN") {
       return json(400, { message: "this proxy only quotes deposits that deliver USDC on Base" });
     }
+    // Only known fields go upstream, so no spelling of a fee or referral key can get through.
+    body = Object.fromEntries(QUOTE_FIELDS.filter((k) => k in body).map((k) => [k, body[k]]));
     // Fees and attribution are ours to set, never the caller's.
-    delete body.appFees;
     body.referral = REFERRAL;
     const bps = Math.floor(Number(process.env.ONECLICK_APP_FEE_BPS ?? 0));
     if (bps > 0 && process.env.ONECLICK_FEE_RECIPIENT) {

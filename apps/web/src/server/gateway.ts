@@ -1,5 +1,6 @@
 import "server-only";
 import {
+  HttpError,
   MODELS,
   RailError,
   findModel,
@@ -13,7 +14,7 @@ import {
   type VeniceClient,
 } from "@pay/rail/browser";
 import { apiWalletAccount, sweepToCredit, veniceForApiWallet } from "./api-wallet.ts";
-import { KeyError, authorize, recordSpend, type KeyRecord } from "./keys.ts";
+import { KeyError, assertModelAllowed, authorize, recordSpend, type KeyRecord } from "./keys.ts";
 import { keepAliveForRequest } from "./runtime.ts";
 
 /**
@@ -105,10 +106,37 @@ export async function handleModels(req: Request): Promise<Response> {
   }
 }
 
+/**
+ * A Worker isolate has limited memory and each request holds several copies of its body. Large
+ * bodies share a per-isolate budget, so a few at once get a retryable 503 instead of taking down
+ * everyone's in-flight streams. Ordinary requests are never affected.
+ */
+const MAX_BUFFERED_BYTES = 24 * 1024 * 1024;
+const LARGE_BODY_BYTES = 1024 * 1024;
+let bufferedBytes = 0;
+
+export function takeBodyBudget(bytes: number): (() => void) | null {
+  if (bytes > LARGE_BODY_BYTES && bufferedBytes + bytes > MAX_BUFFERED_BYTES) return null;
+  bufferedBytes += bytes;
+  return () => void (bufferedBytes -= bytes);
+}
+
+const serverBusy = () => oaiError(503, "Too many large requests at once. Retry in a moment.", "busy");
+
 export async function handleChat(req: Request): Promise<Response> {
+  let release: (() => void) | null = null;
   try {
+    // The key comes first, so nobody without one can make us buffer and parse a large body.
+    const rec = await authorize(bearer(req), null);
+    const declared = Math.min(Number(req.headers.get("content-length") ?? 0) || 0, MAX_BODY);
+    release = takeBodyBudget(declared);
+    if (!release) return serverBusy();
     const text = await readBody(req);
     if (text === null) return oaiError(413, "Request body too large.", "too_large");
+    if (!declared) {
+      release = takeBodyBudget(text.length); // no content-length: count what actually arrived
+      if (!release) return serverBusy();
+    }
     let body: Record<string, unknown>;
     try {
       body = JSON.parse(text);
@@ -121,13 +149,15 @@ export async function handleChat(req: Request): Promise<Response> {
     const bad = checkBody(body);
     if (bad) return oaiError(400, bad, "bad_request");
 
-    const rec = await authorize(bearer(req), def.key);
+    assertModelAllowed(rec, def.key);
     const venice = veniceForApiWallet(await apiWalletAccount(rec.uid));
     const live = await livePrices(venice);
 
     return def.e2ee ? await e2ee(rec, venice, def, body, live) : await passthrough(rec, venice, def, body, live);
   } catch (e) {
     return toResponse(e);
+  } finally {
+    release?.();
   }
 }
 
@@ -162,7 +192,10 @@ function utf8Length(s: string): number {
  * text several times; that's corrected as soon as Venice reports usage.
  */
 export function promptTokenBound(body: Record<string, unknown>): number {
-  const text = JSON.stringify(body.messages ?? []) + JSON.stringify(body.tools ?? []);
+  // Messages, tools, and any other text-bearing field we forward (response_format schemas, functions, ...).
+  const { messages = [], tools = [], model: _model, ...rest } = body;
+  const extra = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== null && (typeof v === "object" || typeof v === "string")));
+  const text = JSON.stringify(messages) + JSON.stringify(tools) + (Object.keys(extra).length ? JSON.stringify(extra) : "");
   let images = 0;
   for (const m of Array.isArray(body.messages) ? body.messages : []) {
     const content = (m as { content?: unknown })?.content;
@@ -194,6 +227,7 @@ export function meterStream(onUsage: (usage: unknown, final: boolean) => Promise
   let buf = "";
   let last: unknown;
   let finished = false;
+  let sawFinish = false; // OpenAI sends usage on its own chunk just after the finish_reason chunk
   const decoder = new TextDecoder();
   const report = async (usage: unknown, final: boolean) => {
     if (finished) return;
@@ -213,13 +247,14 @@ export function meterStream(onUsage: (usage: unknown, final: boolean) => Promise
           if (last !== undefined) await report(last, true);
           continue;
         }
-        if (!line.startsWith("data:") || !line.includes('"usage"')) continue;
+        if (!line.startsWith("data:")) continue;
+        if (!line.includes('"usage"') && !/"finish_reason"\s*:\s*"/.test(line)) continue;
         try {
           const ev = JSON.parse(line.slice(5)) as { usage?: unknown; choices?: Array<{ finish_reason?: unknown }> };
+          if (ev.choices?.some((c) => c?.finish_reason != null)) sawFinish = true;
           if (!ev.usage || typeof ev.usage !== "object") continue; // "usage": null on ordinary chunks
           last = ev.usage;
-          const final = !!ev.choices?.some((c) => c?.finish_reason != null);
-          await report(ev.usage, final);
+          await report(ev.usage, sawFinish);
         } catch {}
       }
     },
@@ -227,6 +262,22 @@ export function meterStream(onUsage: (usage: unknown, final: boolean) => Promise
       if (last !== undefined) await report(last, true); // the stream ran to the end
     },
   });
+}
+
+const FAST_FAILURE_MS = 10_000;
+
+/**
+ * A reservation is released only when Venice can't have generated anything worth billing: it refused
+ * the request, we never sent it, or it failed within seconds. After a timeout or a late 5xx it may
+ * still be generating and billing the API wallet, so the key keeps the charge (audit B-01).
+ */
+export function nothingGenerated(e: unknown, elapsedMs = Infinity): boolean {
+  if (e instanceof VeniceInsufficientBalance) return true;
+  if ((e as { beforeRequest?: unknown })?.beforeRequest === true) return true;
+  if (e instanceof HttpError && e.status >= 400 && e.status < 500) return true;
+  // A quick 500/502/503 or a failed connection is an outage, not an abandoned generation: don't bill retries for it.
+  if (elapsedMs > FAST_FAILURE_MS) return false;
+  return e instanceof TypeError || (e instanceof HttpError && [500, 502, 503].includes(e.status));
 }
 
 /** Call Venice; if credit ran out but USDC sits on the API wallet, top it up and retry once. */
@@ -254,13 +305,14 @@ async function passthrough(rec: KeyRecord, venice: VeniceClient, def: ModelDef, 
   // Every request reserves an estimate first, so a reply without usage (or an aborted stream) is still charged.
   const held = reserve(def, body, live);
   const day = await recordSpend(rec, held);
+  const started = Date.now();
 
   if (!body.stream) {
     let json: { usage?: Parameters<typeof costUsd>[1] };
     try {
       json = (await withTopUp(rec, () => venice.chat({ ...upstream, stream: false }))) as typeof json;
     } catch (e) {
-      await recordSpend(rec, -held, day); // nothing was generated
+      if (nothingGenerated(e, Date.now() - started)) await recordSpend(rec, -held, day);
       throw e;
     }
     const actual = costUsd(def, json.usage, live);
@@ -274,7 +326,7 @@ async function passthrough(rec: KeyRecord, venice: VeniceClient, def: ModelDef, 
   try {
     res = await withTopUp(rec, () => venice.chatStream(upstream));
   } catch (e) {
-    await recordSpend(rec, -held, day); // nothing was generated
+    if (nothingGenerated(e, Date.now() - started)) await recordSpend(rec, -held, day);
     throw e;
   }
   // Pass the SSE stream through untouched. Running usage can only raise the charge above the
@@ -301,6 +353,8 @@ async function e2ee(rec: KeyRecord, venice: VeniceClient, def: ModelDef, body: R
   const messages = fold((body.messages as Array<{ role: string; content: unknown }>) ?? []);
   const held = reserve(def, body, live);
   const day = await recordSpend(rec, held);
+  const started = Date.now();
+  const hangup = new AbortController(); // a client that leaves ends the upstream request too
   let deltas: Awaited<ReturnType<VeniceChat["stream"]>>["deltas"];
   try {
     ({ deltas } = await withTopUp(rec, () =>
@@ -310,10 +364,11 @@ async function e2ee(rec: KeyRecord, venice: VeniceClient, def: ModelDef, body: R
         messages,
         maxTokens: outputLimit(def, body),
         temperature: typeof body.temperature === "number" ? body.temperature : undefined,
+        signal: hangup.signal,
       }),
     ));
   } catch (e) {
-    await recordSpend(rec, -held, day); // nothing was generated
+    if (nothingGenerated(e, Date.now() - started)) await recordSpend(rec, -held, day);
     throw e;
   }
   const id = `chatcmpl-${Date.now().toString(36)}`;
@@ -359,11 +414,16 @@ async function e2ee(rec: KeyRecord, venice: VeniceClient, def: ModelDef, body: R
           keepAlive(write);
           await write.catch(() => {});
         }
+      } catch (e) {
+        if (!hangup.signal.aborted) throw e; // cut off by the client: the reservation stands
       } finally {
         try {
           ctl.close();
         } catch {}
       }
+    },
+    cancel() {
+      hangup.abort();
     },
   });
   return new Response(stream, { headers: { "content-type": "text/event-stream", "cache-control": "no-cache, no-transform" } });

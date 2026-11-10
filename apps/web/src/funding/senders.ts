@@ -3,18 +3,22 @@
 import type { ResolvedAsset } from "@pay/rail/browser";
 import { createAssociatedTokenAccountIdempotentInstruction, createTransferCheckedInstruction, getAssociatedTokenAddressSync } from "@solana/spl-token";
 import { PublicKey, SystemProgram, Transaction, type Connection } from "@solana/web3.js";
-import { getAccount, sendTransaction, switchChain, waitForTransactionReceipt, writeContract } from "@wagmi/core";
+import { getAccount, getTransactionReceipt, sendTransaction, switchChain, waitForTransactionReceipt, writeContract } from "@wagmi/core";
 import { erc20Abi, type Hex } from "viem";
 import { base } from "viem/chains";
 import { wagmiAdapter } from "../wallet/appkit";
-import { DepositBroadcastError } from "./machines";
+import { DepositBroadcastError, DepositNotSentError } from "./machines";
 
 /** Sends a deposit from the user's own wallet and returns the tx hash/signature. */
 export type DepositSender = (asset: ResolvedAsset, to: string, amount: bigint) => Promise<string>;
 
 export const evmSender: DepositSender = async (asset, to, amount) => {
   const config = wagmiAdapter.wagmiConfig;
-  if (getAccount(config).chainId !== base.id) await switchChain(config, { chainId: base.id });
+  if (getAccount(config).chainId !== base.id) {
+    await switchChain(config, { chainId: base.id }).catch((e: unknown) => {
+      throw new DepositNotSentError(`Couldn't switch your wallet to Base. Nothing was sent. ${(e as Error)?.message ?? ""}`.trim());
+    });
+  }
   const hash = asset.native
     ? await sendTransaction(config, { chainId: base.id, to: to as Hex, value: amount })
     : await writeContract(config, {
@@ -25,11 +29,16 @@ export const evmSender: DepositSender = async (asset, to, amount) => {
         args: [to as Hex, amount],
       });
   // Don't hand back until it's mined: the deposit isn't real before that.
-  const receipt = await waitForTransactionReceipt(config, { hash, chainId: base.id }).catch((e: unknown) => {
+  let replaced: string | undefined; // "Cancel" or "Speed up" in the wallet swaps the transaction under us
+  const receipt = await waitForTransactionReceipt(config, { hash, chainId: base.id, onReplaced: (r) => void (replaced = r.reason) }).catch(async (e: unknown) => {
+    // wagmi throws on a revert too, and a revert is the one failure that provably moved nothing.
+    const seen = await getTransactionReceipt(config, { hash, chainId: base.id }).catch(() => undefined);
+    if (seen?.status === "reverted") throw new DepositNotSentError("Deposit transaction reverted; no funds moved.");
     throw new DepositBroadcastError(hash, e);
   });
-  if (receipt.status !== "success") throw new Error("Deposit transaction reverted; no funds moved.");
-  return hash;
+  if (replaced === "cancelled") throw new DepositNotSentError("You cancelled this transaction in your wallet. Nothing was sent.");
+  if (replaced === "replaced") throw new DepositBroadcastError(receipt.transactionHash, new Error("The wallet replaced this transaction."));
+  return receipt.transactionHash; // a sped-up transaction has a new hash
 };
 
 export interface SolanaWallet {
@@ -50,7 +59,9 @@ export function solanaSender(wallet: SolanaWallet, connection: Connection, owner
       tx.add(createAssociatedTokenAccountIdempotentInstruction(from, toAta, dest, mint));
       tx.add(createTransferCheckedInstruction(fromAta, mint, toAta, from, amount, asset.decimals));
     }
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed").catch((e: unknown) => {
+      throw new DepositNotSentError(`Couldn't reach Solana. Nothing was sent. ${(e as Error)?.message ?? ""}`.trim());
+    });
     tx.recentBlockhash = blockhash;
     tx.feePayer = from;
     const sig = await wallet.signAndSendTransaction(tx);
@@ -58,7 +69,7 @@ export function solanaSender(wallet: SolanaWallet, connection: Connection, owner
     const res = await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed").catch((e: unknown) => {
       throw new DepositBroadcastError(sig, e);
     });
-    if (res.value.err) throw new Error("Deposit transaction failed on Solana; no funds moved.");
+    if (res.value.err) throw new DepositNotSentError("Deposit transaction failed on Solana; no funds moved.");
     return sig;
   };
 }

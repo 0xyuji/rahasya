@@ -1,6 +1,7 @@
 "use client";
 
 import { appFetch } from "../app/app-fetch";
+import { walletUid } from "../wallet/session";
 import { useWallet } from "../wallet/wallet-context";
 import { confirmSweep, inferenceUsdc } from "./flow";
 
@@ -24,12 +25,13 @@ export async function sweepApiWallet(): Promise<number> {
 export function useCreditTarget(): ResolvedTarget {
   const w = useWallet();
   if (w.creditTarget.kind === "api") {
-    const { address } = w.creditTarget;
+    const { address, uid } = w.creditTarget;
     return {
       kind: "api",
-      address,
+      // Only while the wallet that opened this API account is still the connected one.
+      address: w.source && walletUid(w.source) === uid ? address : null,
       label: "your API wallet",
-      topUp: async () => confirmSweep(await sweepApiWallet(), () => inferenceUsdc(address)),
+      topUp: async (_id, usd) => confirmSweep(await sweepApiWallet(), () => inferenceUsdc(address), usd),
     };
   }
   return { kind: "inference", address: w.inference?.address ?? null, label: "your inference wallet" };

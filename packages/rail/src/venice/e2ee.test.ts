@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { bytesToHex } from "viem";
-import { decryptFromModel, encryptForModel, evaluateAttestation, isHexEncrypted } from "./e2ee.ts";
+import { decryptFromModel, e2eeRequest, encryptForModel, evaluateAttestation, isHexEncrypted } from "./e2ee.ts";
 
 // Real attestation captured from Venice on 2026-11-07 for e2ee-gemma-4-26b-a4b-uncensored-p.
 const fixture = JSON.parse(readFileSync(new URL("./fixtures/attestation-gemma-tee.json", import.meta.url), "utf8"));
@@ -55,4 +55,9 @@ test("debug enclave is rejected", () => {
   const r = evaluateAttestation({ ...fixture, intel_quote: debugQuote }, MODEL, NONCE);
   assert.equal(r.checks.find((c) => c.name === "Not a debug enclave")!.status, "fail");
   assert.equal(r.ok, false);
+});
+
+test("e2eeRequest refuses any role it wouldn't encrypt", () => {
+  const session = { clientPubHex: "", report: { modelPubKey: fixture.signing_public_key } } as never;
+  assert.throws(() => e2eeRequest(session, { model: "m", messages: [{ role: "assistant", content: "secret" }] }), /user and system/);
 });

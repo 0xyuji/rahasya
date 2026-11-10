@@ -1,6 +1,6 @@
 import { silentLogger, type Logger } from "../log.ts";
 import { VeniceInsufficientBalance, type VeniceClient } from "../venice/client.ts";
-import { attest, decryptStream, e2eeRequest, newSession, withQuoteVerdict, type AttestationReport, type QuoteVerifier, type StreamUsage } from "../venice/e2ee.ts";
+import { INTEL_CHECK, attest, decryptStream, e2eeRequest, newSession, withQuoteVerdict, type AttestationReport, type QuoteVerifier, type StreamUsage } from "../venice/e2ee.ts";
 import { costUsd, parseVenicePrices, resolveModel, type LivePrices, type ModelDef, type PrivacyMode } from "./models.ts";
 
 export interface ChatMessage {
@@ -97,7 +97,8 @@ export class VeniceChat {
           await this.o.verifyQuote(report.quoteHex).catch((e: unknown) => ({ status: "unavailable" as const, detail: `Couldn't check right now (${(e as Error)?.message ?? "error"}).` })),
         );
       }
-      this.attestations.set(model.id, report);
+      // "Couldn't check" is retried on the next send rather than remembered for ten minutes.
+      if (report.checks.find((c) => c.name === INTEL_CHECK)?.status !== "unavailable") this.attestations.set(model.id, report);
       return report;
     })();
     this.inflight.set(model.id, run);
@@ -132,8 +133,10 @@ export class VeniceChat {
       return { meta, deltas: withCost(plainDeltas(res), model, await this.livePrices()) };
     }
 
-    const report = await this.attestation(model);
-    if (!report.ok) throw new Error(`attestation failed for ${model.label}; not sending`);
+    const report = await abortable(this.attestation(model), req.signal).catch((e: unknown) => {
+      throw beforeRequest(e);
+    });
+    if (!report.ok) throw beforeRequest(new Error(`attestation failed for ${model.label}; not sending`));
     req.signal?.throwIfAborted(); // stopped while attesting: the paid request never goes out
     const session = newSession(report);
     const enc = e2eeRequest(session, body as never);
@@ -187,6 +190,21 @@ export class VeniceChat {
       throw e;
     }
   }
+}
+
+/** Marks a failure that happened before any paid request was sent, so a caller holding a reservation can release it. */
+function beforeRequest(e: unknown): unknown {
+  return Object.assign(e as object, { beforeRequest: true });
+}
+
+/** Stop shouldn't have to wait for a slow attestation (which keeps running for the next send). */
+function abortable<T>(p: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return p;
+  return new Promise<T>((resolve, reject) => {
+    if (signal.aborted) return reject(signal.reason);
+    signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+    p.then(resolve, reject);
+  });
 }
 
 async function* plainDeltas(res: Response): AsyncGenerator<ChatDelta> {

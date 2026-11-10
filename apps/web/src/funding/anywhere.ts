@@ -27,6 +27,7 @@ export { ANYWHERE_FINAL, type AnywhereState };
 const BASE_USDC_ASSET = "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near";
 const SLIPPAGE_BPS = 100;
 const DEADLINE_MS = 3 * 3600_000; // BTC/ZEC confirmations can take a while
+const EXPIRY_GRACE_MS = 60_000;
 
 export const CHAIN_NAMES: Record<string, string> = {
   near: "NEAR", eth: "Ethereum", base: "Base", arb: "Arbitrum", op: "Optimism", pol: "Polygon", bsc: "BNB Chain",
@@ -45,12 +46,21 @@ export function sendableTokens(all: TokenResponse[]): TokenResponse[] {
     .sort((a, b) => chainName(a.blockchain).localeCompare(chainName(b.blockchain)) || a.symbol.localeCompare(b.symbol));
 }
 
+const EVM_CHAINS = ["eth", "base", "arb", "op", "pol", "bsc", "avax", "gnosis", "bera", "monad", "scroll", "xlayer", "abs", "plasma", "hood", "adi", "hypercore"];
+const NON_EVM_CHAINS = ["near", "btc", "zec", "sol", "doge", "ltc", "bch", "dash", "xrp", "ton", "tron", "sui", "aptos", "cardano", "stellar", "starknet", "aleo", "movement", "fogo"];
+/** Only these get the connected EVM address prefilled as a refund address. */
+export const isEvmChain = (bc: string) => EVM_CHAINS.includes(bc);
+/** When an any-token deposit stops being valid: the earlier of what we asked for and what 1Click quoted. */
+export const anywhereDeadline = (a: Pick<AnywhereAction, "quote" | "quoteRequest">) => Math.min(Date.parse(a.quote.quote.deadline ?? a.quoteRequest.deadline), Date.parse(a.quoteRequest.deadline));
+
 /** Light format check so typos are caught before a quote; 1Click does the real validation. */
 export function refundAddressProblem(bc: string, addr: string): string | null {
   const a = addr.trim();
   if (!a) return "Enter an address you control on this chain; refunds go there.";
-  const evm = ["eth", "base", "arb", "op", "pol", "bsc", "avax", "gnosis", "bera", "monad", "scroll", "xlayer", "abs", "plasma", "hood", "adi"];
-  if (evm.includes(bc) && !/^0x[0-9a-fA-F]{40}$/.test(a)) return "That doesn't look like an EVM address (0x… 40 hex characters).";
+  const evmShaped = /^0x[0-9a-fA-F]{40}$/.test(a);
+  if (isEvmChain(bc) && !evmShaped) return "That doesn't look like an EVM address (0x… 40 hex characters).";
+  // On these chains a 0x address can parse but belong to nobody the user controls, so a refund would be lost.
+  if (evmShaped && NON_EVM_CHAINS.includes(bc)) return `That's an EVM address, which won't work for refunds on ${chainName(bc)}. Enter a ${chainName(bc)} address you control.`;
   if (bc === "sol" && !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(a)) return "That doesn't look like a Solana address.";
   if (bc === "btc" && !/^(bc1|[13])[a-zA-HJ-NP-Z0-9]{25,62}$/.test(a)) return "That doesn't look like a Bitcoin address.";
   if (bc === "zec" && !/^t1[a-zA-Z0-9]{33}$/.test(a)) return "Use a transparent Zcash address (t1…) for refunds.";
@@ -76,7 +86,7 @@ export interface AnywhereAction {
   history: Array<{ at: string; state: AnywhereState }>;
 }
 
-export const anywhereActions = new LocalStore<AnywhereAction>("anywhere");
+export const anywhereActions = new LocalStore<AnywhereAction>("anywhere", (a) => !!(a.token && a.quote && a.quoteRequest && Array.isArray(a.history)));
 
 function move(a: AnywhereAction, state: AnywhereState, patch: Partial<AnywhereAction> = {}): AnywhereAction {
   ANYWHERE_MACHINE.assert(a.state, state);
@@ -94,13 +104,17 @@ export function parseMinimum(message: string, token: Pick<TokenResponse, "decima
 /** Code decides: the quote must deliver to OUR inference wallet, refund to THEIR address, and not ask for more than the credit is worth. */
 export function checkAnywhereQuote(req: QuoteRequest, quote: QuoteResponse, token: Pick<TokenResponse, "decimals" | "price" | "symbol">, usd: number): void {
   const echo = quote.quoteRequest;
-  const bad: string[] = (["originAsset", "destinationAsset", "recipient", "refundTo", "swapType", "amount"] as const).filter(
+  const bad: string[] = (["originAsset", "destinationAsset", "recipient", "refundTo", "swapType", "amount", "slippageTolerance", "depositType", "refundType", "recipientType"] as const).filter(
     (k) => String(echo?.[k]).toLowerCase() !== String(req[k]).toLowerCase(),
   );
   const q = quote.quote;
   if (!q.depositAddress) bad.push("depositAddress");
-  if (BigInt(q.amountIn) > BigInt(req.amount)) bad.push("amountIn");
-  if (BigInt(q.minAmountIn ?? "0") > BigInt(q.amountIn)) bad.push("minAmountIn");
+  const units = (v: string | undefined) => (/^\d+$/.test(v ?? "") ? BigInt(v!) : 0n); // missing, empty or negative counts as 0
+  const amountIn = units(q.amountIn);
+  const minAmountIn = units(q.minAmountIn);
+  if (amountIn <= 0n || amountIn > BigInt(req.amount)) bad.push("amountIn");
+  if (minAmountIn <= 0n || minAmountIn > amountIn) bad.push("minAmountIn");
+  if (units(q.minAmountOut) < BigInt(Math.floor(usd * 0.9 * 1e6))) bad.push("minAmountOut"); // must deliver about what we show
   if (bad.length) throw new RailError("QUOTE_MISMATCH", `1Click quote doesn't match the request (${bad.join(", ")}). Not showing it.`);
   checkMaxInput({ decimals: token.decimals, priceUsd: token.price, symbol: token.symbol }, q.amountIn, usd);
 }
@@ -208,7 +222,8 @@ export async function runAnywhere(
       else if (s === "KNOWN_DEPOSIT_TX" || s === "PROCESSING") a = emit(move(a, "RECEIVED", { oneclickStatus: s }));
       else a = emit({ ...a, oneclickStatus: s });
     }
-    if (a.state === "AWAITING_DEPOSIT" && Date.now() > Date.parse(a.quote.quote.deadline ?? a.quoteRequest.deadline)) {
+    // Only a successful "still nothing here" read can expire it: a failed read says nothing about the deposit.
+    if (a.state === "AWAITING_DEPOSIT" && st?.status === "PENDING_DEPOSIT" && Date.now() > anywhereDeadline(a) + EXPIRY_GRACE_MS) {
       return emit(move(a, "EXPIRED"));
     }
     if (ANYWHERE_FINAL.has(a.state) || a.state === "SWAPPED") continue;
@@ -227,6 +242,11 @@ export function cancelAnywhere(id: string): AnywhereAction | undefined {
   const a = anywhereActions.get(id);
   if (!a || a.state !== "AWAITING_DEPOSIT") return a;
   return move(a, "CANCELLED");
+}
+
+/** Stop retrying a top-up that isn't going to work. The USDC stays on the wallet, usable from the USDC on Base tab. */
+export function dismissAnywhere(id: string): AnywhereAction {
+  return move(anywhereActions.get(id)!, "IDLE", { error: "Stopped retrying. Your USDC is waiting on the wallet; use the USDC on Base tab to turn it into credit." });
 }
 
 /** Turn USDC already sitting on the inference wallet into credit (≥ $5, rounded down to cents). */

@@ -12,7 +12,10 @@ import { home, loadInferenceKey, loadOrCreateToken, rotateToken, saveInferenceKe
 import { createProxy } from "./server.ts";
 
 const CREDIT_URL = process.env.RAHASYA_SITE_URL ?? "the website (account menu → Add credit)";
-const [cmd = "start", ...args] = process.argv.slice(2);
+// `node rahasya.mjs --port 9000` means "start on that port"; only --help shows usage.
+const argv = process.argv.slice(2);
+const cmd = argv[0] && !argv[0].startsWith("-") ? argv[0] : argv.includes("--help") || argv.includes("-h") ? "help" : "start";
+const args = cmd === argv[0] ? argv.slice(1) : argv;
 
 function venice(): VeniceClient {
   const key = loadInferenceKey();

@@ -169,6 +169,13 @@ export async function authorize(token: string, modelKey: string | null): Promise
   return rec;
 }
 
+/** Called after the body is parsed; the key itself is checked before reading the body. */
+export function assertModelAllowed(rec: KeyRecord, modelKey: string): void {
+  if (rec.models.length && !rec.models.includes(modelKey)) {
+    throw new KeyError(403, "model_not_allowed", `This key isn't allowed to use ${modelKey}. Allowed: ${rec.models.join(", ")}`);
+  }
+}
+
 /**
  * Add to a key's spend. Positive = charge; negative = correct a reservation
  * that turned out too high. Pass the `day` returned by the reservation so the

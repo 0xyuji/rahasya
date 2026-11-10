@@ -139,14 +139,19 @@ export class VeniceClient {
     const ctl = new AbortController();
     if (abort?.aborted) ctl.abort(abort.reason);
     abort?.addEventListener("abort", () => ctl.abort(abort.reason), { once: true });
-    let silence: ReturnType<typeof setTimeout> | undefined;
+    const later = (delay: number, why: string) => {
+      const t = setTimeout(() => ctl.abort(new DOMException(why, "TimeoutError")), delay);
+      (t as { unref?: () => void }).unref?.(); // never keeps a Node process alive
+      return t;
+    };
+    let silence = later(ms, "Venice stopped responding.");
     const arm = () => {
       clearTimeout(silence);
-      silence = setTimeout(() => ctl.abort(new DOMException("Venice stopped responding.", "TimeoutError")), ms);
-      (silence as { unref?: () => void }).unref?.(); // never keeps a Node process alive
+      silence = later(ms, "Venice stopped responding.");
     };
-    ctl.signal.addEventListener("abort", () => clearTimeout(silence), { once: true });
-    arm();
+    const cap = later(30 * 60_000, "The reply ran past the 30-minute limit.");
+    const disarm = () => (clearTimeout(silence), clearTimeout(cap));
+    ctl.signal.addEventListener("abort", disarm, { once: true });
     let res: Response;
     try {
       res = await this.f(url, {
@@ -161,21 +166,22 @@ export class VeniceClient {
         signal: ctl.signal,
       });
     } catch (e) {
-      clearTimeout(silence);
+      disarm();
       throw e;
     }
-    if (!res.ok || !res.body) clearTimeout(silence);
+    if (!res.ok || !res.body) disarm();
     if (res.status === 402) throw new VeniceInsufficientBalance(await res.text());
     if (!res.ok) throw new HttpError(res.status, await res.text(), url);
     if (!res.body) return res;
+    const dec = new TextDecoder();
     const watched = res.body.pipeThrough(
       new TransformStream<Uint8Array, Uint8Array>({
         transform(chunk, out) {
-          arm();
+          if (dec.decode(chunk, { stream: true }).includes("data:")) arm(); // an SSE keep-alive comment isn't progress
           out.enqueue(chunk);
         },
         flush() {
-          clearTimeout(silence);
+          disarm();
         },
       }),
     );

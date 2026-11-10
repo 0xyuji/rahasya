@@ -22,7 +22,7 @@ import { createPublicClient, erc20Abi, http, type LocalAccount } from "viem";
 import { base } from "viem/chains";
 import type { Source } from "../wallet/wallet-context";
 import { LocalStore } from "./local-store.ts";
-import { CREDIT_FINAL, CREDIT_MACHINE, DepositBroadcastError, type CreditState } from "./machines.ts";
+import { CREDIT_FINAL, CREDIT_MACHINE, DepositBroadcastError, DepositNotSentError, type CreditState } from "./machines.ts";
 import type { DepositSender } from "./senders";
 
 export { CREDIT_FINAL, type CreditState };
@@ -56,6 +56,11 @@ export interface CreditAction {
   quoteRequest: QuoteRequest;
   quote: QuoteResponse;
   depositTx?: string;
+  /** The wallet saw this deposit mined: never offer to send it again. */
+  depositConfirmed?: boolean;
+  /** The user chose "Send again". Earlier hashes are kept, and a resend must first check 1Click. */
+  resent?: boolean;
+  priorTxs?: string[];
   oneclickStatus?: ExecutionStatus;
   deliveredTx?: string;
   refunded?: string;
@@ -64,7 +69,7 @@ export interface CreditAction {
 }
 
 export const oneclick = new OneClickClient({ baseUrl: "/api/oneclick" });
-export const actions = new LocalStore<CreditAction>("credit");
+export const actions = new LocalStore<CreditAction>("credit", (a) => !!(a.source && a.quote && a.quoteRequest && Array.isArray(a.history)));
 export const topups = new LocalStore<TopUpAction>("topup");
 const baseClient = createPublicClient({ chain: base, transport: http(process.env.NEXT_PUBLIC_BASE_RPC_URL) });
 
@@ -124,6 +129,11 @@ export async function quoteCredit(p: {
 
 function move(a: CreditAction, state: CreditState, patch: Partial<CreditAction> = {}): CreditAction {
   CREDIT_MACHINE.assert(a.state, state);
+  // Another tab may have moved this action on; never overwrite newer state with a stale copy.
+  const saved = actions.get(a.id);
+  if (saved && (saved.state !== a.state || saved.history.length !== a.history.length)) {
+    throw new RailError("STALE_ACTION", "This deposit was updated in another tab. Reload to see the latest state.");
+  }
   // An error describes the state it happened in, so it doesn't carry over to the next one.
   return actions.put({ ...a, error: undefined, ...patch, state, history: [...a.history, { at: new Date().toISOString(), state }] });
 }
@@ -149,6 +159,21 @@ const runs = new Map<string, { done: Promise<CreditAction>; listeners: Set<(a: C
  * One run per action: a second call joins the first, so reopening the dialog
  * during a wallet prompt can't mistake that send for an interrupted one.
  */
+/**
+ * A deposit is on the network: always record it. If another tab moved the action meanwhile, the
+ * hash goes onto the saved record rather than being lost to the stale-copy check.
+ */
+function recordSent(a: CreditAction, depositTx: string, depositConfirmed: boolean | undefined): CreditAction {
+  const saved = actions.get(a.id);
+  if (!saved || (saved.state === a.state && saved.history.length === a.history.length)) return move(a, "DEPOSIT_SENT", { depositTx, depositConfirmed });
+  const priorTxs = [...(saved.priorTxs ?? []), ...(saved.depositTx && saved.depositTx !== depositTx ? [saved.depositTx] : [])];
+  if (CREDIT_MACHINE.can(saved.state, "SWAPPING")) return move(saved, "SWAPPING", { depositTx, depositConfirmed, priorTxs });
+  return actions.put({ ...saved, depositTx, depositConfirmed, priorTxs });
+}
+
+/** 1Click has seen something at this address. Anything but a real status string says nothing. */
+const arrived = (st: { status?: unknown } | undefined): boolean => typeof st?.status === "string" && st.status !== "PENDING_DEPOSIT";
+
 export function runCredit(id: string, deps: RunCreditDeps): Promise<CreditAction> {
   const live = runs.get(id);
   if (live) {
@@ -170,8 +195,14 @@ async function driveCredit(id: string, deps: RunCreditDeps, onUpdate: (a: Credit
   while (!CREDIT_FINAL.has(a.state)) {
     switch (a.state) {
       case "QUOTED": {
-        const left = Date.parse(a.quote.quote.deadline ?? a.quoteRequest.deadline) - Date.now();
+        const left = Math.min(Date.parse(a.quote.quote.deadline ?? a.quoteRequest.deadline), Date.parse(a.quoteRequest.deadline)) - Date.now();
+        if (!Number.isFinite(left)) {
+          a = emit(move(a, "FAILED", { error: "Refusing to send: this quote has no valid deadline." }));
+          break;
+        }
         if (left < 5 * 60_000) {
+          // After a resend the first deposit may still land, so this can't be "expired, nothing moved".
+          if (a.resent) return emit(move(a, "SEND_UNCONFIRMED", { error: "This quote is too close to its deadline to send again. Keep waiting, or stop tracking it." }));
           a = emit(move(a, "EXPIRED"));
           break;
         }
@@ -185,28 +216,38 @@ async function driveCredit(id: string, deps: RunCreditDeps, onUpdate: (a: Credit
           a = emit(move(a, "FAILED", { error: `Refusing to send: ${friendly(e)}` }));
           break;
         }
+        // Never pay into an address 1Click already has a deposit for.
+        const before = await oneclick.status(depositAddress).catch(() => undefined);
+        if (arrived(before)) {
+          a = emit(move(a, "SWAPPING", { oneclickStatus: before!.status }));
+          break;
+        }
+        if (!before?.status && a.resent) return emit(move(a, "SEND_UNCONFIRMED", { error: "We couldn't check whether your first deposit arrived, so nothing was sent. Try again in a moment." }));
+
         a = emit(move(a, "SENDING"));
+        let tx: string;
         try {
-          const tx = await deps.send(a.origin, depositAddress, BigInt(a.quote.quote.amountIn));
-          a = emit(move(a, "DEPOSIT_SENT", { depositTx: tx }));
-          oneclick.submitDeposit({ txHash: tx, depositAddress }).catch(() => {});
+          tx = await deps.send(a.origin, depositAddress, BigInt(a.quote.quote.amountIn));
         } catch (e) {
           if (e instanceof DepositBroadcastError) {
             // It's on the network; only confirming it failed. Sending again could pay twice, so track it.
-            a = emit(move(a, "DEPOSIT_SENT", { depositTx: e.txHash }));
             oneclick.submitDeposit({ txHash: e.txHash, depositAddress }).catch(() => {});
+            a = emit(recordSent(a, e.txHash, undefined));
             break;
           }
-          // The wallet refused, or the deposit provably failed: nothing moved, back to the quote.
-          a = emit(move(a, "QUOTED", { error: friendly(e) }));
-          return a;
+          // Back to the quote only if nothing can have left the wallet. Anything else may have been
+          // broadcast (a lost WalletConnect reply, "already known"), so the user has to decide.
+          if (sentNothing(e) && !a.resent) return emit(move(a, "QUOTED", { error: friendly(e) }));
+          return emit(move(a, "SEND_UNCONFIRMED", { error: friendly(e) }));
         }
+        oneclick.submitDeposit({ txHash: tx, depositAddress }).catch(() => {});
+        a = emit(recordSent(a, tx, true));
         break;
       }
       case "SENDING": {
         // Reloaded mid-send: we never got a hash back. Ask 1Click whether funds arrived.
         const st = await oneclick.status(depositAddress).catch(() => undefined);
-        if (st && st.status !== "PENDING_DEPOSIT") a = emit(move(a, "SWAPPING", { oneclickStatus: st.status }));
+        if (arrived(st)) a = emit(move(a, "SWAPPING", { oneclickStatus: st!.status }));
         else a = emit(move(a, "SEND_UNCONFIRMED"));
         if (a.state === "SEND_UNCONFIRMED") return a;
         break;
@@ -216,8 +257,8 @@ async function driveCredit(id: string, deps: RunCreditDeps, onUpdate: (a: Credit
         const until = Date.now() + (deps.unconfirmedWatchMs ?? 0);
         for (;;) {
           const st = await oneclick.status(depositAddress).catch(() => undefined);
-          if (st && st.status !== "PENDING_DEPOSIT") {
-            a = emit(move(a, "SWAPPING", { oneclickStatus: st.status }));
+          if (arrived(st)) {
+            a = emit(move(a, "SWAPPING", { oneclickStatus: st!.status }));
             break;
           }
           if (Date.now() >= until) return a;
@@ -229,19 +270,27 @@ async function driveCredit(id: string, deps: RunCreditDeps, onUpdate: (a: Credit
       case "SWAPPING": {
         let delay = 3_000;
         const watchingSince = Date.now();
+        let progressed = !!a.oneclickStatus && a.oneclickStatus !== "PENDING_DEPOSIT";
+        if (a.depositTx) oneclick.submitDeposit({ txHash: a.depositTx, depositAddress }).catch(() => {}); // also on resume
         for (;;) {
+          const stored = actions.get(a.id);
+          if (stored && CREDIT_FINAL.has(stored.state)) return emit(stored); // finished or dismissed elsewhere
           const st = await oneclick.status(depositAddress).catch(() => undefined);
-          if (st) {
+          if (st?.status) {
+            if (st.status !== "PENDING_DEPOSIT") progressed = true;
             if (st.status !== a.oneclickStatus) a = emit(move(a, "SWAPPING", { oneclickStatus: st.status }));
             if (TERMINAL_STATUSES.has(st.status)) {
-              if (st.status === "SUCCESS") a = emit(move(a, "SWAPPED", { deliveredTx: st.swapDetails.destinationChainTxHashes[0]?.hash }));
-              else if (st.status === "REFUNDED") a = emit(move(a, "REFUNDED", { refunded: st.swapDetails.refundedAmountFormatted }));
+              if (st.status === "SUCCESS") a = emit(move(a, "SWAPPED", { deliveredTx: st.swapDetails?.destinationChainTxHashes?.[0]?.hash }));
+              else if (st.status === "REFUNDED") a = emit(move(a, "REFUNDED", { refunded: st.swapDetails?.refundedAmountFormatted }));
               else a = emit(move(a, "FAILED", { error: "1Click reported the swap as failed; funds are refunded to your wallet." }));
               break;
             }
             // Don't watch forever for a deposit that may never have landed; the user decides what's next.
-            if (st.status === "PENDING_DEPOSIT" && Date.now() - watchingSince >= (deps.pendingDepositLimitMs ?? 5 * 60_000)) {
-              return emit(move(a, "SEND_UNCONFIRMED"));
+            const limit = deps.pendingDepositLimitMs ?? 5 * 60_000;
+            if (!progressed && Date.now() - watchingSince >= (a.depositConfirmed ? 3 * limit : limit)) {
+              if (!a.depositConfirmed) return emit(move(a, "SEND_UNCONFIRMED"));
+              // Mined, so never "Send again". Stop polling and let the user keep waiting or stop tracking.
+              return emit({ ...a, error: "Your deposit is confirmed on-chain, but 1Click hasn't picked it up yet. Don't send it again." });
             }
           }
           await sleep(delay);
@@ -287,7 +336,17 @@ export function topUpOnce(id: string, run: () => Promise<unknown>): Promise<void
 /** User chose "send again" after an unconfirmed send. */
 export function resend(id: string): CreditAction {
   const a = actions.get(id)!;
-  return move(a, "QUOTED", { depositTx: undefined });
+  return move(a, "QUOTED", { resent: true, priorTxs: [...(a.priorTxs ?? []), ...(a.depositTx ? [a.depositTx] : [])] });
+}
+
+/** A reload between "Send again" and the wallet prompt leaves QUOTED, which is never resumed: go back to watching. */
+export function recoverResend(a: CreditAction): CreditAction {
+  return a.state === "QUOTED" && a.resent && !runs.has(a.id) ? move(a, "SEND_UNCONFIRMED") : a;
+}
+
+/** Give up on an action that isn't going anywhere. Never sends; any USDC that arrives shows on the USDC on Base tab. */
+export function dismiss(id: string): CreditAction {
+  return move(actions.get(id)!, "DISMISSED");
 }
 
 /**
@@ -295,14 +354,32 @@ export function resend(id: string): CreditAction {
  * retry, or automatically on a 402), which is fine, or it's still sitting there
  * uncredited, which must not be reported as success.
  */
-export async function confirmSweep(sweptUsd: number, idleUsdc: () => Promise<bigint>): Promise<void> {
-  if (sweptUsd > 0) return;
+export async function confirmSweep(sweptUsd: number, idleUsdc: () => Promise<bigint>, expectedUsd = Infinity): Promise<void> {
+  if (sweptUsd >= expectedUsd - 0.01) return;
   if ((await idleUsdc()) >= BigInt(MIN_CREDIT_USD * 1e6)) throw new Error("Your USDC arrived but hasn't been credited yet. Try again in a minute.");
+}
+
+/** The error and everything it wraps (viem nests the real cause). */
+function chain(e: unknown): Array<{ code?: unknown; name?: unknown; message?: unknown }> {
+  const out: Array<{ code?: unknown; name?: unknown; message?: unknown }> = [];
+  for (let c = e as { cause?: unknown } | undefined, i = 0; c && i < 8; c = c.cause as typeof c, i++) out.push(c as never);
+  return out;
+}
+
+/** A real "no" from the user (EIP-1193 4001, or the standard wording). A vague "cancelled" or "expired" doesn't count. */
+function walletRejected(e: unknown): boolean {
+  return chain(e).some((c) => c.code === 4001 || c.code === 5000 || c.name === "UserRejectedRequestError" || /user rejected|user denied|rejected the request/i.test(String(c.message ?? "")));
+}
+
+/** Errors that can only happen before a wallet broadcasts. */
+function sentNothing(e: unknown): boolean {
+  if (e instanceof DepositNotSentError || walletRejected(e)) return true;
+  return chain(e).some((c) => ["InsufficientFundsError", "EstimateGasExecutionError", "ChainMismatchError", "SwitchChainError", "ConnectorChainMismatchError", "ConnectorNotConnectedError", "ConnectorAccountNotFoundError", "ConnectorNotFoundError", "ConnectorUnavailableReconnectingError"].includes(String(c.name)) || /insufficient funds|insufficient balance/i.test(String(c.message ?? "")));
 }
 
 export function friendly(e: unknown): string {
   const m = (e as { shortMessage?: string; message?: string })?.shortMessage ?? (e as Error)?.message ?? String(e);
-  if (/user rejected|denied|rejected the request|cancel/i.test(m)) return "You declined in your wallet. Nothing was sent.";
+  if (walletRejected(e)) return "You declined in your wallet. Nothing was sent.";
   if (/insufficient funds|insufficient balance/i.test(m)) return "Not enough balance (including network fees) in your wallet.";
   return m.length > 220 ? `${m.slice(0, 220)}…` : m;
 }

@@ -48,7 +48,7 @@ curl $BASE/chat/completions \
 - **Tools / function calling**: passed through unchanged for every model except the TEE models (see below).
 - **Other parameters** (`temperature`, `max_tokens`, `top_p`, `response_format`, `reasoning_effort`, …) are passed through to Venice. You may also send `venice_parameters`, but only `disable_thinking` and `strip_thinking_response` are used; other keys are dropped, because per-request features such as web search can't be metered per token. We always set `include_venice_system_prompt: false`, so the model gets only your prompt.
 - **Output limit**: `max_tokens` or `max_completion_tokens`, from 1 to 32768. With neither, the model's maximum applies, and your key is charged a reservation for it until real usage arrives. `n` must be 1.
-- **Timeouts**: non-streaming requests fail after 2 minutes, so use `stream: true` for long outputs. A stream fails only if Venice sends nothing for 3 minutes.
+- **Timeouts**: non-streaming requests fail after 2 minutes, so use `stream: true` for long outputs. A stream ends after 3 minutes with no data, or 30 minutes in total. If a request times out or fails late, the key keeps its reservation, because Venice may already have generated (and billed) the reply. A quick 500, 502 or 503 is refunded.
 
 ### Models
 
@@ -114,6 +114,7 @@ Errors use the OpenAI shape: `{ "error": { "message": "...", "type": "<code>", "
 | 401 | `expired_key` | Key passed its expiry |
 | 402 | `insufficient_credit` | API wallet is out of credit. Add credit on the site |
 | 403 | `model_not_allowed` | The key's allowlist excludes this model |
+| 503 | `busy` | Too many large requests at once. Retry shortly |
 | 413 | `too_large` | Request body over 8 MB (images are sent base64-encoded, so send a few at a time) |
 | 429 | `daily_limit` / `total_limit` | The key hit a spend limit |
 | 429 | `rate_limited` | More than 60 requests in a minute on this key |

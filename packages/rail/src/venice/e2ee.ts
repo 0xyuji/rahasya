@@ -171,6 +171,7 @@ export async function attest(opts: {
   const nonce = hex(randomBytes(32));
   const res = await (opts.fetch ?? fetch)(`${url}?model=${encodeURIComponent(opts.model)}&nonce=${nonce}`, {
     headers: await opts.authHeaders(url),
+    signal: AbortSignal.timeout(30_000), // one that never answers must not hang every later send
   });
   if (!res.ok) throw new Error(`attestation HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`);
   return evaluateAttestation((await res.json()) as Attestation, opts.model, nonce);
@@ -280,6 +281,10 @@ export function e2eeRequest(
   s: E2EESession,
   body: { model: string; messages: Array<{ role: string; content: string }> } & Record<string, unknown>,
 ): { headers: Record<string, string>; body: Record<string, unknown> } {
+  // Any other role would travel in plaintext. Callers fold history first; this keeps it that way.
+  for (const m of body.messages) {
+    if ((m.role !== "user" && m.role !== "system") || typeof m.content !== "string") throw new Error("E2EE requests can only carry user and system text.");
+  }
   return {
     headers: {
       "X-Venice-TEE-Client-Pub-Key": s.clientPubHex,
@@ -289,9 +294,7 @@ export function e2eeRequest(
     body: {
       ...body,
       stream: true,
-      messages: body.messages.map((m) =>
-        m.role === "user" || m.role === "system" ? { ...m, content: encryptForModel(m.content, s.report.modelPubKey) } : m,
-      ),
+      messages: body.messages.map((m) => ({ ...m, content: encryptForModel(m.content, s.report.modelPubKey) })),
     },
   };
 }

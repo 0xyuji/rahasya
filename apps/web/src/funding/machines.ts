@@ -16,20 +16,22 @@ export type CreditState =
   | "DONE"
   | "REFUNDED"
   | "FAILED"
-  | "EXPIRED";
+  | "EXPIRED"
+  | "DISMISSED";
 
 export const CREDIT_MACHINE = defineMachine<CreditState>("credit", {
-  QUOTED: ["SENDING", "EXPIRED", "FAILED"],
+  QUOTED: ["SENDING", "SWAPPING", "SEND_UNCONFIRMED", "EXPIRED", "FAILED"],
   SENDING: ["DEPOSIT_SENT", "QUOTED", "SWAPPING", "SEND_UNCONFIRMED"],
-  SEND_UNCONFIRMED: ["SWAPPING", "QUOTED"],
-  DEPOSIT_SENT: ["SWAPPING", "SWAPPED", "REFUNDED", "FAILED", "SEND_UNCONFIRMED"],
-  SWAPPING: ["SWAPPING", "SWAPPED", "REFUNDED", "FAILED", "SEND_UNCONFIRMED"],
+  SEND_UNCONFIRMED: ["SWAPPING", "QUOTED", "DISMISSED"],
+  DEPOSIT_SENT: ["SWAPPING", "SWAPPED", "REFUNDED", "FAILED", "SEND_UNCONFIRMED", "DISMISSED"],
+  SWAPPING: ["SWAPPING", "SWAPPED", "REFUNDED", "FAILED", "SEND_UNCONFIRMED", "DISMISSED"],
   SWAPPED: ["TOPPING_UP"],
-  TOPPING_UP: ["DONE"],
+  TOPPING_UP: ["DONE", "DISMISSED"],
   DONE: [],
   REFUNDED: [],
   FAILED: [],
   EXPIRED: [],
+  DISMISSED: [],
 });
 
 export const CREDIT_FINAL: ReadonlySet<CreditState> = CREDIT_MACHINE.final;
@@ -72,6 +74,9 @@ export class DepositBroadcastError extends Error {
   }
 }
 
+/** Provably nothing left the wallet: the prompt never opened, or the transaction reverted. Safe to offer the send again. */
+export class DepositNotSentError extends Error {}
+
 export type StepStatus = "todo" | "now" | "done" | "fail";
 /** Send or receive the deposit, swap, add credit. */
 export type StepRow = readonly [StepStatus, StepStatus, StepStatus];
@@ -88,6 +93,7 @@ const CREDIT_STEPS: Record<CreditState, StepRow> = {
   REFUNDED: ["done", "fail", "todo"],
   FAILED: ["done", "fail", "todo"],
   EXPIRED: ["todo", "todo", "todo"],
+  DISMISSED: ["todo", "todo", "todo"],
 };
 
 export function creditSteps(a: { state: CreditState; depositTx?: string; oneclickStatus?: string }): StepRow {

@@ -47,7 +47,11 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
 export function ApiKeysDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const w = useWallet();
   const ref = useRef<HTMLDialogElement>(null);
-  const [account, setAccount] = useState<Account | null>(null);
+  // Never show or act on an account that isn't the connected wallet's, even for one render.
+  const expectedUid = w.source ? walletUid(w.source) : null;
+  const [loaded, setAccount] = useState<Account | null>(null);
+  const account = loaded?.uid === expectedUid ? loaded : null;
+  const loadSeq = useRef(0);
   const [phase, setPhase] = useState<"loading" | "needs-login" | "ready" | "failed">("loading");
   const [keys, setKeys] = useState<KeyView[]>([]);
   const [busy, setBusy] = useState(false);
@@ -66,30 +70,43 @@ export function ApiKeysDialog({ open, onClose }: { open: boolean; onClose: () =>
     if (!open) (setFresh(null), setDraft(null), setEditing(null), setErr(null));
   }, [open]);
 
-  const expectedUid = w.source ? walletUid(w.source) : null;
+  // Nothing from one wallet's session (a just-created key, a half-filled form) carries over to another.
+  useEffect(() => {
+    setFresh(null);
+    setDraft(null);
+    setEditing(null);
+    setConfirmDel(null);
+    setConfigFor(null);
+  }, [expectedUid]);
+
+  const { noteApiSession } = w;
   const load = useCallback(async () => {
+    const seq = ++loadSeq.current;
     setErr(null);
     try {
       const [a, ks] = await Promise.all([api<Account>("/api/account", { method: "POST" }), api<{ keys: KeyView[] }>("/api/keys")]);
+      if (seq !== loadSeq.current) return; // a newer load (another wallet) has taken over
       // A session left by another wallet on this browser: don't show or spend from its account.
       if (expectedUid && a.uid !== expectedUid) {
         setAccount(null);
         setKeys([]);
         return setPhase("needs-login");
       }
+      noteApiSession(a.uid);
       setAccount(a);
       setKeys(ks.keys);
       setPhase("ready");
     } catch (e) {
+      if (seq !== loadSeq.current) return;
       if ((e as { status?: number }).status === 401) return setPhase("needs-login");
       setErr((e as Error).message);
       setPhase((p) => (p === "ready" ? "ready" : "failed")); // keep showing what we already have
     }
-  }, [expectedUid]);
+  }, [expectedUid, noteApiSession]);
 
   useEffect(() => {
-    if (open) void load();
-  }, [open, load, w.creditOpen]);
+    if (open && expectedUid) void load();
+  }, [open, load, w.creditOpen, expectedUid]);
 
   async function signIn() {
     if (!w.source) return;
@@ -153,6 +170,7 @@ export function ApiKeysDialog({ open, onClose }: { open: boolean; onClose: () =>
     await api(`/api/auth/logout${everywhere ? "?everywhere=1" : ""}`, { method: "POST" }).catch(() => {});
     setAccount(null);
     setKeys([]);
+    noteApiSession(null);
     setPhase("needs-login");
   }
 
@@ -188,7 +206,7 @@ export function ApiKeysDialog({ open, onClose }: { open: boolean; onClose: () =>
             </button>
           </div>
         </>
-      ) : phase === "needs-login" ? (
+      ) : phase === "needs-login" || (loaded && !account) ? (
         <>
           <p className={s.p}>Sign a message with your wallet to manage keys. It&apos;s not a transaction and costs nothing.</p>
           <button className={s.primary} onClick={signIn} disabled={busy}>
@@ -210,7 +228,7 @@ export function ApiKeysDialog({ open, onClose }: { open: boolean; onClose: () =>
               {!!account.idleUsdc && account.idleUsdc > 0 && <div className={s.fine}>+ {account.idleUsdc.toFixed(2)} USDC waiting to be credited</div>}
             </div>
             <div className={k.walletActions}>
-              <button className={s.secondary} onClick={() => w.openCredit({ kind: "api", address: account.apiWallet })}>
+              <button className={s.secondary} onClick={() => w.openCredit({ kind: "api", address: account.apiWallet, uid: account.uid })}>
                 Add credit
               </button>
               <button className={k.link} onClick={() => signOut()}>

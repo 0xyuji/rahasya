@@ -8,8 +8,10 @@ import {
   MIN_CREDIT_USD,
   PAY_OPTIONS,
   actions,
+  dismiss,
   friendly,
   quoteCredit,
+  recoverResend,
   resend,
   runCredit,
   type CreditAction,
@@ -70,10 +72,10 @@ export function CreditDialog({ open, onClose, onCredited }: { open: boolean; onC
     if (!open || !w.source || !t.address) return;
     const pending = actions
       .all()
-      .filter((a) => a.source.address === w.source!.address && a.inferenceAddress === t.address && !CREDIT_FINAL.has(a.state) && a.state !== "QUOTED")
+      .filter((a) => a.source.address === w.source!.address && a.inferenceAddress === t.address && !CREDIT_FINAL.has(a.state) && (a.state !== "QUOTED" || a.resent))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
     if (pending) {
-      setAction(pending);
+      setAction(recoverResend(pending));
       void drive(pending.id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -94,7 +96,8 @@ export function CreditDialog({ open, onClose, onCredited }: { open: boolean; onC
 
   async function drive(id: string, unconfirmedWatchMs?: number) {
     if (!w.sender || (!w.inference && !t.topUp)) return;
-    if (actions.get(id)?.inferenceAddress !== t.address) return; // a quote made for the other wallet
+    const saved = actions.get(id);
+    if (saved?.inferenceAddress !== t.address || saved.source.address !== w.source?.address) return; // made for another wallet
     const show = (a: CreditAction) => {
       if (a.inferenceAddress === targetAddress.current) setAction(a);
     };
@@ -262,6 +265,16 @@ export function CreditDialog({ open, onClose, onCredited }: { open: boolean; onC
           {action.state === "DONE" && <p className={s.ok}>Added ${action.usd.toFixed(2)} of credit.</p>}
           {action.state === "REFUNDED" && <p className={s.warn}>The swap couldn't complete, so {action.refunded ?? "your deposit"} was refunded to your wallet.</p>}
           {action.state === "FAILED" && <p className={s.warn}>{action.error}</p>}
+          {(action.state === "DEPOSIT_SENT" || action.state === "SWAPPING") && action.error && !busy && (
+            <div className={s.row}>
+              <button className={s.secondary} onClick={() => (dismiss(action.id), setAction(null))}>
+                Stop tracking
+              </button>
+              <button className={s.primary} onClick={() => drive(action.id)}>
+                Keep waiting
+              </button>
+            </div>
+          )}
           {action.state === "SEND_UNCONFIRMED" && (
             <>
               <p className={s.warn}>
@@ -278,12 +291,21 @@ export function CreditDialog({ open, onClose, onCredited }: { open: boolean; onC
                   Send again
                 </button>
               </div>
+              <button className={s.secondary} onClick={() => (dismiss(action.id), setAction(null))} disabled={busy}>
+                Stop tracking this deposit
+              </button>
+              <p className={s.fine}>Stopping sends nothing. If a deposit does arrive, the USDC shows up on the USDC on Base tab.</p>
             </>
           )}
           {action.state === "TOPPING_UP" && action.error && !busy && (
-            <button className={s.primary} onClick={() => drive(action.id)}>
-              Retry adding credit
-            </button>
+            <div className={s.row}>
+              <button className={s.secondary} onClick={() => (dismiss(action.id), setAction(null))}>
+                Stop, keep it as USDC
+              </button>
+              <button className={s.primary} onClick={() => drive(action.id)}>
+                Retry adding credit
+              </button>
+            </div>
           )}
           {CREDIT_FINAL.has(action.state) && (
             <button className={s.primary} onClick={close}>

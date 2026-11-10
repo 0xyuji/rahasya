@@ -71,6 +71,8 @@ export function EditorDialog({ open, onClose }: { open: boolean; onClose: () => 
     if (!open) setReveal(false);
   }, [open]);
 
+  useEffect(() => setReveal(false), [w.inferenceKey]); // a revealed key never carries over to another wallet
+
   const copy = (t: string) => void navigator.clipboard.writeText(t);
   const id = brand.repo;
   // Same value on the server and the first client render (no hydration mismatch), then the real origin.
@@ -97,7 +99,7 @@ export function EditorDialog({ open, onClose }: { open: boolean; onClose: () => 
         Copy commands
       </button>
       <p className={s.fine}>
-        The first run asks for the key from step 2 (input hidden). One readable file, the same code as in our repo. Later runs start straight away;{" "}
+        The first run asks for the key from step 2 (input hidden). One readable file, built from our repo. Later runs start straight away;{" "}
         <code>node rahasya.mjs --help</code> shows the other commands.
         {sha && (
           <>

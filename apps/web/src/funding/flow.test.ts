@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { beforeEach, test } from "node:test";
-import { ANYWHERE_MACHINE, CREDIT_MACHINE, DepositBroadcastError, anywhereSteps, creditSteps, type CreditState } from "./machines.ts";
+import { ANYWHERE_MACHINE, CREDIT_MACHINE, DepositBroadcastError, DepositNotSentError, anywhereSteps, creditSteps, type CreditState } from "./machines.ts";
 import { attemptGuard, walletSession, walletUid } from "../wallet/session.ts";
 import type { Machine } from "@pay/rail/browser";
 
@@ -18,17 +18,20 @@ globalThis.localStorage = {
 } as Storage;
 
 let statuses: string[] = [];
+let onStatus: (() => Response | undefined) | undefined;
 const reply = (body: unknown) => new Response(JSON.stringify(body), { status: 200 });
 globalThis.fetch = (async (url: string, init?: RequestInit) => {
   const u = String(url);
+  const scripted = u.includes("/v0/status") ? onStatus?.() : undefined;
+  if (scripted) return scripted;
   if (u.includes("/v0/status")) return reply({ status: statuses.shift() ?? "PENDING_DEPOSIT", swapDetails: { destinationChainTxHashes: [{ hash: "0xdelivered" }] } });
   if (u.includes("/v0/deposit/submit")) return reply({});
   const rpc = JSON.parse(String(init?.body)) as { id: number };
   return reply({ jsonrpc: "2.0", id: rpc.id, result: `0x${(10n ** 12n).toString(16).padStart(64, "0")}` }); // USDC balance
 }) as typeof fetch;
 
-const { actions, confirmSweep, resend, runCredit, topUpOnce } = await import("./flow.ts");
-const { checkAnywhereQuote } = await import("./anywhere.ts");
+const { actions, confirmSweep, dismiss, recoverResend, resend, runCredit, topUpOnce } = await import("./flow.ts");
+const { anywhereActions, checkAnywhereQuote, isEvmChain, refundAddressProblem, runAnywhere } = await import("./anywhere.ts");
 type CreditAction = import("./flow.ts").CreditAction;
 
 const ADDRESS = "0x418abf35BE5F2078667b4996a67a37c5F7b8740D";
@@ -62,6 +65,7 @@ const visited = (id: string) => actions.get(id)!.history.map((h) => h.state);
 
 beforeEach(() => {
   statuses = [];
+  onStatus = undefined;
 });
 
 function assertSound<S extends string>(m: Machine<S>, start: S) {
@@ -73,7 +77,7 @@ function assertSound<S extends string>(m: Machine<S>, start: S) {
 test("funding machines: every state is reachable, finals are the documented ones", () => {
   assertSound(CREDIT_MACHINE, "QUOTED");
   assertSound(ANYWHERE_MACHINE, "AWAITING_DEPOSIT");
-  assert.deepEqual([...CREDIT_MACHINE.final].sort(), ["DONE", "EXPIRED", "FAILED", "REFUNDED"]);
+  assert.deepEqual([...CREDIT_MACHINE.final].sort(), ["DISMISSED", "DONE", "EXPIRED", "FAILED", "REFUNDED"]);
   assert.deepEqual([...ANYWHERE_MACHINE.final].sort(), ["CANCELLED", "DONE", "EXPIRED", "FAILED", "IDLE", "REFUNDED"]);
 });
 
@@ -84,7 +88,7 @@ test("money can only be sent from QUOTED", () => {
 
 test("reopening the dialog during a wallet prompt joins the run: one send, no false 'unconfirmed'", async () => {
   const id = seed("QUOTED");
-  statuses = ["SUCCESS"];
+  statuses = ["PENDING_DEPOSIT", "SUCCESS"];
   let sends = 0;
   let confirm!: (tx: string) => void;
   const send = () => (sends++, new Promise<string>((r) => (confirm = r)));
@@ -124,7 +128,7 @@ test("a declined wallet prompt returns to the quote, and its error doesn't follo
   const declined = await runCredit(id, deps(() => Promise.reject(new Error("User rejected the request"))).d);
   assert.equal(declined.state, "QUOTED");
   assert.match(declined.error!, /declined/);
-  statuses = ["SUCCESS"];
+  statuses = ["PENDING_DEPOSIT", "SUCCESS"];
   const done = await runCredit(id, deps(async () => "0xtx").d);
   assert.equal(done.state, "DONE");
   assert.equal(done.error, undefined);
@@ -132,7 +136,7 @@ test("a declined wallet prompt returns to the quote, and its error doesn't follo
 
 test("a send that fails after broadcast keeps tracking the deposit and never offers to pay again", async () => {
   const id = seed("QUOTED");
-  statuses = ["SUCCESS"];
+  statuses = ["PENDING_DEPOSIT", "SUCCESS"];
   let sends = 0;
   const done = await runCredit(id, deps(async () => {
     sends++;
@@ -153,8 +157,151 @@ test("a deposit 1Click never sees stops the wait and asks the user", async () =>
   assert.equal(sends, 0);
 });
 
+test("an unclear wallet error may have broadcast: never offer 'Confirm and send' again", async () => {
+  const id = seed("QUOTED");
+  let sends = 0;
+  const a = await runCredit(id, deps(async () => {
+    sends++;
+    throw new Error("Request expired. Please try again.");
+  }).d);
+  assert.equal(a.state, "SEND_UNCONFIRMED");
+  assert.equal(sends, 1);
+  assert.doesNotMatch(a.error!, /Nothing was sent/);
+});
+
+test("provably unsent errors do go back to the quote", async () => {
+  for (const err of [new DepositNotSentError("reverted"), Object.assign(new Error("x"), { code: 4001 }), new Error("outer", { cause: Object.assign(new Error("inner"), { name: "UserRejectedRequestError" }) })]) {
+    assert.equal((await runCredit(seed("QUOTED"), deps(() => Promise.reject(err)).d)).state, "QUOTED");
+  }
+});
+
+test("never pays into an address 1Click already has a deposit for", async () => {
+  const id = seed("QUOTED");
+  statuses = ["PROCESSING", "SUCCESS"];
+  let sends = 0;
+  assert.equal((await runCredit(id, deps(async () => (sends++, "0x")).d)).state, "DONE");
+  assert.equal(sends, 0);
+});
+
+test("'Send again' keeps the first hash, re-checks 1Click and refuses if it can't", async () => {
+  const id = seed("SEND_UNCONFIRMED");
+  actions.put({ ...actions.get(id)!, depositTx: "0xfirst" });
+  let sends = 0;
+  resend(id);
+  onStatus = () => new Response("{}", { status: 400 }); // 1Click unreachable
+  const refused = await runCredit(id, deps(async () => (sends++, "0x")).d);
+  assert.equal(refused.state, "SEND_UNCONFIRMED");
+  assert.equal(sends, 0);
+  assert.equal(refused.depositTx, "0xfirst");
+  assert.deepEqual(refused.priorTxs, ["0xfirst"]);
+});
+
+test("a declined 'Send again' keeps watching instead of dropping back to a quote nobody resumes", async () => {
+  const id = seed("SEND_UNCONFIRMED");
+  resend(id);
+  assert.equal((await runCredit(id, deps(() => Promise.reject(new Error("User rejected the request"))).d)).state, "SEND_UNCONFIRMED");
+});
+
+test("a deposit the wallet saw mined is never offered 'Send again'", async () => {
+  const id = seed("QUOTED");
+  statuses = ["PENDING_DEPOSIT", "PENDING_DEPOSIT", "SUCCESS"];
+  const done = await runCredit(id, deps(async () => "0xmined", { pendingDepositLimitMs: 0 }).d);
+  assert.equal(done.state, "SWAPPING", "stops polling, but stays on 'keep waiting or stop tracking'");
+  assert.match(done.error!, /Don't send it again/);
+  assert.ok(!visited(id).includes("SEND_UNCONFIRMED"));
+  assert.equal(dismiss(id).state, "DISMISSED", "and it can always be stopped");
+});
+
+test("a deposit that was really sent is recorded even if another tab moved the action", async () => {
+  const id = seed("QUOTED");
+  statuses = ["PENDING_DEPOSIT", "SUCCESS"];
+  let sends = 0;
+  const send = async () => {
+    sends++;
+    const now = actions.get(id)!; // tab 2 resumed SENDING and decided it was unconfirmed
+    actions.put({ ...now, state: "SEND_UNCONFIRMED", history: [...now.history, { at: "t", state: "SEND_UNCONFIRMED" }] });
+    return "0xmined";
+  };
+  const done = await runCredit(id, deps(send).d);
+  assert.equal(done.state, "DONE");
+  assert.equal(done.depositTx, "0xmined");
+  assert.equal(sends, 1);
+});
+
+test("a 1Click reply with no status isn't taken for a deposit", async () => {
+  const id = seed("QUOTED");
+  let answered = false;
+  onStatus = () => (answered ? undefined : ((answered = true), reply({})));
+  statuses = ["SUCCESS"];
+  let sends = 0;
+  assert.equal((await runCredit(id, deps(async () => (sends++, "0x")).d)).state, "DONE");
+  assert.equal(sends, 1);
+});
+
+test("a reload between 'Send again' and the prompt goes back to watching, without sending", () => {
+  const id = seed("SEND_UNCONFIRMED");
+  assert.equal(recoverResend(resend(id)).state, "SEND_UNCONFIRMED");
+});
+
+test("a stale tab can't overwrite a broadcast record", async () => {
+  const id = seed("QUOTED");
+  statuses = ["PENDING_DEPOSIT"];
+  const send = async () => {
+    const now = actions.get(id)!; // another tab records its broadcast while this prompt is open
+    actions.put({ ...now, state: "DEPOSIT_SENT", depositTx: "0xother", history: [...now.history, { at: "t", state: "DEPOSIT_SENT" }] });
+    throw new Error("User rejected the request");
+  };
+  await assert.rejects(runCredit(id, deps(send).d), /another tab/);
+  assert.equal(actions.get(id)!.state, "DEPOSIT_SENT");
+  assert.equal(actions.get(id)!.depositTx, "0xother");
+});
+
+test("unparseable deadlines are refused, not treated as never expiring", async () => {
+  const id = seed("QUOTED");
+  const a = actions.get(id)!;
+  actions.put({ ...a, quoteRequest: { ...a.quoteRequest, deadline: "not-a-date" } });
+  let sends = 0;
+  assert.equal((await runCredit(id, deps(async () => (sends++, "0x")).d)).state, "FAILED");
+  assert.equal(sends, 0);
+});
+
+test("stuck actions can be dismissed, and dismissing sends nothing", () => {
+  assert.equal(dismiss(seed("TOPPING_UP")).state, "DISMISSED");
+  assert.equal(dismiss(seed("SEND_UNCONFIRMED")).state, "DISMISSED");
+});
+
+test("a failed status read never expires an any-token deposit", async () => {
+  const past = new Date(Date.now() - 10 * 60_000).toISOString();
+  const quoteRequest = { deadline: past };
+  const a = anywhereActions.put({ id: `any_${++n}`, kind: "anywhere", createdAt: "t", state: "AWAITING_DEPOSIT", token: {}, refundTo: "r", inferenceAddress: ADDRESS, quoteRequest, quote: { quoteRequest, quote: { depositAddress: "d", deadline: past } }, history: [] } as never);
+  const stop = new AbortController();
+  onStatus = () => (stop.abort(), new Response("{}", { status: 400 }));
+  assert.notEqual((await runAnywhere(a.id, { inference: null, onUpdate: () => {}, signal: stop.signal, topUp: async () => {} })).state, "EXPIRED");
+});
+
+test("an EVM address is refused as a refund address on non-EVM chains", () => {
+  for (const chain of ["starknet", "sui", "aptos", "tron", "xrp", "doge"]) assert.ok(refundAddressProblem(chain, ADDRESS), chain);
+  assert.equal(refundAddressProblem("arb", ADDRESS), null);
+  assert.equal(refundAddressProblem("hypercore", ADDRESS), null);
+  assert.equal(refundAddressProblem("qtc", ADDRESS), null, "chains we can't classify aren't refused");
+  assert.equal(isEvmChain("qtc"), false, "but the connected address isn't prefilled there");
+});
+
+test("a corrupted saved record is skipped instead of crashing the dialogs", () => {
+  saved.set("iw:credit:broken", "{not json");
+  saved.set("iw:credit:partial", JSON.stringify({ id: "partial", state: "SWAPPING" }));
+  try {
+    assert.ok(actions.all().every((a) => a.id !== "partial"));
+    assert.equal(actions.get("broken"), undefined);
+  } finally {
+    saved.delete("iw:credit:broken");
+    saved.delete("iw:credit:partial");
+  }
+});
+
 test("a $0 sweep is success only if the USDC is already gone", async () => {
-  await confirmSweep(5, async () => 10_000_000n);
+  await confirmSweep(5, async () => 10_000_000n, 5);
+  await assert.rejects(confirmSweep(5, async () => 20_000_000n, 25), /hasn't been credited/); // an old, smaller authorization settled
   await confirmSweep(0, async () => 0n);
   await assert.rejects(confirmSweep(0, async () => 5_000_000n), /hasn't been credited/);
 });
@@ -162,14 +309,14 @@ test("a $0 sweep is success only if the USDC is already gone", async () => {
 test("any-token quotes must echo the amount and not ask for more than the credit is worth", () => {
   const token = { decimals: 6, price: 1, symbol: "USDT" };
   const req = { originAsset: "a", destinationAsset: "b", recipient: "r", refundTo: "f", swapType: "FLEX_INPUT", amount: "5150000" };
-  const ok = (quote: object, echo: object = req) => ({ quoteRequest: echo, quote: { depositAddress: "d", amountIn: "5150000", minAmountIn: "5000000", ...quote } }) as never;
+  const ok = (quote: object, echo: object = req) => ({ quoteRequest: echo, quote: { depositAddress: "d", amountIn: "5150000", minAmountIn: "5000000", minAmountOut: "5000000", ...quote } }) as never;
   checkAnywhereQuote(req as never, ok({}), token, 5);
   const code = (f: () => void) => assert.throws(f, (e: { code: string }) => e.code === "QUOTE_MISMATCH");
   code(() => checkAnywhereQuote(req as never, ok({}, { ...req, amount: "9" }), token, 5));
   code(() => checkAnywhereQuote(req as never, ok({ amountIn: "6000000" }), token, 5));
   code(() => checkAnywhereQuote(req as never, ok({ minAmountIn: "6000000" }), token, 5));
   const inflated = { ...req, amount: "9000000" };
-  assert.throws(() => checkAnywhereQuote(inflated as never, ok({ amountIn: "9000000", minAmountIn: "1" }, inflated), token, 5), /refusing to send/);
+  assert.throws(() => checkAnywhereQuote(inflated as never, ok({ amountIn: "9000000", minAmountIn: "1", minAmountOut: "5000000" }, inflated), token, 5), /refusing to send/);
 });
 
 test("the API-keys session must belong to the connected wallet", () => {

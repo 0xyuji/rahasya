@@ -2,7 +2,7 @@
 
 import { INTEL_CHECK, MODELS, type AttestationCheck, type AttestationReport } from "@pay/rail/browser";
 import { useState } from "react";
-import Markdown from "react-markdown";
+import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useWallet } from "../wallet/wallet-context";
 import type { Msg } from "./conversation";
@@ -18,6 +18,19 @@ function cost(usd?: number) {
   if (usd === undefined) return null;
   return usd < 0.001 ? "< $0.001" : `$${usd.toFixed(usd < 0.01 ? 4 : 3)}`;
 }
+
+/**
+ * Model output is untrusted. A Markdown image would be fetched automatically while the reply
+ * streams, and its URL could carry the conversation to a third party, so images are never loaded.
+ */
+const REPLY_ELEMENTS: Components = {
+  img: ({ alt }) => <span>[image not loaded{alt ? `: ${alt}` : ""}]</span>,
+  a: ({ href, children }) => (
+    <a href={href} target="_blank" rel="noopener noreferrer nofollow">
+      {children}
+    </a>
+  ),
+};
 
 export function Message({ m, attestation, onUnlock }: { m: Msg; attestation?: AttestationReport; onUnlock: () => void }) {
   const w = useWallet();
@@ -44,7 +57,9 @@ export function Message({ m, attestation, onUnlock }: { m: Msg; attestation?: At
 
       {m.text ? (
         <div className={s.md}>
-          <Markdown remarkPlugins={[remarkGfm]}>{m.text}</Markdown>
+          <Markdown remarkPlugins={[remarkGfm]} components={REPLY_ELEMENTS}>
+            {m.text}
+          </Markdown>
         </div>
       ) : m.status === "streaming" && !m.reasoning ? (
         <div className={s.pending} aria-label="Waiting for the reply">
@@ -81,8 +96,10 @@ export function Message({ m, attestation, onUnlock }: { m: Msg; attestation?: At
               {!attestation.ok || m.plaintextChunks
                 ? "Verification issue"
                 : attestation.checks.find((c) => c.name === INTEL_CHECK)?.status === "unavailable"
-                  ? "Enclave checked, Intel check unavailable"
-                  : "Verified enclave"}
+                  ? "Intel check didn't run"
+                  : /security level: (?!UpToDate\b)/.test(attestation.checks.find((c) => c.name === INTEL_CHECK)?.detail ?? "")
+                    ? "Verified enclave (platform out of date)"
+                    : "Verified enclave"}
             </button>
           )}
         </div>
@@ -139,8 +156,8 @@ function Proof({ a, plaintextChunks }: { a: AttestationReport; plaintextChunks: 
         ))}
       </ul>
       <p className={s.proofLead}>
-        <strong>What this means.</strong> Nobody between you and that key can read your messages: not us, not your network, not the model
-        host&apos;s operators.{" "}
+        <strong>What this means.</strong>{" "}
+        {intel === "pass" ? "Nobody between you and that key can read your messages: not us, not your network, not the model host's operators. " : "If this is a real enclave, nobody between you and that key can read your messages, but that isn't confirmed. "}
         {intel === "pass"
           ? "Your browser confirmed Intel's signature, so the key really is inside an Intel TDX enclave. Which software runs in that enclave isn't pinned yet, so against Venice itself this still relies on Venice running the code it says it does."
           : "Intel's signature couldn't be checked in your browser this time, so against Venice itself this relies on Venice's own verifier reporting honestly."}

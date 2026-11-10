@@ -122,11 +122,13 @@ Code: `apps/web/src/server/` (`keys.ts`, `api-wallet.ts`, `gateway.ts`, `login.t
 
 | | Website, Anonymous | Website, Truly private | API key | Local proxy |
 |---|---|---|---|---|
-| **Our server** | no prompts (chat goes browser → Venice); only 1Click quote requests (addresses, amounts) | same | prompts in transit (not stored), key hashes, spend, 1Click quote requests | nothing |
-| **Venice** | your inference wallet address + prompts | address + **ciphertext**\* | API wallet address + prompts (TEE models: ciphertext\*) | inference wallet address + prompts (TEE: ciphertext\*) |
+| **Our server** | no prompts (chat goes browser → Venice); 1Click quote requests, where it sees your IP, inference wallet and refund address together, and adds our partner key, fee and referral | same | prompts in transit (not stored), key hashes, spend, 1Click quote requests | nothing |
+| **Venice** | your IP (the browser calls Venice directly), inference wallet address + prompts | IP, address + **ciphertext**\* | API wallet address + prompts (TEE models: ciphertext\*) | inference wallet address + prompts (TEE: ciphertext\*) |
 | **Model host** | prompts (anonymized: third party; private: Venice) | only the attested enclave | same as Anonymous (TEE models: enclave) | same as website |
 | **1Click solver** | deposit and delivery addresses and amounts | same | same | — |
 | **Anyone on-chain** | your deposit to 1Click, USDC to your wallet, x402 settlement | same | same | — |
+| **Base RPC provider** | your IP and inference wallet address (balance reads about every 30 s while unlocked) | same | — | — |
+| **Reown relay** | connection metadata, only for WalletConnect QR or mobile wallets | same | same (sign-in) | — |
 
 \* The enclave is verified as genuine Intel hardware (in your browser on the website); which software runs in it isn't pinned yet, so against Venice itself this relies on Venice running what it publishes. See "What this does and doesn't prove" in section 5.
 
