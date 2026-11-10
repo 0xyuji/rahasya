@@ -25,6 +25,8 @@ const fullName = (m: ModelDef) => (m.basedOn ? `${shortName(m)} (based on ${m.ba
 export function ModelPicker({ mode, value, onChange }: { mode: PrivacyMode; value: string; onChange: (key: string) => void }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
+  const [above, setAbove] = useState(false);
+  const [maxHeight, setMaxHeight] = useState(360);
   const root = useRef<HTMLDivElement>(null);
   const listId = useId();
 
@@ -43,6 +45,18 @@ export function ModelPicker({ mode, value, onChange }: { mode: PrivacyMode; valu
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  // Near the bottom of the screen (the chat dock) the list opens upward instead of off the page.
+  const openList = () => {
+    const r = root.current?.getBoundingClientRect();
+    if (r) {
+      const below = window.innerHeight - r.bottom;
+      const up = below < 300 && r.top > below;
+      setAbove(up);
+      setMaxHeight(Math.max(180, Math.min(360, (up ? r.top : below) - 24))); // always fits on screen
+    }
+    setOpen(true);
+  };
+
   const pick = (m: ModelDef) => {
     onChange(m.key);
     setOpen(false);
@@ -51,7 +65,7 @@ export function ModelPicker({ mode, value, onChange }: { mode: PrivacyMode; valu
   const onKey = (e: React.KeyboardEvent) => {
     if (!open && (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter" || e.key === " ")) {
       e.preventDefault();
-      setOpen(true);
+      openList();
       return;
     }
     if (!open) return;
@@ -72,7 +86,7 @@ export function ModelPicker({ mode, value, onChange }: { mode: PrivacyMode; valu
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={listId}
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => (open ? setOpen(false) : openList())}
       >
         <span className={s.triggerLabel} title={fullName(current)}>
           {shortName(current)}
@@ -82,7 +96,7 @@ export function ModelPicker({ mode, value, onChange }: { mode: PrivacyMode; valu
         </svg>
       </button>
       {open && (
-        <ul className={s.list} role="listbox" id={listId} aria-label="Model">
+        <ul className={`${s.list} ${above ? s.listUp : ""}`} style={{ maxHeight }} role="listbox" id={listId} aria-label="Model">
           {models.map((m, i) => {
             const group = groupOf(m);
             const header = group !== lastGroup ? group : null;

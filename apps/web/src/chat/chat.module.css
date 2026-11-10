@@ -281,6 +281,7 @@
 /* Conversation layout: thread scrolls, prompt docks at the bottom. */
 .dock {
   position: sticky;
+  z-index: 1; /* above the page footer, so its menu covers it */
   bottom: 0;
   padding: 8px 20px 18px;
   background: var(--ink); /* solid, so scrolled text can't show through "New chat" */
