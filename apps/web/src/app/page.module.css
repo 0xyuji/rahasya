@@ -13,6 +13,14 @@
   gap: 12px;
   text-decoration: none;
 }
+.mark {
+  flex: none;
+  align-self: center;
+  width: 26px;
+  height: 26px;
+  margin-right: -4px;
+  color: var(--paper);
+}
 .wordmark {
   font-family: var(--font-display);
   font-style: italic;
@@ -28,6 +36,9 @@
 }
 /* Never drop the tagline; stack it under the name on narrow screens. */
 @media (max-width: 520px) {
+  .mark {
+    display: none; /* the name and tagline stack here; the tab icon still carries the mark */
+  }
   .lockup {
     flex-direction: column;
     align-items: flex-start;

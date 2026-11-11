@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { brand } from "../../brand";
+import { Mark } from "../mark";
 import page from "../page.module.css";
 import { PAGES } from "./content";
 import { DocsNav } from "./nav";
@@ -16,6 +17,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
       <div className="backdrop" aria-hidden />
       <header className={page.top}>
         <a href="/" className={page.lockup} aria-label={`${brand.name} — ${brand.tagline}`}>
+          <Mark className={page.mark} />
           <span className={page.wordmark}>{brand.name}</span>
           <span className={page.tagline}>{brand.tagline}</span>
         </a>
