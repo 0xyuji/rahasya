@@ -1,20 +1,31 @@
-# Using your API key in tools
+# Integrations
 
-Every tool below talks to the same OpenAI-compatible endpoint:
+This page explains how to configure editors, coding agents and chat applications to use Rahasya.
+
+## Summary
+
+- Every tool uses the same base URL and an `nsk_…` API key.
+- Coding agents that call tools require a non-TEE model: `large-v2` (most capable), `large-flash` (fastest) or `deepseek-1017-uncensored` (lowest cost).
+- opencode has been tested end to end, and the site generates its configuration when you create a key. The other configurations follow each tool's published documentation.
+- To keep our server out of the request path, point the same configurations (except Cursor) at the local proxy.
+
+## Endpoint
+
+All of the tools below connect to the same OpenAI-compatible endpoint:
 
 ```
 Base URL   https://<your-deployment>/api/v1
 API key    nsk_…   (account menu → API keys)
-Model      large-v2, large-flash, deepseek-1017-uncensored, …   (full list in api.md)
+Model      large-v2, large-flash, deepseek-1017-uncensored, …   (full list in the API reference)
 ```
 
-For coding agents that call tools (opencode, Cline, Aider, Continue's agent mode), pick a **non-TEE** model. The two TEE models can't carry tool definitions through end-to-end encryption. Good picks are `large-v2` (strongest), `large-flash` (fast) and `deepseek-1017-uncensored` (cheap).
+For coding agents that call tools (opencode, Cline, Aider, and Continue in agent mode), choose a **non-TEE** model. End-to-end encryption cannot carry tool definitions, so the two TEE models do not support tools.
 
-The configs below match each tool's documented format at the time of writing (Nov 2026). If a tool's settings screen has moved, look for "OpenAI-compatible", "custom base URL" or "OpenAI API base".
+The configurations below reflect each tool's documented format as of November 2026. If a tool's settings have moved, look for options labelled "OpenAI-compatible", "custom base URL" or "OpenAI API base".
 
 ## opencode
 
-Tested with opencode 2.1.3. Add a provider to `~/.config/opencode/opencode.jsonc` (or `opencode.jsonc` in a project):
+Tested with opencode 2.1.3. Add a provider to `~/.config/opencode/opencode.jsonc`, or to `opencode.jsonc` in a project:
 
 ```jsonc
 {
@@ -48,28 +59,29 @@ export RAHASYA_API_KEY=nsk_…
 opencode --standalone                     # or: opencode run --standalone -m rahasya/large-v2 "explain this repo"
 ```
 
-Things that trip people up:
+When you create a key, the website shows this configuration with your key and URL filled in. If the key has a model allowlist, the configuration lists only those models.
 
-- **File name.** opencode only reads `opencode.json` or `opencode.jsonc`. A file called `config.json` is ignored, and opencode quietly falls back to its built-in providers.
-- **The key isn't picked up.** opencode 2 runs a background service, and that service doesn't see variables you `export` after it started. Start with `--standalone` from the terminal where you exported the key. If you get "Invalid API key." straight away, this is why.
-- **Other providers in the model list.** `enabled_providers` limits opencode to this provider. Delete that line if you also want opencode's own providers.
-- **Spend in the sidebar.** opencode works this out from each model's `cost` (dollars per million tokens, Venice's list prices). It's an estimate. What your key was actually charged is in the API keys dialog.
-- **Only some models show up.** opencode lists just the models named under `models`. The config above has every model that works with coding agents. The two TEE models are left out because they can't carry tool definitions.
+### Troubleshooting
 
-The website shows this exact config, with your key and URL filled in, when you create a key. If the key has a model allowlist, the config lists only those models.
+- **Configuration file name.** opencode reads only `opencode.json` or `opencode.jsonc`. A file named `config.json` is ignored, and opencode falls back to its built-in providers without warning.
+- **"Invalid API key." on the first request.** opencode 2 runs a background service that does not see variables exported after it started. Start opencode with `--standalone` from the terminal where you exported the key.
+- **Other providers appear in the model list.** `enabled_providers` restricts opencode to this provider. Remove that line to keep opencode's built-in providers as well.
+- **Spend shown in the sidebar.** opencode estimates spend from each model's `cost` (US dollars per million tokens, at Venice's list prices). The amount actually charged to your key is shown in the API keys dialog.
+- **Some models are missing.** opencode lists only the models named under `models`. The configuration above includes every model that supports coding agents; the two TEE models are omitted because they do not support tools.
 
 ## Cursor
 
-Settings → **Models**:
-1. Turn on **OpenAI API Key** and paste your `nsk_…` key.
-2. Turn on **Override OpenAI Base URL** and set `https://<your-deployment>/api/v1`.
-3. **Add model** for each id you want, e.g. `large-v2`, then select it in chat.
+In Settings, open **Models**:
 
-Cursor routes some features (tab completion, some agent tools) through its own servers no matter which model you pick. Those parts don't go through this key.
+1. Enable **OpenAI API Key** and paste your `nsk_…` key.
+2. Enable **Override OpenAI Base URL** and enter `https://<your-deployment>/api/v1`.
+3. Select **Add model** for each model id you want, for example `large-v2`, and choose it in chat.
 
-## Continue (VS Code / JetBrains)
+Cursor sends requests for custom models from its own servers. Your prompts therefore also pass through Cursor, and Cursor cannot reach a local proxy on `127.0.0.1`. Some features, such as tab completion and certain agent tools, use Cursor's own models regardless of your selection.
 
-`~/.continue/config.yaml`:
+## Continue (VS Code and JetBrains)
+
+In `~/.continue/config.yaml`:
 
 ```yaml
 models:
@@ -81,9 +93,10 @@ models:
     roles: [chat, edit, apply]
 ```
 
-## Cline, Roo Code, Kilo Code
+## Cline, Roo Code and Kilo Code
 
-Settings → **API Provider: OpenAI Compatible**:
+In Settings, set **API Provider** to **OpenAI Compatible**:
+
 - Base URL: `https://<your-deployment>/api/v1`
 - API Key: `nsk_…`
 - Model ID: `large-v2`
@@ -96,11 +109,11 @@ aider --openai-api-base https://<your-deployment>/api/v1 \
       --model openai/large-v2
 ```
 
-The `openai/` prefix tells Aider (via LiteLLM) to use the OpenAI-compatible route with your base URL.
+The `openai/` prefix tells Aider (through LiteLLM) to use the OpenAI-compatible route with your base URL.
 
 ## Zed
 
-`settings.json`:
+In `settings.json`:
 
 ```json
 {
@@ -115,24 +128,26 @@ The `openai/` prefix tells Aider (via LiteLLM) to use the OpenAI-compatible rout
 }
 ```
 
-Zed asks for the API key the first time you use the provider.
+Zed prompts for the API key the first time you use the provider.
 
 ## SillyTavern
 
-API Connections → **Chat Completion** → Source: **Custom (OpenAI-compatible)**:
+In **API Connections**, select **Chat Completion**, then set **Source** to **Custom (OpenAI-compatible)**:
+
 - Custom Endpoint (Base URL): `https://<your-deployment>/api/v1`
 - Custom API Key: `nsk_…`
 - Model: `venice-roleplay` (tuned for roleplay) or `large-v2`
 
-Tip: create a dedicated key with a daily limit for long roleplay sessions.
+For long roleplay sessions, consider a dedicated key with a daily limit.
 
 ## Open WebUI
 
-Admin Settings → **Connections** → **OpenAI API** → add a connection:
+In **Admin Settings**, open **Connections**, then **OpenAI API**, and add a connection:
+
 - URL: `https://<your-deployment>/api/v1`
 - Key: `nsk_…`
 
-The models appear in the picker after saving (Open WebUI reads `/v1/models`).
+The models appear in the model picker after you save, because Open WebUI reads `/v1/models`.
 
 ## LiteLLM proxy
 
@@ -150,14 +165,19 @@ model_list:
 Python:
 
 ```python
+import os
 from openai import OpenAI
 
-client = OpenAI(base_url="https://<your-deployment>/api/v1", api_key="nsk_…")
-r = client.chat.completions.create(model="large-v2", messages=[{"role": "user", "content": "Hello"}])
-print(r.choices[0].message.content)
+client = OpenAI(base_url="https://<your-deployment>/api/v1", api_key=os.environ["RAHASYA_API_KEY"])
+reply = client.chat.completions.create(
+    model="large-v2",
+    messages=[{"role": "user", "content": "Hello"}],
+    max_tokens=1024,
+)
+print(reply.choices[0].message.content)
 ```
 
-JavaScript / TypeScript:
+JavaScript or TypeScript, with streaming:
 
 ```ts
 import OpenAI from "openai";
@@ -166,6 +186,7 @@ const client = new OpenAI({ baseURL: "https://<your-deployment>/api/v1", apiKey:
 const stream = await client.chat.completions.create({
   model: "large-flash",
   messages: [{ role: "user", content: "Hello" }],
+  max_tokens: 1024,
   stream: true,
 });
 for await (const chunk of stream) process.stdout.write(chunk.choices[0]?.delta?.content ?? "");
@@ -175,14 +196,14 @@ for await (const chunk of stream) process.stdout.write(chunk.choices[0]?.delta?.
 
 ```sh
 curl https://<your-deployment>/api/v1/chat/completions \
-  -H "Authorization: Bearer nsk_…" -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $RAHASYA_API_KEY" -H "Content-Type: application/json" \
   -d '{"model":"deepseek-1017-uncensored","messages":[{"role":"user","content":"Say hi"}],"max_tokens":50}'
 ```
 
-## Agents with a budget
+## Spending limits for agents
 
-A key works well as an agent's spending allowance. Give the agent its own key with a **total limit** (say $2), a **model allowlist** and an **expiry**. When the limit is reached the API answers `429 total_limit` and the agent can't spend more, while your other keys and the website keep working.
+An API key can serve as an agent's spending allowance. Give each agent its own key with a **total limit** (for example $2), a **model allowlist** and an **expiry**. When the limit is reached, the API returns `429 total_limit` and the agent cannot spend further, while your other keys and the website continue to work.
 
-## Local proxy instead of a hosted key
+## Using the local proxy instead of a hosted key
 
-To keep everything on your machine, use the same configs with `http://127.0.0.1:8787/v1` and the local key printed by `node rahasya.mjs` (see the Local proxy dialog, or [api.md](api.md#local-proxy-alternative)). See [api.md](api.md#local-proxy-alternative).
+To keep requests on your machine, use the same configurations (except Cursor) with the base URL `http://127.0.0.1:8787/v1` and the local key that the proxy prints when you run `npx rahasya@0.1.1`. Setup instructions are in the Local proxy dialog and the [API reference](api.md#local-proxy-alternative).

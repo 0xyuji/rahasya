@@ -3,6 +3,8 @@
 Command: `node --env-file=../../.env scripts/e2e.ts quote` then `... run swap_c6289e3027d848f0` (from `packages/rail`).
 Wallets are throwaway burners generated for this test.
 
+> Recorded on 2026-11-07, early in the build. Some details have changed since: the chat model used here is no longer in the catalog, the exact-output slippage buffer is now 0.5% (was 1%), and the product was renamed (old env names like `NAISHO_API_KEY`). The flow itself (1Click swap → x402 top-up → chat, and E2EE on both TEE models) is unchanged.
+
 | Step | Result | Proof |
 |---|---|---|
 | Quote (EXACT_OUTPUT 5.0 USDC) | send 0.056652587 SOL (~$5.07), min 0.056086061 | 1Click correlationId `fd209080-eff0-4168-acb6-f7a942c846ef` |

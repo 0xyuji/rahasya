@@ -3,7 +3,7 @@
 Working state of the project: what's done, what's left, and decisions made. Update this file whenever something changes; it's the first thing to read when picking the work back up.
 
 **Deadline:** 2026-11-14 23:59 UTC (NEAR hackathon, submit once). Judging 2026-11-16, results by 2026-11-18.
-**Last updated:** 2026-11-10 (Fable review items 1-10 fixed and deployed; pick up from "Next steps")
+**Last updated:** 2026-11-11 (detailed hooded figure on the landing page, deployed from `48605cf`, master merged and pushed; demo plan saved under "Demo plan"; pick up from "Next steps")
 
 ## Status
 
@@ -26,7 +26,8 @@ Working state of the project: what's done, what's left, and decisions made. Upda
 | K26-K32 | 11-10: closed in the working tree of `audit-v3-fixes`, reviewed by Fable and its findings fixed. **Uncommitted, not deployed**, needs a real-wallet unlock test across wallet types | K27 partly: Workers memory unmeasured |
 | Final audit | 11-10 report against `9e3db94`: 0 High, 1 Medium, 15 Low, 19 Info. All 16 findings addressed on `audit-v3-fixes`, deployed 11-10, real-wallet test passed | C-09 and in-page dialogs also done. Not done: approve-twice on a double wallet prompt, Solana/Ledger format check, `x-wallet-uid` required |
 | Body limit | ✅ 8 MB (gateway + proxy), raised from 4 MB after a 413 | Owner hasn't said what they were doing when it hit; ask if it recurs |
-| Demo video | ⬜ Script + narration lines written (in chat, 11-08); owner records, ElevenLabs voice | Show the new header links |
+| Landing figure | ✅ 11-10: detailed hooded figure (`hooded-figure.ts`, original drawing) in a finer glyph grid, partly behind the prompt, on windows ≥ about 1105px. Live, probe 40/40 | Mouse smoothness not checked by us |
+| Demo video | ⬜ Shot list in "Demo plan" below (11-10); owner records by 11-12, ElevenLabs voice | |
 | X post | ⬜ Not started | Must say it was built at NEAR HACKATHON, tag @NEARProtocol and #NEARHackathon, with the video. Optional tags: @NearLegion, @NearBuilders. Owner posts |
 | Hackathon submission | ⬜ Not started | Print the payload and get an explicit yes first |
 
@@ -35,13 +36,48 @@ Working state of the project: what's done, what's left, and decisions made. Upda
 0. ~~Real-wallet test of the final code~~ ✅ 11-10 (`cf887e7`): $5 top-up through the new checks, API key call, Truly private with Verified enclave, Lock and Disconnect. Code freeze from here: real bugs only. Shipped after it on 11-10: dialog redesign (pinned header, nothing past the edges) and a fix for key edits removing the expiry.
    ~~Deploy the state-machine work and Fable review fixes~~ ✅ 11-10. ~~Merge to master, add CI~~ ✅ 11-10. Before going public: trim this file. Real-wallet run must also cover: Cancel unlock, an API-wallet top-up.
 1. Owner reviews the new landing page on rahasya.chat; adjust if wanted. Click the dialogs' Connect wallet / NEAR wallet / Unlock buttons with a real wallet.
-2. Pick tracks (unanswered). Suggested: privacy (primary), agents, maybe security.
+2. ~~Pick tracks~~ ✅ 11-11: `privacy` + `security` (owner). `agents` dropped after a Fable fit review (no agent pays for itself). Side project if time allows: proxy self-top-up (`rahasya topup` via 1Click + x402, machine-readable funding info on 402), then add `agents` through request-changes after submitting.
 3. ~~Probe rahasya.chat~~ ✅ 40/40. ~~Venice accepts both output-limit fields~~ ✅.
 4. (11-10: plain NEAR sent from a NEAR wallet through Any token worked on the live site, before the deploy: wNEAR route, $5.17 credited in a few minutes.) Truly private follow-up messages failed on the live site with HTTP 400 ("Encrypted field is not valid hex", two system messages in a row); fixed in `buildContext` and deployed. Confirmed after the deploy with a real wallet: Anonymous then Truly private follow-up, Verified enclave, Intel check passes in the browser. Still to run (free): Cancel unlock, NEAR tab default, fee check. Skipped on purpose (owner, to save $5): real-money API-wallet top-up and reload during a swap; both have offline tests only. One real end-to-end run on the live site: pay with a non-USDC token, chat in both modes, use an API key. Check the fee lands in `rahasya.near`'s NEAR Intents balance.
 5. ~~Deleted key → 401, sign out everywhere~~ ✅ (live probe). Second same-amount top-up: do it during step 4, real money (offline test F-02 passes).
-6. Demo video (2–3 min): pay with any token → chat → Truly private with the Intel check → API key in opencode.
+6. Demo video: follow "Demo plan" below. Owner records by 11-12, then sends team lead name, contact email, team size and the NEAR payout account (ask whether it's `rahasya.near`).
 7. ~~Check the README against HACKATHON.md~~ ✅ 11-10 (clean keyless copy: `npm install`, tests on Node 22/24/26, `verify:tee`, `quote:dry` all pass). Name the chosen tracks in the README. Make the repo public (ask first).
 8. X post, then the submission (payload shown, explicit yes).
+
+## Demo plan (11-10)
+
+Not yet run with real money or a real key: the ZEC payment and the scene 7 `curl`. The rehearsal covers both.
+
+**Rehearse, off camera** (budget about $10–11 of ZEC in total)
+1. rahasya.chat, connect `rahasya.near`, API keys → Add credit → Any token → ZEC, about $5. Fresh refund address; pay by scanning the QR from the phone. Tests ZEC and funds the API wallet.
+2. Make an API key and put it in opencode, model `deepseek-1017-uncensored`.
+3. Local proxy menu → Reveal key, then `npx rahasya@0.1.1 login` and paste it.
+4. Try the scene 7 `curl` once website credit exists (or top up a little first).
+
+**Film** (about 2:20, live site, clean browser window, no dev server: its "Issues" badge shows)
+1. Landing page.
+2. Connect `rahasya.near` and sign.
+3. Add credit → Any token → ZEC, QR, cut the wait, "Added $5.00". Funds website chat and the proxy.
+4. Anonymous message and reply.
+5. Truly private on DeepSeek (NEAR AI enclave), send, open the proof panel.
+6. API keys → New key, cut to opencode making one small change on `deepseek-1017-uncensored`.
+7. Two terminal panes: left `npx rahasya@0.1.1`; right, set `LOCAL_KEY` to the key it prints and run the command below. Left logs `deepseek-abliterated-tee (e2ee)`.
+8. End card.
+
+```bash
+curl -s http://127.0.0.1:8787/v1/chat/completions \
+  -H "Authorization: Bearer $LOCAL_KEY" \
+  -H "content-type: application/json" \
+  -d '{"model":"deepseek-abliterated-tee","messages":[{"role":"user","content":"In two sentences: what can a hardware enclave protect, and what can it not?"}]}' \
+  | jq -r '.choices[0].message.content'
+```
+
+Keep Reveal key and the opencode key setup off camera. Say "shielded" only if the ZEC really came from shielded funds: the deposit address is transparent, so the amount is visible. TEE models can't use tools, so opencode only runs the anonymous models; TEE goes through the website, the local proxy with chat clients/scripts, or (weaker: our server encrypts) an API key.
+
+**After filming**
+1. Delete API keys that were on screen.
+2. 11-13, each with the owner's yes: trim this file, check the repo for sensitive content, make it public; npm 0.1.2 with provenance (owner's passkey), then update the `npx` version in the menu and docs.
+3. Owner posts on X. Show the exact submission payload, send once after a yes. Deadline 11-14 23:59 UTC.
 
 ## Deploy (Cloudflare Workers)
 

@@ -14,6 +14,14 @@ writeFileSync(join(import.meta.dirname, "..", "src", "app", "docs", "docs.genera
 const agents = readFileSync(join(dir, "agents.md"), "utf8").replaceAll("https://<your-deployment>", "https://rahasya.chat");
 writeFileSync(join(import.meta.dirname, "..", "public", "agents.md"), agents);
 
+// Every page in one file, in reading order, for agents that want the whole picture in one fetch.
+const ORDER = ["index.md", "agents.md", "integrations.md", "api.md", "protocol.md"];
+if (ORDER.slice().sort().join() !== files.join()) throw new Error("gen-docs: update ORDER to list every page in content/docs");
+writeFileSync(
+  join(import.meta.dirname, "..", "public", "llms-full.txt"),
+  ORDER.map((f) => readFileSync(join(dir, f), "utf8").replaceAll("https://<your-deployment>", "https://rahasya.chat").trim()).join("\n\n---\n\n") + "\n",
+);
+
 // A short index for agents and crawlers looking for the docs (llmstxt.org).
 const site = "https://rahasya.chat";
 writeFileSync(
@@ -28,6 +36,7 @@ writeFileSync(
 ## Docs
 
 - [Agent guide](${site}/agents.md): everything an agent needs, in one Markdown file
+- [All docs in one file](${site}/llms-full.txt): every page below, as plain Markdown
 - [API reference](${site}/docs/api): endpoints, models, limits, errors
 - [Integrations](${site}/docs/integrations): opencode, Cursor, Continue, Cline, Aider, Zed, SillyTavern and others
 - [How it works](${site}/docs/protocol): wallets, payments, attestation, who can see what
