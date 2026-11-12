@@ -35,7 +35,7 @@ When this kit was packed, the live site was running `fc2b212`, the first half of
 | E-04 | Partly | Actions and npm pinned. The build/publish job split wasn't done |
 | E-05 | Fixed | `protocol.md` and the listed lines reworded |
 | A-06, D-05, E-09 | Fixed | |
-| D-08 | Partly | The key reveal resets on a wallet change |
+| D-08 | Partly | The inference key is copied to the clipboard from the Local proxy dialog, never displayed |
 | B-07, B-08, B-09, C-Info, D-06, D-07, E-06, E-07, E-08 | Not fixed | Low or Info |
 
 K26, K28–K32 were closed in the same work; see the table in `03-known-issues.md`.

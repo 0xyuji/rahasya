@@ -3,7 +3,7 @@
 import { PRIVACY_MODES } from "@pay/rail/browser";
 import { useEffect, useRef, useState } from "react";
 import { brand } from "../brand";
-import { CodeBlock, CopyRow, DialogHead } from "./dialog-parts";
+import { CodeBlock, CopyButton, CopyRow, DialogHead } from "./dialog-parts";
 import { opencodeConfig } from "./opencode-config";
 import { useWallet } from "../wallet/wallet-context";
 import s from "./credit-dialog.module.css";
@@ -19,8 +19,9 @@ const TOOLS = {
     text: (_id: string) => opencodeConfig({ baseURL: BASE, keyHint: "<your local API key>" }),
   },
   generic: {
-    label: "Cursor & others",
-    text: () => `Any tool with an "OpenAI-compatible" or "custom OpenAI base URL" setting:
+    label: "Other tools",
+    text: () => `Any tool with an "OpenAI-compatible" or "custom OpenAI base URL" setting.
+(Not Cursor: it sends requests from its own servers, which can't reach your machine.)
 
   Base URL   ${BASE}
   API key    <your local API key, printed by the serve command>
@@ -49,7 +50,6 @@ const r = await client.chat.completions.create({
 export function EditorDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const w = useWallet();
   const ref = useRef<HTMLDialogElement>(null);
-  const [reveal, setReveal] = useState(false);
   const [tool, setTool] = useState<keyof typeof TOOLS>("opencode");
   const [sha, setSha] = useState<string | null>(null);
 
@@ -70,10 +70,7 @@ export function EditorDialog({ open, onClose }: { open: boolean; onClose: () => 
     if (!d) return;
     if (open && !d.open) d.showModal();
     if (!open && d.open) d.close();
-    if (!open) setReveal(false);
   }, [open]);
-
-  useEffect(() => setReveal(false), [w.inferenceKey]); // a revealed key never carries over to another wallet
 
   const id = brand.repo;
   // Same value on the server and the first client render (no hydration mismatch), then the real origin.
@@ -89,22 +86,7 @@ export function EditorDialog({ open, onClose }: { open: boolean; onClose: () => 
         Nothing goes through us.
       </p>
 
-      <div className={s.label}>1. Start it (needs Node.js 22 or newer)</div>
-      <CopyRow text={NPX} />
-      <div className={s.label}>Or download it as one readable file</div>
-      <CodeBlock label="Terminal" text={download} />
-      <p className={s.fine}>
-        The first run asks for the key from step 2 (input hidden). One readable file, built from our repo. Later runs start straight away;{" "}
-        add <code>--help</code> to see the other commands.
-        {sha && (
-          <>
-            {" "}
-            Check the download: <code>shasum -a 256 rahasya.mjs</code> should print <code className={s.hash}>{sha}</code>.
-          </>
-        )}
-      </p>
-
-      <div className={s.label}>2. Your inference wallet key</div>
+      <div className={s.label}>1. Copy your inference wallet key</div>
       {!w.inferenceKey ? (
         !w.source ? (
           <div className={s.row}>
@@ -120,30 +102,38 @@ export function EditorDialog({ open, onClose }: { open: boolean; onClose: () => 
             {w.busy ? "Check your wallet…" : "Unlock to get your key"}
           </button>
         )
-      ) : reveal ? (
+      ) : (
         <>
-          <CopyRow text={w.inferenceKey} />
+          <CopyButton text={w.inferenceKey} label="Copy key" className={s.secondary} />
           <p className={s.warn}>
-            Anyone with this key can spend your credit. Paste it only into the proxy&apos;s login prompt, never into a website or chat.
+            The key is copied, never shown. Anyone with it can spend your credit, so paste it only into the proxy&apos;s prompt, never into a website or chat.
           </p>
         </>
-      ) : (
-        <button className={s.secondary} onClick={() => setReveal(true)}>
-          Reveal key
-        </button>
       )}
 
-      <div className={s.label}>3. Point your tool at it</div>
+      <div className={s.label}>2. Start the proxy and paste the key (needs Node.js 22 or newer)</div>
+      <CopyRow text={NPX} />
+      <p className={s.fine}>
+        It asks for the key. The input is hidden, so nothing appears when you paste: paste once and press Enter. The key is saved on your computer, and the proxy
+        starts and prints a <strong>Base URL</strong> and a local <strong>API key</strong>. Keep that terminal open. Later runs skip the question.
+      </p>
+      <div className={s.label}>Or download it as one readable file</div>
+      <CodeBlock label="Terminal" text={download} />
+      <p className={s.fine}>
+        One readable file, built from our repo. Add <code>--help</code> to see the other commands.
+        {sha && (
+          <>
+            {" "}
+            Check the download: <code>shasum -a 256 rahasya.mjs</code> should print <code className={s.hash}>{sha}</code>.
+          </>
+        )}
+      </p>
+
+      <div className={s.label}>3. Point your tool at the Base URL, with the local API key</div>
       <div className={s.tabs} role="tablist">
         {(Object.keys(TOOLS) as Array<keyof typeof TOOLS>).map((k) => (
           <button key={k} role="tab" aria-selected={tool === k} className={`${s.tab} ${tool === k ? s.tabOn : ""}`} onClick={() => setTool(k)}>
-            {k === "generic" ? (
-              <>
-                Cursor<span className={s.wideOnly}> &amp; others</span>
-              </>
-            ) : (
-              TOOLS[k].label
-            )}
+            {TOOLS[k].label}
           </button>
         ))}
       </div>

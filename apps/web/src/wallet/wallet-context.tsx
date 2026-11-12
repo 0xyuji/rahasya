@@ -49,7 +49,7 @@ interface WalletState {
   source: Source | null;
   /** In-memory inference wallet; null until unlocked. Never persisted. */
   inference: LocalAccount | null;
-  /** Same key as hex, only for the explicit "Use in your editor" reveal. Never persisted. */
+  /** Same key as hex, only for the Local proxy dialog's Copy key button (copied, never displayed). Never persisted. */
   inferenceKey: `0x${string}` | null;
   session: WalletSession;
   busy: boolean;

@@ -51,7 +51,7 @@ Not yet run with real money or a real key: the ZEC payment and the scene 7 `curl
 **Rehearse, off camera** (budget about $10–11 of ZEC in total)
 1. rahasya.chat, connect `rahasya.near`, API keys → Add credit → Any token → ZEC, about $5. Fresh refund address; pay by scanning the QR from the phone. Tests ZEC and funds the API wallet.
 2. Make an API key and put it in opencode, model `deepseek-1017-uncensored`.
-3. Local proxy menu → Reveal key, then `npx rahasya@0.1.1 login` and paste it.
+3. Local proxy menu → Copy key, then run `npx rahasya@0.1.1`, paste at the hidden prompt and press Enter. It saves the key and starts serving (prints Base URL + local API key).
 4. Try the scene 7 `curl` once website credit exists (or top up a little first).
 
 **Film** (about 2:20, live site, clean browser window, no dev server: its "Issues" badge shows)
@@ -72,7 +72,7 @@ curl -s http://127.0.0.1:8787/v1/chat/completions \
   | jq -r '.choices[0].message.content'
 ```
 
-Keep Reveal key and the opencode key setup off camera. Say "shielded" only if the ZEC really came from shielded funds: the deposit address is transparent, so the amount is visible. TEE models can't use tools, so opencode only runs the anonymous models; TEE goes through the website, the local proxy with chat clients/scripts, or (weaker: our server encrypts) an API key.
+Keep Copy key and the opencode key setup off camera. Say "shielded" only if the ZEC really came from shielded funds: the deposit address is transparent, so the amount is visible. TEE models can't use tools, so opencode only runs the anonymous models; TEE goes through the website, the local proxy with chat clients/scripts, or (weaker: our server encrypts) an API key.
 
 **After filming**
 1. Delete API keys that were on screen.
