@@ -1,6 +1,6 @@
 {
   "name": "rahasya",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Rahasya local proxy: an OpenAI-compatible API on 127.0.0.1 that spends your own inference wallet's credit. TEE models are end-to-end encrypted from your machine.",
   "type": "module",
   "bin": { "rahasya": "rahasya.mjs" },

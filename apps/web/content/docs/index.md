@@ -92,7 +92,7 @@ After a Truly private reply, select **Verified enclave** to review each check th
 | | Website chat | API key | Local proxy |
 |---|---|---|---|
 | Runs | On this site | In any tool, on any machine | In any tool, on your machine |
-| Setup | None | Paste a key | Run `npx rahasya@0.1.1`, or download one file |
+| Setup | None | Paste a key | Run `npx rahasya@0.1.2`, or download one file |
 | Pays from | Inference wallet (in your browser) | API wallet (signed by our server) | Inference wallet (on your machine) |
 | Per-key spend limits | Not applicable | Daily, total, models, expiry | Not applicable |
 | Prompts pass through our server | No | Yes, in transit only; never stored | No |

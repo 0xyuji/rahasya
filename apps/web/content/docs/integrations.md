@@ -206,4 +206,4 @@ An API key can serve as an agent's spending allowance. Give each agent its own k
 
 ## Using the local proxy instead of a hosted key
 
-To keep requests on your machine, use the same configurations (except Cursor) with the base URL `http://127.0.0.1:8787/v1` and the local key that the proxy prints when you run `npx rahasya@0.1.1`. Setup instructions are in the Local proxy dialog and the [API reference](api.md#local-proxy-alternative).
+To keep requests on your machine, use the same configurations (except Cursor) with the base URL `http://127.0.0.1:8787/v1` and the local key that the proxy prints when you run `npx rahasya@0.1.2`. Setup instructions are in the Local proxy dialog and the [API reference](api.md#local-proxy-alternative).

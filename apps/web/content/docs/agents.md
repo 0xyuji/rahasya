@@ -103,8 +103,8 @@ Errors use this shape: `{ "error": { "message": "...", "type": "<code>", "code":
 The person runs the proxy with Node.js 22 or later:
 
 ```sh
-npx rahasya@0.1.1         # the first run asks for the inference key, with hidden input
-npx rahasya@0.1.1 token   # prints the local API key
+npx rahasya@0.1.2         # the first run asks for the inference key, with hidden input
+npx rahasya@0.1.2 token   # prints the local API key
 ```
 
 The inference key can spend the user's credit and move any USDC held by that wallet. Never ask for it or read it. The proxy answers only on localhost and refuses requests that carry a browser `Origin` header, so call it from a CLI, an SDK or an editor rather than a web page.

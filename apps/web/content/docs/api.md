@@ -160,7 +160,7 @@ Errors follow the OpenAI format: `{ "error": { "message": "...", "type": "<code>
 To keep our server out of the request path, run the proxy on your own machine. It pays from your **inference wallet** directly, and requests to TEE models are then end-to-end encrypted from your device.
 
 ```sh
-npx rahasya@0.1.1    # requires Node.js 22 or later; the first run asks for the key from account menu → Local proxy
+npx rahasya@0.1.2    # requires Node.js 22 or later; the first run asks for the key from account menu → Local proxy
 
 # or, as a single readable file:
 curl -fsSLO https://<your-deployment>/rahasya.mjs

@@ -5,7 +5,7 @@
 # compromised workflow or GitHub account can't ship a version on its own.
 #
 # Release: bump packages/proxy/npm/package.json "version", commit, then push a tag
-# `proxy-v<version>` (e.g. proxy-v0.1.1). The job refuses if the tag and version differ.
+# `proxy-v<version>` (e.g. proxy-v0.1.2). The job refuses if the tag and version differ.
 #
 # One-time setup on npmjs.com (package rahasya → Settings → Trusted publisher):
 # GitHub Actions, owner 0xyuji, repository rahasya, workflow publish-proxy.yml,

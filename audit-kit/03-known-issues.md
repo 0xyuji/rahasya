@@ -30,7 +30,7 @@ No need to report these again. **Do** tell us if one is worse than described, an
 | K24 | Local development and production currently share one Upstash database and `API_WALLET_ENC_KEY` | Operational, not a code issue. To be separated and rotated |
 | K25 | The local proxy cancels upstream only for streamed requests; a non-streamed request finishes after the client disconnects | Bounded by that one request |
 | K33 | NEAR unlock compares the wallet-reported `accountId` only | Signer questions are in-page dialogs (`wallet/ask.ts`) |
-| K34 | npm `rahasya@0.1.1` (current, with the 11-10 proxy fixes) was released from the private repo, so it has no provenance record | A provenance release is planned once the repo is public |
+| K34 | npm `rahasya@0.1.1` and earlier were released from the private repo, so they have no provenance record | Fixed in 0.1.2: built by GitHub Actions from the public repo with npm provenance (trusted publishing, staged and approved by the owner) |
 | K27 | Body limit stays 8 MB. The key is checked before the body is read, and large bodies share a 16 MB per-isolate budget (503 when full). At most one large body per key (held for a whole non-streamed generation), a body-read limit of 30 s idle and 120 s total, and several copies still held per request. Workers memory wasn't measured (B-02) | The owner raised the limit after real 413s |
 
 ## Fixed after the first audit (2026-11-08, report against commit 6be0d23)

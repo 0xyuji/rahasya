@@ -11,7 +11,7 @@ import s from "./credit-dialog.module.css";
 const PORT = 8787;
 const BASE = `http://127.0.0.1:${PORT}/v1`;
 const DEFAULT_MODEL = PRIVACY_MODES.anonymous.chatModel;
-const NPX = "npx rahasya@0.1.1"; // pinned: a test keeps it in step with packages/proxy/npm/package.json
+const NPX = "npx rahasya@0.1.2"; // pinned: a test keeps it in step with packages/proxy/npm/package.json
 
 const TOOLS = {
   opencode: {
