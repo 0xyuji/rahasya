@@ -13,7 +13,6 @@ export default function Home() {
         <a href="/" className={s.lockup} aria-label={`${brand.name}: ${brand.tagline}`}>
           <Mark className={s.mark} />
           <span className={s.wordmark}>{brand.name}</span>
-          <span className={s.tagline}>{brand.tagline}</span>
         </a>
         <nav className={s.navRight}>
           <NavTools />

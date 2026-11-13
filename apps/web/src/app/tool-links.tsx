@@ -17,25 +17,3 @@ export function NavTools() {
     </>
   );
 }
-
-/** Under the prompt on the empty page: the three ways to use it, in one quiet line. */
-export function WaysRow() {
-  const w = useWallet();
-  return (
-    <p className={s.ways}>
-      <span>Chat here</span>
-      <span className={s.waysDot} aria-hidden>
-        ·
-      </span>
-      <button type="button" className={s.waysLink} onClick={() => w.setToolPanel("keys")}>
-        API keys for your tools
-      </button>
-      <span className={s.waysDot} aria-hidden>
-        ·
-      </span>
-      <button type="button" className={s.waysLink} onClick={() => w.setToolPanel("proxy")}>
-        Local proxy <span className={s.waysNote}>(most private)</span>
-      </button>
-    </p>
-  );
-}

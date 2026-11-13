@@ -1,7 +1,7 @@
 /**
  * Brand is hot-swappable: every user-visible name, tagline and URL comes from here.
  * Switch with NEXT_PUBLIC_BRAND=<key> (build-time env on Vercel / Cloudflare), no code edits.
- * Rule: the name never appears without its tagline.
+ * The tagline is used for the page title and wallet metadata, not in the header.
  */
 export interface Brand {
   key: string;

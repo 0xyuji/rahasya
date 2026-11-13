@@ -8,8 +8,8 @@ import s from "./page.module.css";
 const CHIPS = ["Answer without the disclaimers", "Argue the side nobody will", "Write a dark short story", "Roast my code"];
 
 const MODE_NOTE: Record<PrivacyMode, string> = {
-  anonymous: "no account or card; the model host can read the prompt",
-  private: "encrypted in your browser, readable only inside the attested enclave",
+  anonymous: "but the host can read the prompt",
+  private: "readable only inside the attested enclave",
 };
 
 export function Prompt({
@@ -119,7 +119,7 @@ export function Prompt({
         </div>
       </form>
       <p className={s.note}>
-        {tierLine(model.tier)} · {MODE_NOTE[mode]}
+        {tierLine(model.tier)}, {MODE_NOTE[mode]}
       </p>
       {showChips && (
         <div className={s.chips}>

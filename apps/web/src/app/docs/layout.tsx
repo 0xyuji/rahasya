@@ -19,7 +19,6 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
         <a href="/" className={page.lockup} aria-label={`${brand.name}: ${brand.tagline}`}>
           <Mark className={page.mark} />
           <span className={page.wordmark}>{brand.name}</span>
-          <span className={page.tagline}>{brand.tagline}</span>
         </a>
         <a href="/" className={s.openApp}>
           Open chat
