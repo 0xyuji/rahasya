@@ -3,12 +3,14 @@
  * because window.confirm is silently answered "no" in many mobile wallet browsers.
  */
 export interface Question {
+  id: number;
   message: string;
   confirmLabel: string;
   answer: (yes: boolean) => void;
 }
 
 let queue: Question[] = [];
+let nextId = 1;
 const listeners = new Set<() => void>();
 const changed = () => listeners.forEach((l) => l());
 
@@ -22,6 +24,7 @@ export function subscribeQuestions(listener: () => void): () => void {
 export function askUser(message: string, confirmLabel = "Continue"): Promise<boolean> {
   return new Promise((resolve) => {
     const question: Question = {
+      id: nextId++,
       message,
       confirmLabel,
       answer(yes) {

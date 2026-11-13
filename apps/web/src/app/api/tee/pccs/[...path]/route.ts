@@ -55,7 +55,9 @@ export async function GET(req: Request, ctx: { params: Promise<{ path: string[] 
   const route = Object.hasOwn(ROUTES, path) ? ROUTES[path]! : undefined;
   const q = new URL(req.url).searchParams;
   if (!route) return new Response("not found", { status: 404 });
-  if (!route.query(q)) return new Response("bad query", { status: 400 });
+  // 422, not 400: a CDN or office proxy can answer 400, but only this relay answers 422, and only for
+  // a query built from the quote. The classifier treats exactly this as "fail" (audit v4 A-14).
+  if (!route.query(q)) return new Response("bad query", { status: 422 });
 
   const key = route.upstream(q);
   let hit = cached(key);

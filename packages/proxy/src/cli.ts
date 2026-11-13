@@ -95,8 +95,22 @@ if (cmd === "start") {
   rahasya balance          show your credit`);
 }
 
+/** `--port N`, a bare number (`serve 9000`), or RAHASYA_PORT; 0 means "any free port". */
+function pickPort(): number {
+  const i = args.indexOf("--port");
+  const eq = args.find((a) => a.startsWith("--port="));
+  const raw = eq !== undefined ? eq.slice("--port=".length) : i >= 0 ? (args[i + 1] ?? "") : (args.find((a) => /^\d+$/.test(a)) ?? (process.env.RAHASYA_PORT || undefined));
+  if (raw === undefined) return 8787;
+  const n = /^\d+$/.test(raw) ? Number(raw) : NaN; // digits only: no "", "0x50" or "1e3"
+  if (!Number.isInteger(n) || n < 0 || n > 65535) {
+    console.error(`Not a port number: ${raw}. Use a number from 0 to 65535, e.g. rahasya serve --port 8788`);
+    process.exit(1);
+  }
+  return n;
+}
+
 function serve() {
-  const port = Number(args[args.indexOf("--port") + 1]) || Number(process.env.RAHASYA_PORT) || 8787;
+  const port = pickPort();
   const v = venice();
   const token = loadOrCreateToken();
   const server = createProxy({
@@ -106,11 +120,13 @@ function serve() {
     log: (l) => console.log(`${new Date().toISOString().slice(11, 19)} ${l}`),
   });
   server.on("error", (e: NodeJS.ErrnoException) => {
-    if (e.code === "EADDRINUSE") console.error(`Port ${port} is already in use by another program. Try: rahasya serve --port ${port + 1}`);
+    if (e.code === "EADDRINUSE") console.error(`Port ${port} is already in use by another program. Try: rahasya serve --port ${port >= 65535 ? 8788 : port + 1}`);
     else console.error(e.message);
     process.exit(1);
   });
   server.listen(port, "127.0.0.1", async () => {
+    const addr = server.address();
+    const bound = addr && typeof addr === "object" ? addr.port : port; // --port 0 picks a free port
     let credit = "?";
     try {
       credit = `$${(await v.balance()).balanceUsd.toFixed(4)}`;
@@ -118,7 +134,7 @@ function serve() {
     console.log(`
   Local proxy running (only reachable from this machine)
 
-    Base URL   http://127.0.0.1:${port}/v1
+    Base URL   http://127.0.0.1:${bound}/v1
     API key    ${token}
     Wallet     ${v.address}
     Credit     ${credit}

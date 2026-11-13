@@ -145,7 +145,7 @@ Errors follow the OpenAI format: `{ "error": { "message": "...", "type": "<code>
 | 413 | `too_large` | The request body exceeds 8 MB. Images are base64-encoded, so send a few at a time |
 | 429 | `daily_limit` / `total_limit` | The key has reached a spend limit |
 | 429 | `rate_limited` | More than 60 requests in one minute on this key |
-| 503 | `busy` | Too many large requests at once (one request over 1 MB per key at a time, per server instance). Retry shortly |
+| 503 | `busy` | Too many large requests at once (one large request per key at a time, per server instance: a body over 1 MB, or one sent without a declared length). Retry shortly |
 | 4xx / 5xx | `upstream_error` | Venice or the network failed. The status is Venice's when available, otherwise 502. Retry on 5xx |
 
 ## Data storage and logging
@@ -164,9 +164,11 @@ npx rahasya@0.1.2    # requires Node.js 22 or later; the first run asks for the 
 
 # or, as a single readable file:
 curl -fsSLO https://<your-deployment>/rahasya.mjs
+curl -fsSLO https://<your-deployment>/rahasya.mjs.sha256
+shasum -a 256 -c rahasya.mjs.sha256   # Linux: sha256sum -c rahasya.mjs.sha256
 node rahasya.mjs
 ```
 
 The proxy prints `http://127.0.0.1:8787/v1` and a local API key. Later runs start immediately; `node rahasya.mjs --help` lists the other commands. The site publishes the file's SHA-256 checksum at `/rahasya.mjs.sha256` and displays it in the Local proxy dialog. The file is built from `packages/proxy` in this repository (`npm run -w @pay/proxy bundle`), and you can also run the proxy from a clone with `npm run proxy`.
 
-The model ids are the same. Point your tool at `http://127.0.0.1:8787/v1` with the local key. The proxy applies none of the key limits, parameter filtering, rate limit or timeouts described above. It only maps the model id, turns off Venice's system prompt, enforces the model list and an 8 MB body cap, and, for TEE models, folds the history into the encrypted request and drops tool definitions. Its errors use the code `proxy_error`, except `insufficient_credit` (402) when the wallet is out of credit.
+The model ids are the same. Point your tool at `http://127.0.0.1:8787/v1` with the local key. The proxy applies none of the key limits, parameter filtering or rate limit described above, and its timeouts differ: a stream stops after 3 minutes of silence or 30 minutes in total, and a non-streamed request to a non-TEE model after 120 seconds (TEE requests always stream upstream, so they get the stream limits). It maps the model id, turns off Venice's system prompt, and enforces the model list and an 8 MB body cap. For TEE models it sends only the text of the messages (the history is folded into the encrypted request; tool definitions, images and every other parameter except the output limit and temperature are dropped), sends no usage chunk in streams, and reports `finish_reason: "stop"`. Its errors use the code `proxy_error`, except `insufficient_credit` (402) when the wallet is out of credit.

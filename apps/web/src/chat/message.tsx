@@ -25,12 +25,18 @@ function cost(usd?: number) {
  */
 const REPLY_ELEMENTS: Components = {
   img: ({ alt }) => <span>[image not loaded{alt ? `: ${alt}` : ""}]</span>,
-  a: ({ node: _node, children, ...props }) => (
-    // Only real links leave the page; in-page ones (footnotes) stay as they are.
-    <a {...props} {...(/^https?:/i.test(props.href ?? "") ? { target: "_blank", rel: "noopener noreferrer nofollow" } : {})}>
-      {children}
-    </a>
-  ),
+  a: ({ node: _node, children, href, ...props }) => {
+    // An emptied link (e.g. a stripped javascript: URL) would reload the page and lose the chat.
+    if (!href) return <span>{children}</span>;
+    // In-page links (footnotes) stay; everything else, including relative, protocol-relative and
+    // mailto: links, opens in a new tab so the conversation in memory survives. Audit v4 E-18.
+    if (href.startsWith("#")) return <a href={href} {...props}>{children}</a>;
+    return (
+      <a href={href} {...props} target="_blank" rel="noopener noreferrer nofollow">
+        {children}
+      </a>
+    );
+  },
 };
 
 export function Message({ m, attestation, onUnlock }: { m: Msg; attestation?: AttestationReport; onUnlock: () => void }) {
@@ -58,7 +64,7 @@ export function Message({ m, attestation, onUnlock }: { m: Msg; attestation?: At
 
       {m.text ? (
         <div className={s.md}>
-          <Markdown remarkPlugins={[remarkGfm]} components={REPLY_ELEMENTS}>
+          <Markdown remarkPlugins={[remarkGfm]} components={REPLY_ELEMENTS} remarkRehypeOptions={{ clobberPrefix: `m${m.id}-` }}>
             {m.text}
           </Markdown>
         </div>

@@ -10,7 +10,7 @@ For judges and screening agents, the fastest checks need no wallet and no money:
 |---|---|
 | Open https://rahasya.chat/docs | What it is, the API, and how the money and privacy flows work. Every page opens with a short summary |
 | `curl https://rahasya.chat/llms-full.txt` | All the docs in one plain-text file |
-| `npm install && npm test` | 186 offline tests pass |
+| `npm install && npm test` | 193 offline tests pass |
 | `npm run verify:tee` | A live TEE attestation from the model Venice reports as running on a NEAR AI enclave, checked locally |
 | `npm run quote:dry` | Live NEAR Intents dry quotes for $5 of USDC on Base from SOL, ETH and NEAR |
 
@@ -20,7 +20,7 @@ Uncensored models are useful exactly where people least want an account trail: h
 
 ## What it does
 
-1. **Connect any wallet** (EVM, Solana or NEAR). It's your login. One signature derives (the first EVM unlock asks twice, to prove the wallet signs the same way every time) a separate **inference wallet** in your browser. It's recreated from the same signature on any device and never stored or sent anywhere.
+1. **Connect any wallet** (EVM, Solana or NEAR). It's your login. One signature derives (the first EVM unlock asks twice, to prove the wallet signs the same way every time) a separate **inference wallet** in your browser. It's recreated from the same signature on any device and never sent to our server (the local proxy, if you use it, keeps it in `~/.rahasya` after you paste it in).
 2. **Add credit with any token.** NEAR Intents (1Click) swaps from 200+ tokens on 39 chains into USDC on your *own* inference wallet. Your browser then pays Venice over **x402** (USDC on Base). Website chat is non-custodial: we never hold those funds or keys. (API keys use a server-held wallet; see Security notes.)
 3. **Chat.** Choose a model and a privacy mode in the prompt bar:
    - **Anonymous**: all allowed models, including Abliterated Large V2 / Large Flash. No account, email or card: you are a wallet address, not a name (pseudonymous). The model host can read the prompt. Funding from your connected wallet links it to the inference wallet on-chain; for an unlinked deposit, use *Any token, anywhere* from a fresh or shielded source (Zcash is supported).
@@ -57,7 +57,7 @@ npm install
 
 | Do | See |
 |---|---|
-| `npm test` | **186 tests pass** offline: swap state machine (crash-resume never double-sends, dropped deposits re-signed once, refunds, kill switch, spend cap, tampered quotes refused), E2EE round trip, attestation checks against a real captured quote (replayed nonce, swapped key and debug enclave all rejected), wallet derivation golden vector, x402 top-up idempotency, API-key limits and login, privacy-mode context rules, proxy auth/origin/Host guards, the in-browser Intel quote verifier against a real captured quote (tampering and forged collateral rejected) and its worker lockdown, plus regression tests for the fixed audit findings. |
+| `npm test` | **193 tests pass** offline: swap state machine (crash-resume never double-sends, dropped deposits re-signed once, refunds, kill switch, spend cap, tampered quotes refused), E2EE round trip, attestation checks against a real captured quote (replayed nonce, swapped key and debug enclave all rejected), wallet derivation golden vector, x402 top-up idempotency, API-key limits and login, privacy-mode context rules, proxy auth/origin/Host guards, the in-browser Intel quote verifier against a real captured quote (tampering and forged collateral rejected) and its worker lockdown, plus regression tests for the fixed audit findings. |
 | `npm run verify:tee` | A live attestation, with a fresh nonce, of the model Venice reports as running on a NEAR AI enclave: 7 checks done locally (4 of them from the raw Intel TDX quote bytes), 3 reported by Venice, including Intel's signature chain. The website checks that chain itself, in the browser. Uses a throwaway in-memory wallet. |
 | `npm run quote:dry` | Live dry quotes from NEAR Intents for $5 of USDC on Base from SOL, ETH and NEAR, after a line like `229 tokens on 39 chains available through 1Click`. No funds move. |
 | `npm run audit:probe -- https://rahasya.chat` | `40/40 passed`: black-box checks against the live site (key auth, allowlist, rate limit, sessions, origin checks, a client can't set the 1Click fee). Optional. Creates throwaway users on the production site, moves no funds. Run it once: a repeat from the same IP within a minute can hit the quote rate limit. |

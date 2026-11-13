@@ -9,7 +9,7 @@ const CHIPS = ["Answer without the disclaimers", "Argue the side nobody will", "
 
 const MODE_NOTE: Record<PrivacyMode, string> = {
   anonymous: "but the host can read the prompt",
-  private: "readable only inside the attested enclave",
+  private: "to a key the attestation ties to the enclave",
 };
 
 export function Prompt({

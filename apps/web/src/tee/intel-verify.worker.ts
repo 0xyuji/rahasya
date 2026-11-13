@@ -40,7 +40,10 @@ self.onmessage = async (e: MessageEvent<{ quoteHex?: unknown }>) => {
     collateral = await qvl.getCollateral(RELAY, quote);
   } catch (err) {
     if (classifyCollateralError(msg(err)) === "fail") {
-      return reply({ status: "fail", detail: `Intel has no certificate data for the platform this quote claims (${msg(err)}).` });
+      const detail = /:\s*422\s*$/.test(msg(err).trim())
+        ? `The quote names a platform or certificate authority that can't be looked up (${msg(err)}).`
+        : `Intel has no certificate data for the platform this quote claims (${msg(err)}).`;
+      return reply({ status: "fail", detail });
     }
     return reply({ status: "unavailable", detail: `Couldn't get Intel's certificate data right now (${msg(err)}). The other checks still apply.` });
   }

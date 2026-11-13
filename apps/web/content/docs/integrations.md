@@ -202,7 +202,7 @@ curl https://<your-deployment>/api/v1/chat/completions \
 
 ## Spending limits for agents
 
-An API key can serve as an agent's spending allowance. Give each agent its own key with a **total limit** (for example $2), a **model allowlist** and an **expiry**. When the limit is reached, the API returns `429 total_limit` and the agent cannot spend further, while your other keys and the website continue to work.
+An API key can serve as an agent's spending allowance. Give each agent its own key with a **total limit** (for example $2), a **model allowlist** and an **expiry**. When the limit is reached, the API returns `429 total_limit` and the agent cannot start new requests (requests already in flight can finish slightly over the limit), while your other keys and the website continue to work.
 
 ## Using the local proxy instead of a hosted key
 

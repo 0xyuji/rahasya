@@ -154,7 +154,12 @@ export class VeniceChat {
           throw beforeRequest(new RailError("INTEL_UNAVAILABLE", "Not sent: Intel's check couldn't run. Try again in a moment."));
         }
       }
-      if (unverified(report)) this.acceptedUnverified.set(model.id, { report, at: Date.now() }); // no re-attesting every message of an outage
+      // No re-attesting every message of an outage, but only for 60 s from the attestation itself:
+      // reusing the cached report must not renew it (audit v4 A-15).
+      if (unverified(report) && this.acceptedUnverified.get(model.id)?.report !== report) {
+        const fetched = Date.parse(report.fetchedAt);
+        this.acceptedUnverified.set(model.id, { report, at: Number.isNaN(fetched) ? Date.now() : Math.min(Date.now(), fetched) });
+      }
     }
     if (!report.ok) throw beforeRequest(new Error(`attestation failed for ${model.label}; not sending`));
     req.signal?.throwIfAborted(); // stopped while attesting: the paid request never goes out

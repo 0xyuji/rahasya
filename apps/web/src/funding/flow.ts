@@ -176,7 +176,7 @@ function recordSent(a: CreditAction, depositTx: string, depositConfirmed: boolea
  * Anything with page access can edit a saved action; 1Click's copy can't be. Every field that decides
  * where money goes must be present there and equal. "missing" is a try-again, "different" a refusal.
  */
-function checkRemote(a: CreditAction, remote: QuoteResponse): "match" | "missing" | "different" {
+export function checkRemote(a: CreditAction, remote: QuoteResponse): "match" | "missing" | "different" {
   const q = remote.quote;
   const r = remote.quoteRequest;
   const pairs: Array<[unknown, unknown]> = [
@@ -193,7 +193,33 @@ function checkRemote(a: CreditAction, remote: QuoteResponse): "match" | "missing
   if (pairs.some(([, theirs]) => theirs === undefined || theirs === null)) return "missing";
   const same = (x: unknown, y: unknown) => String(x).toLowerCase() === String(y).toLowerCase();
   if (!same(a.quoteRequest.refundTo, a.source.address)) return "different"; // refunds must go back to the paying wallet
-  return pairs.every(([mine, theirs]) => same(mine, theirs)) ? "match" : "different";
+  // Amounts compare as integers and the deadline as an instant, so a formatting difference
+  // ("…:00Z" vs "…:00.000Z", "5000000" vs 5000000) isn't a mismatch. A value we can't parse is a
+  // doubt (try again), never a pass and never a permanent refusal. Audit v4 C-22.
+  const AMOUNT = new Set([1, 6]);
+  const DEADLINE = 8;
+  let unsure = false;
+  const ok = pairs.every(([mine, theirs], i) => {
+    if (same(mine, theirs)) return true;
+    if (i === DEADLINE) {
+      const x = Date.parse(String(mine));
+      const y = Date.parse(String(theirs));
+      if (Number.isNaN(x) || Number.isNaN(y)) return (unsure = true);
+      return x === y;
+    }
+    if (AMOUNT.has(i)) {
+      // A JSON number past 2^53 was already rounded by the parser: can't vouch for it.
+      if ([mine, theirs].some((v) => typeof v === "number" && !Number.isSafeInteger(v))) return (unsure = true);
+      try {
+        return BigInt(String(mine)) === BigInt(String(theirs));
+      } catch {
+        return (unsure = true);
+      }
+    }
+    return same(mine, theirs);
+  });
+  if (!ok) return "different";
+  return unsure ? "missing" : "match";
 }
 
 /** 1Click has seen something at this address. Anything but a real status string says nothing. */

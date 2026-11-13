@@ -4,7 +4,7 @@ This page describes how funds move, which wallet pays for what, how each request
 
 ## Summary
 
-- **Two wallets.** The inference wallet (website and local proxy) is derived in the browser from a single signature and is never stored. The API wallet (API keys) is held by our server, encrypted, and used for inference credit only.
+- **Two wallets.** The inference wallet (website and local proxy) is derived in the browser from a single signature. The website keeps it only in memory and never sends it to our server; the local proxy, if you use it, saves it in `~/.rahasya` after you copy it there. The API wallet (API keys) is held by our server, encrypted, and used for inference credit only.
 - **Funding.** NEAR Intents (1Click) swaps the deposit into USDC on Base, delivers it to one of those wallets, and sends any refund to an address the user controls.
 - **Payment.** x402 adds Venice credit through a gasless USDC authorization. SIWX spends that credit, with a freshly signed header on every request. No on-chain transaction is made per message.
 - **Truly private mode.** A fresh-nonce attestation is verified in the browser, including Intel's signature chain, and each message is then encrypted to the enclave's key with ECDH, HKDF-SHA256 and AES-256-GCM.
@@ -15,7 +15,7 @@ This page describes how funds move, which wallet pays for what, how each request
 | Component | Description |
 |---|---|
 | **Your wallet** | Any EVM, Solana or NEAR wallet you connect. It serves as your login and the source of funds. Rahasya never receives its key. |
-| **Inference wallet** | A Base address derived in your browser from one signature by your wallet. It pays for website chat and never leaves your browser. |
+| **Inference wallet** | A Base address derived in your browser from one signature by your wallet. It pays for website chat and is never sent to our server. To use the local proxy you copy its key to the clipboard and paste it into the proxy, which saves it in `~/.rahasya`; clear the clipboard after pasting. |
 | **API wallet** | A Base address whose key our server holds, encrypted. It pays for requests made with API keys and is used for Venice credit only. |
 | **NEAR Intents (1Click)** | Swaps a deposit in more than 200 tokens on 39 chains into USDC on Base, delivered to one of your wallets. |
 | **x402** | An HTTP payment standard. Your wallet signs a gasless USDC authorization; Venice settles it and credits that wallet. |
@@ -128,7 +128,7 @@ Code: `apps/web/src/server/` (`keys.ts`, `api-wallet.ts`, `gateway.ts`, `login.t
 | | Website, Anonymous | Website, Truly private | API key | Local proxy |
 |---|---|---|---|---|
 | **Our server** | No prompts (chat goes from the browser to Venice). 1Click quote requests, in which it sees your IP address, inference wallet and refund address together, and adds our partner key, fee and referral | Same | Prompts in transit (not stored), key hashes, spend, 1Click quote requests | Nothing |
-| **Venice** | Your IP address (the browser calls Venice directly), inference wallet address and prompts | IP address, wallet address and **ciphertext**\* | API wallet address and prompts (TEE models: ciphertext\*) | Inference wallet address and prompts (TEE models: ciphertext\*) |
+| **Venice** | Your IP address (the browser calls Venice directly), inference wallet address and prompts | IP address, wallet address and **ciphertext**\* | API wallet address and prompts (TEE models: ciphertext\*) | Your IP address, inference wallet address and prompts (TEE models: ciphertext\*) |
 | **Model host** | Prompts (anonymized tier: a third party; private tier: Venice) | Only the attested enclave | Same as Anonymous (TEE models: the enclave) | Same as the website |
 | **1Click solver** | Deposit and delivery addresses and amounts | Same | Same | Nothing |
 | **Public blockchain** | Your deposit to 1Click, the USDC delivered to your wallet, and the x402 settlement | Same | Same | Nothing |

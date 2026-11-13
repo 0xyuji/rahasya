@@ -17,20 +17,43 @@ export function DialogHead({ title, onClose }: { title: string; onClose: () => v
   );
 }
 
-export function CopyButton({ text, label = "Copy", className = s.copyBtn }: { text: string; label?: string; className?: string }) {
-  const [done, setDone] = useState(false);
+/** Copies `text`. A blocked clipboard is said out loud, never silently ignored (audit v4 D-17). */
+export function CopyButton({
+  text,
+  label = "Copy",
+  className = s.copyBtn,
+  onCopied,
+}: {
+  text: string;
+  label?: string;
+  className?: string;
+  onCopied?: () => void;
+}) {
+  const [state, setState] = useState<"idle" | "done" | "failed">("idle");
+  const show = (next: "done" | "failed", ms: number) => {
+    setState(next);
+    setTimeout(() => setState("idle"), ms);
+  };
   return (
     <button
       type="button"
       className={className}
       onClick={() =>
-        void navigator.clipboard.writeText(text).then(() => {
-          setDone(true);
-          setTimeout(() => setDone(false), 1200);
-        }, () => {})
+        void (() => {
+          // Called right in the click (Safari only allows clipboard writes inside the gesture); a
+          // missing Clipboard API (insecure origin, some webviews) throws here and is a "couldn't copy" too.
+          try {
+            return navigator.clipboard.writeText(text);
+          } catch (e) {
+            return Promise.reject(e);
+          }
+        })().then(
+          () => (show("done", 1200), onCopied?.()),
+          () => show("failed", 3000),
+        )
       }
     >
-      {done ? "Copied" : label}
+      {state === "done" ? "Copied" : state === "failed" ? "Couldn't copy: try again" : label}
     </button>
   );
 }

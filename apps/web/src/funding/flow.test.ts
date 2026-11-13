@@ -37,7 +37,7 @@ globalThis.fetch = (async (url: string, init?: RequestInit) => {
   return reply({ jsonrpc: "2.0", id: rpc.id, result: `0x${(10n ** 12n).toString(16).padStart(64, "0")}` }); // USDC balance
 }) as typeof fetch;
 
-const { actions, confirmSweep, dismiss, recoverResend, resend, runCredit, topUpOnce } = await import("./flow.ts");
+const { actions, checkRemote, confirmSweep, dismiss, recoverResend, resend, runCredit, topUpOnce } = await import("./flow.ts");
 const { anywhereActions, checkAnywhereQuote, isEvmChain, recheckClosed, refundAddressProblem, runAnywhere } = await import("./anywhere.ts");
 type CreditAction = import("./flow.ts").CreditAction;
 
@@ -514,4 +514,57 @@ test("wallet session: one unlock at a time, and a cancelled attempt frees the ne
   assert.ok(!g.isCurrent(first));
   assert.ok(!g.wasAbandoned(first), "a brief reconnect isn't the user giving up");
   assert.ok(g.begin());
+});
+
+// ---- audit v4 C-22: formatting differences in 1Click's copy are not mismatches ----
+test("C-22: the same deadline written differently, and amounts as numbers, still match", () => {
+  const a = actions.get(seed("QUOTED"))!;
+  const d = Date.parse(a.quoteRequest.deadline as string);
+  const reformatted = { ...fullCopy(), quote: { depositAddress: "dep", amountIn: 5100000 }, quoteRequest: { ...seeded, amount: 5000000, deadline: new Date(d).toISOString().replace(".000Z", "Z").replace("Z", "+00:00") } };
+  assert.equal(checkRemote(a, reformatted as never), "match");
+});
+
+test("C-22: a really different deadline or amount is still a refusal", () => {
+  const a = actions.get(seed("QUOTED"))!;
+  const later = new Date(Date.parse(a.quoteRequest.deadline as string) + 60_000).toISOString();
+  assert.equal(checkRemote(a, { ...fullCopy(), quoteRequest: { ...seeded, deadline: later } } as never), "different");
+  assert.equal(checkRemote(a, { ...fullCopy(), quote: { depositAddress: "dep", amountIn: "5100001" } } as never), "different");
+});
+
+test("C-22: a value we can't parse is a try-again, never a pass or a permanent refusal", () => {
+  const a = actions.get(seed("QUOTED"))!;
+  assert.equal(checkRemote(a, { ...fullCopy(), quoteRequest: { ...seeded, deadline: "soon" } } as never), "missing");
+  assert.equal(checkRemote(a, { ...fullCopy(), quote: { depositAddress: "dep", amountIn: "5.1" } } as never), "missing");
+});
+
+test("C-22: every compared field, changed on its own, is a refusal (guards the index constants)", () => {
+  const a = actions.get(seed("QUOTED"))!;
+  const base = fullCopy() as { quote: Record<string, unknown>; quoteRequest: Record<string, unknown> };
+  const later = new Date(Date.parse(a.quoteRequest.deadline as string) + 60_000).toISOString();
+  const mutations: Array<[string, (c: typeof base) => void]> = [
+    ["depositAddress", (c) => (c.quote.depositAddress = "other")],
+    ["amountIn", (c) => (c.quote.amountIn = "5100001")],
+    ["recipient", (c) => (c.quoteRequest.recipient = "0x0000000000000000000000000000000000000001")],
+    ["refundTo", (c) => (c.quoteRequest.refundTo = "0x0000000000000000000000000000000000000002")],
+    ["originAsset", (c) => (c.quoteRequest.originAsset = "nep141:other")],
+    ["destinationAsset", (c) => (c.quoteRequest.destinationAsset = "other")],
+    ["amount", (c) => (c.quoteRequest.amount = "5000001")],
+    ["swapType", (c) => (c.quoteRequest.swapType = "FLEX_INPUT")],
+    ["deadline", (c) => (c.quoteRequest.deadline = later)],
+  ];
+  for (const [field, mutate] of mutations) {
+    const c = { quote: { ...base.quote }, quoteRequest: { ...base.quoteRequest } };
+    mutate(c);
+    assert.equal(checkRemote(a, c as never), "different", `a changed ${field} must be refused`);
+  }
+  assert.equal(checkRemote(a, base as never), "match");
+});
+
+test("C-22: refunds must go to the paying wallet, and identical values always match", () => {
+  const a = actions.get(seed("QUOTED"))!;
+  const other = { ...a, source: { ...a.source, address: "0x0000000000000000000000000000000000000003" } };
+  assert.equal(checkRemote(other as never, fullCopy() as never), "different");
+  const odd = { ...a, quoteRequest: { ...a.quoteRequest, deadline: "soon" } };
+  assert.equal(checkRemote(odd as never, { ...fullCopy(), quoteRequest: { ...seeded, deadline: "soon" } } as never), "match", "the same text on both sides isn't a doubt");
+  assert.equal(checkRemote(a, { ...fullCopy(), quote: { depositAddress: "dep", amountIn: 2 ** 60 } } as never), "missing", "a rounded JSON number can't be vouched for");
 });

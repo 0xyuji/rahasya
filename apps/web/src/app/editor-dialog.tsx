@@ -52,6 +52,21 @@ export function EditorDialog({ open, onClose }: { open: boolean; onClose: () => 
   const ref = useRef<HTMLDialogElement>(null);
   const [tool, setTool] = useState<keyof typeof TOOLS>("opencode");
   const [sha, setSha] = useState<string | null>(null);
+  const [copiedAt, setCopiedAt] = useState<number | null>(null);
+  const [clearNote, setClearNote] = useState<string | null>(null);
+
+  // Manual and honest: a write needs focus and a click, clipboard history may already hold a copy,
+  // and a timer could wipe something else the user copied since. So no automatic clearing, and the
+  // button stays until a clear really succeeded (audit v4 D-17).
+  const clearClipboard = async () => {
+    try {
+      await navigator.clipboard.writeText("");
+      setCopiedAt(null);
+      setClearNote("Clipboard cleared. Clipboard history apps may still keep a copy.");
+    } catch {
+      setClearNote("Couldn't clear the clipboard here. Copy something else over it.");
+    }
+  };
 
   // The download's SHA-256, published next to it at build time.
   useEffect(() => {
@@ -104,10 +119,20 @@ export function EditorDialog({ open, onClose }: { open: boolean; onClose: () => 
         )
       ) : (
         <>
-          <CopyButton text={w.inferenceKey} label="Copy key" className={s.secondary} />
+          <div className={s.row}>
+            <CopyButton text={w.inferenceKey} label="Copy key" className={s.secondary} onCopied={() => (setCopiedAt(Date.now()), setClearNote(null))} />
+            {copiedAt !== null && (
+              <button type="button" className={s.secondary} onClick={() => void clearClipboard()}>
+                Clear clipboard
+              </button>
+            )}
+          </div>
           <p className={s.warn}>
-            The key is copied, never shown. Anyone with it can spend your credit, so paste it only into the proxy&apos;s prompt, never into a website or chat.
+            {copiedAt === null
+              ? "The key is copied, never shown. Anyone with it can spend your credit, so paste it only into the proxy's prompt, never into a website or chat."
+              : "Copied. Paste it into the proxy's prompt now, then clear the clipboard. Anyone with the key can spend your inference wallet's credit, and clipboard history apps may keep a copy."}
           </p>
+          {clearNote && <p className={s.fine}>{clearNote}</p>}
         </>
       )}
 

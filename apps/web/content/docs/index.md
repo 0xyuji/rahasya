@@ -7,9 +7,9 @@ Rahasya provides private chat and an OpenAI-compatible API for uncensored and ab
 - **Product.** A chat interface and an OpenAI-compatible API for uncensored and abliterated models, served by Venice. Available at https://<your-deployment>.
 - **Payment.** NEAR Intents (1Click) converts more than 200 tokens on 39 chains into USDC on the user's own Base wallet. A payment can come straight from a shielded pool, such as shielded Zcash, which keeps the payer private; the deposit amount and the USDC delivery on Base stay public. The USDC buys Venice credit over x402, and each request spends that credit with a freshly signed header. No on-chain transaction is made per message.
 - **Truly private mode.** Requests go only to models running in hardware enclaves (TEEs), including one on a NEAR AI enclave, as reported by Venice. The browser verifies the enclave's attestation, including Intel's signature chain, and then encrypts every message to the enclave.
-- **Custody.** Website chat is non-custodial. The wallet that pays for chat is derived in the browser from a single signature and never leaves it.
+- **Custody.** Website chat is non-custodial. The wallet that pays for chat is derived in the browser from a single signature and is never sent to our server. It leaves the browser only if you copy it into the local proxy on your own computer.
 - **Developer access.** API keys support daily and total spend limits, a model allowlist and an expiry. A local proxy offers the same API from the user's machine, with encryption performed locally.
-- **Verifiability.** The code is open source (MIT) with 186 offline tests. `npm run verify:tee` checks a live enclave attestation without a wallet or funds.
+- **Verifiability.** The code is open source (MIT) with 193 offline tests. `npm run verify:tee` checks a live enclave attestation without a wallet or funds.
 
 ## Get started
 
@@ -24,7 +24,7 @@ Rahasya provides private chat and an OpenAI-compatible API for uncensored and ab
 ## Quickstart: chat
 
 1. **Connect a wallet.** Select **Connect wallet** and choose an EVM, Solana or NEAR wallet. The wallet serves as your login.
-2. **Unlock.** Sign one message. Your browser derives a private **inference wallet** from the signature; this wallet pays for your chats. It never leaves your browser, and the same signature recreates it on any device.
+2. **Unlock.** Sign one message. Your browser derives a private **inference wallet** from the signature; this wallet pays for your chats. It is never sent to our server, and the same signature recreates it on any device. (The local proxy is the exception you choose: you copy the key into it, and it saves the key in `~/.rahasya` on your computer.)
 3. **Add credit.** Open the account menu and select **Add credit**. You can pay from the connected wallet, send any token from any wallet or exchange (NEAR Intents converts it), or send USDC on Base directly. The minimum is $5.
 4. **Send a message.** Choose a model and a privacy mode in the prompt bar.
 
@@ -35,7 +35,7 @@ Credit typically arrives within one to two minutes. The dialog reports each step
 | Mode | Available models | Who can read the prompt |
 |---|---|---|
 | **Anonymous** | All models | The model host. You are identified only by a wallet address: no email address or card |
-| **Truly private** | The two enclave (TEE) models | Only the attested enclave. The browser verifies the attestation, then encrypts every message to a key held inside the enclave |
+| **Truly private** | The two enclave (TEE) models | Only the attested enclave. The browser verifies the attestation, then encrypts every message to a key held inside the enclave. This assumes the enclave runs the software Venice says it does: its measurement isn't pinned yet ([details](protocol.md#5-truly-private-mode-attestation-e2ee)) |
 
 After a Truly private reply, select **Verified enclave** to review each check the browser performed, including Intel's signature chain. For the assumptions behind this mode, see [Truly private mode](protocol.md#5-truly-private-mode-attestation-e2ee).
 

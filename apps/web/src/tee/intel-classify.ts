@@ -55,5 +55,11 @@ export function checkQuoteCertificates(qvl: typeof Qvl, quoteBytes: Uint8Array):
  * which asks the user before sending. A hash test pins the library this reasoning was checked against.
  */
 export function classifyCollateralError(message: string): "unavailable" | "fail" {
-  return /^Failed to fetch TCB info:\s*404\s*$/.test(message.trim()) ? "fail" : "unavailable";
+  const m = message.trim();
+  if (/^Failed to fetch TCB info:\s*404\s*$/.test(m)) return "fail";
+  // 422 is our relay refusing a query built from the quote (bad FMSPC or CA): about the quote, not
+  // an outage. Intel's own errors reach us as 502, and a 400 can come from a CDN or proxy in front.
+  // Audit v4 A-14.
+  if (/^Failed to fetch (TCB info|PCK CRL):\s*422\s*$/.test(m)) return "fail";
+  return "unavailable";
 }
