@@ -163,7 +163,6 @@ docs/state-machines.md  every stateful flow: where its table lives, what to leav
 
 - Abliterated Large Flash / Large V2 are only available as Venice "anonymized" models (third-party host). Use Truly private mode when the content matters.
 - Intel's signature chain is verified in the browser, but the enclave's software measurement isn't pinned yet, and NVIDIA GPU evidence is reported by Venice's verifier (shown as such in the UI). Until pinning is done, Truly private mode protects you from everyone except Venice itself, where it relies on Venice running the enclave software it publishes. API keys and the local proxy don't run the in-browser Intel check.
-- One-click funding from a connected NEAR wallet isn't built yet; NEAR tokens work through *Any token, anywhere*.
 - Venice credit can't be withdrawn. Top up in small amounts.
 - On exact-output swaps the small slippage buffer (0.5%) may not be refunded. 1Click's docs say unused input is refunded; on a $5 mainnet swap we didn't see it come back.
 - TEE models can't carry tool calls through E2EE, so agentic editors should use a non-TEE model.
@@ -174,7 +173,7 @@ docs/state-machines.md  every stateful flow: where its table lives, what to leav
 
 **Libraries:** Next.js, React, viem, wagmi, Reown AppKit, `@hot-labs/near-connect`, `@solana/kit`, `@solana/web3.js`, `@solana/spl-token`, `@solana-program/system`, `@x402/core`, `@x402/evm`, `@noble/curves`, `@noble/hashes`, `@noble/ciphers`, `@phala/dcap-qvl` (Intel TDX quote verification), `@upstash/redis`, `@opennextjs/cloudflare` + wrangler, esbuild, zod, `@tanstack/react-query`, react-markdown, remark-gfm, qrcode, dotenv, TypeScript, tsx.
 
-**AI assistance:** Most of the code was written with Claude Code (Anthropic) as the coding agent, directed and reviewed by the team.
+**AI assistance:** A significant part of the code was written with Claude Code (Anthropic) as the coding agent, directed and reviewed by the team.
 
 **Baseline:** everything here was written during the hackathon window. Work started on 2026-11-07, the day the repository was created; there is no pre-hackathon code. The first commit is large (about 10,000 lines) because most of the initial code was generated in a single AI-assisted session that day.
 
