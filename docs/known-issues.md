@@ -33,7 +33,7 @@ No need to report these again. **Do** tell us if one is worse than described, an
 | K34 | npm `rahasya@0.1.1` and earlier were released from the private repo, so they have no provenance record | Fixed in 0.1.2: built by GitHub Actions from the public repo with npm provenance (trusted publishing, staged and approved by the owner) |
 | K27 | Body limit stays 8 MB. The key is checked before the body is read, and large bodies share a 16 MB per-isolate budget (503 when full). At most one large body per key (held for a whole non-streamed generation), a body-read limit of 30 s idle and 120 s total, and several copies still held per request. Workers memory wasn't measured (B-02) | The owner raised the limit after real 413s |
 
-## Fixed after the first audit (2026-11-08, report against commit 6be0d23)
+## Fixed after the first audit (2026-11-08, report against commit 8e1d47c)
 
 Each fix has a regression test; please re-check them.
 
@@ -53,7 +53,7 @@ Each fix has a regression test; please re-check them.
 | F-12: login message not domain-bound | EIP-4361 (SIWE) for EVM, the same format for Solana, NEP-413 recipient = our host | `server.test.ts` (incl. NEAR full-access check) |
 | F-13 | `GETDEL` for challenges; per-user lock on key creation; rate-limit TTL always set; `GET /api/account` is read-only (POST opens the wallet); expired keys can be renamed; x402 `payTo` pinned to Venice's address; client `appFees` stripped; body read with a streaming 4 MB cap; E2EE non-streamed requests reserve too; proxy logs no upstream error bodies; `__Host-` session cookie over HTTPS; "sign out everywhere" | `server.test.ts`, `topup.test.ts`, probe |
 
-## Fixed after the final audit (2026-11-10, report against 9e3db94), not yet re-reviewed
+## Fixed after the final audit (2026-11-10, report against 969a9d5), not yet re-reviewed
 
 C-14 (every money field must be present in 1Click's copy and equal; refunds tied to the paying wallet; the token comes from the live list), C-13 (a nonce check catches a send hidden behind a declined retry; the approve-twice variant remains), B-10, B-11, B-12 (usage checks and `x-should-retry`), B-13 (streams must finish, on every path), B-14, C-15 (balance check before the prompt; a missing field is a try-again), C-16 (compare-before-write, `navigator.locks` around top-ups), A-07 (only Intel's TCB 404 is a fail; a hash test pins the library), A-08 (consent per enclave, reset on a wallet change), A-09 (60-second cache after consent), D-09, D-10, D-11 (`account` passed to the wallet), E-10, E-11, E-15, E-16, A-11, C-17, C-18, B-16.
 
@@ -70,7 +70,7 @@ Live checks made for these: sign-in message host on `rahasya.chat` and `www`; ev
 | K31 late deposits | Re-checked for the newest few closed actions (under 7 days old) when the panel opens |
 | K32 saved quote tampering | Compared with 1Click's own copy before sending. If 1Click can't confirm the quote, nothing is sent. The any-token panel still shows the saved address without this check; a tamperer with that access could change the page too |
 
-## Fixed after audit v3 (2026-11-10, report against d23024b), not yet re-reviewed
+## Fixed after audit v3 (2026-11-10, report against 0bfcb4f), not yet re-reviewed
 
 Tests in `apps/web/src/funding/flow.test.ts`, `apps/web/src/server/audit-v3.test.ts`, `packages/rail/src/inference/chat-stop.test.ts`.
 
@@ -92,7 +92,7 @@ Details and questions are in `06-changes-since-v2.md`. Tests in `apps/web/src/fu
 | R3-08: weaker any-token quote checks than documented | `checkAnywhereQuote` |
 | R3-09: wording stronger than the code ("unlinkable", near-ai as fact, "Verified" when Intel was unavailable) | Reworded in the UI and docs |
 
-## Fixed after the fix-verification review (2026-11-08, report against c3c7624)
+## Fixed after the fix-verification review (2026-11-08, report against bd69659)
 
 The review found all eight V2 fixes holding, plus these. Tests in `apps/web/src/server/audit-v2.test.ts` and `apps/web/src/tee/intel-classify.test.ts`.
 
@@ -107,7 +107,7 @@ The review found all eight V2 fixes holding, plus these. Tests in `apps/web/src/
 | Info: other output-limit aliases | `max_output_tokens` is removed before our limit is set |
 | Info: login availability with 2-of-3 public RPCs | Unchanged in code; see K10 (configure trusted `BASE_RPC_URL` / `NEAR_RPC_URL`) |
 
-## Fixed after the second audit (2026-11-08, report against af123f8)
+## Fixed after the second audit (2026-11-08, report against f4500bb)
 
 Each fix has a regression test in `apps/web/src/server/audit-v2.test.ts`. The auditor's original proofs fail against the fixed code, as they should, except V2-02c (two colluding NEAR RPCs; see K10).
 
