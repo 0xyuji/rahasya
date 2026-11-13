@@ -23,7 +23,7 @@ import { randomActionId, sleep } from "../src/util.ts";
 import { VeniceClient, type TopUpAction } from "../src/venice/client.ts";
 
 const TOPUP_USD = 5; // Venice minimum
-const CHEAP_MODEL = "gemma-4-uncensored"; // $0.1625 / $0.50 per 1M — cheapest model in the catalog
+const CHEAP_MODEL = "gemma-4-uncensored"; // $0.1625 / $0.50 per 1M, cheapest model in the catalog
 
 const cfg = loadConfig();
 const log = createLogger(cfg.LOG_LEVEL, "e2e");
@@ -65,7 +65,7 @@ function printQuote(a: SwapAction) {
   const q = a.quote!.quote;
   console.log(`
   ┌ swap ${a.id}
-  │ send     ${q.amountInFormatted} SOL  (~$${q.amountInUsd})  — min used ${Number(q.minAmountIn) / 1e9} SOL, excess refunded
+  │ send     ${q.amountInFormatted} SOL  (~$${q.amountInUsd}), min used ${Number(q.minAmountIn) / 1e9} SOL, excess refunded
   │ receive  ${q.amountOutFormatted} USDC on Base (~$${q.amountOutUsd})  → ${a.intent.recipient}
   │ from     ${a.refundTo} (Solana; refunds go here)
   │ deposit  ${q.depositAddress}

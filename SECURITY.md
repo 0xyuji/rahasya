@@ -8,7 +8,7 @@ Include what you found, how to reproduce it (a test or script is ideal), and the
 
 ## Auditing
 
-The audit kit is in [audit-kit/](audit-kit/00-START-HERE.md): scope, assets, the invariants that must hold, threat model, known issues, a black-box probe (`npm run audit:probe`), a ready-made prompt for AI auditors, and a findings template.
+Known issues, and every finding from the AI-assisted reviews with its fix and regression test, are in [docs/known-issues.md](docs/known-issues.md). A black-box probe checks a live deployment: `npm run audit:probe -- https://rahasya.chat` (40 checks; it creates throwaway test users and moves no funds).
 
 ## Rules for testing
 

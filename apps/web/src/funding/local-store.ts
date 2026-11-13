@@ -3,7 +3,7 @@ import type { RecordStore } from "@pay/rail/browser";
 /**
  * localStorage-backed record store: lets an in-flight deposit or top-up survive
  * a reload and resume instead of starting over. Stores ids, addresses, tx
- * hashes and signed (single-use, time-limited) payment headers — never keys.
+ * hashes and signed (single-use, time-limited) payment headers, never keys.
  */
 export class LocalStore<T extends { id: string }> implements RecordStore<T> {
   private readonly prefix: string;

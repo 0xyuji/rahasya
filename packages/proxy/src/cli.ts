@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * rahasya         — first run: ask for your inference wallet key, then serve
- * rahasya login   — save your inference wallet key (hidden input) to ~/.rahasya
- * rahasya serve   — run the local OpenAI-compatible proxy on 127.0.0.1
- * rahasya token   — print (or --rotate) the local access token
- * rahasya balance — show your credit
+ * rahasya          first run: ask for your inference wallet key, then serve
+ * rahasya login    save your inference wallet key (hidden input) to ~/.rahasya
+ * rahasya serve    run the local OpenAI-compatible proxy on 127.0.0.1
+ * rahasya token    print (or --rotate) the local access token
+ * rahasya balance  show your credit
  */
 import { JsonStore, VeniceClient, type TopUpAction } from "@pay/rail";
 import { privateKeyToAccount } from "viem/accounts";

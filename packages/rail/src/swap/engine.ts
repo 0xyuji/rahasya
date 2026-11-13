@@ -142,7 +142,7 @@ export class SwapEngine {
   /**
    * Resolve assets, request a binding quote, validate it, persist it.
    * Idempotent: an existing action with this id is returned unchanged.
-   * Nothing moves yet — this is what the confirm card shows.
+   * Nothing moves yet; this is what the confirm card shows.
    */
   async quote(id: string, intent: SwapIntent): Promise<SwapAction> {
     const existing = this.o.store.get(id);
@@ -355,7 +355,7 @@ export class SwapEngine {
           say("Deposit didn't land and the quote is about to expire. No funds moved; please re-quote.", a);
           return a;
         }
-        say("Deposit didn't land (network dropped it). Re-signing — the old one can no longer execute.", a);
+        say("Deposit didn't land (network dropped it). Re-signing; the old one can no longer execute.", a);
         return this.signDeposit(a);
       }
       droppedAnswers = 0;
@@ -399,7 +399,7 @@ export class SwapEngine {
       await sleep(delay);
       delay = Math.min(Math.round(delay * 1.5), this.t.statusPollMaxMs);
     }
-    say("Still processing — taking longer than usual. I'll keep checking.", a);
+    say("Still processing, taking longer than usual. I'll keep checking.", a);
     return a;
   }
 

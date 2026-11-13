@@ -24,5 +24,5 @@ console.log(`\n${model.label}  →  ${report.ok ? "VERIFIED" : "NOT VERIFIED"}`)
 console.log(`  enclave: ${report.teeProvider} · ${report.teeHardware}${report.gpu ? ` + NVIDIA ${report.gpu}` : ""} · upstream ${report.upstreamModel}`);
 if (report.sourceRepo) console.log(`  gateway source: ${report.sourceRepo}@${report.sourceCommit}`);
 console.log(`  our nonce: ${report.nonce}\n  enclave key address: ${report.signingAddress}\n`);
-for (const c of report.checks) console.log(`  ${c.status === "pass" ? "✓" : "✗"} [${c.by === "local" ? "checked here" : "Venice says"}] ${c.name} — ${c.detail}`);
+for (const c of report.checks) console.log(`  ${c.status === "pass" ? "✓" : "✗"} [${c.by === "local" ? "checked here" : "Venice says"}] ${c.name}: ${c.detail}`);
 process.exit(report.ok ? 0 : 1);

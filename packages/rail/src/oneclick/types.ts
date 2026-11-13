@@ -60,7 +60,7 @@ export interface Quote {
 export interface QuoteResponse {
   correlationId: string;
   timestamp: string;
-  /** 1Click's signature over the quote. Keep it — it's your receipt for disputes. */
+  /** 1Click's signature over the quote. Keep it: it's your receipt for disputes. */
   signature: string;
   quoteRequest: QuoteRequest;
   quote: Quote;

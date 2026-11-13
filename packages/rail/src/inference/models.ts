@@ -1,5 +1,5 @@
 /**
- * Allowed models — team policy (2026-11-07):
+ * Allowed models: team policy (2026-11-07):
  *   - Venice only.
  *   - ONLY uncensored / abliterated models. No standard models, anywhere.
  *   - "Truly private" mode = TEE (e2ee-*) models only, always called with E2EE.

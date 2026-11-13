@@ -16,7 +16,7 @@ const report = await attest({ model: MODEL, authHeaders: auth });
 console.log(`\nAttestation for ${report.model}  →  ${report.ok ? "VERIFIED ✅" : "NOT VERIFIED ❌"}`);
 console.log(`  provider=${report.teeProvider} hardware=${report.teeHardware} gpu=${report.gpu} upstream=${report.upstreamModel}`);
 console.log(`  gateway source: ${report.sourceRepo}@${report.sourceCommit?.slice(0, 12)}`);
-for (const c of report.checks) console.log(`  ${c.status === "pass" ? "✓" : "✗"} [${c.by}] ${c.name} — ${c.detail}`);
+for (const c of report.checks) console.log(`  ${c.status === "pass" ? "✓" : "✗"} [${c.by}] ${c.name}: ${c.detail}`);
 if (!report.ok) process.exit(1);
 
 const session = newSession(report);

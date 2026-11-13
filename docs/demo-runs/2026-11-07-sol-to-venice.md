@@ -1,4 +1,4 @@
-# Mainnet run — 2026-11-07: SOL → USDC on Base (NEAR Intents 1Click) → Venice x402 top-up → chat
+# Mainnet run, 2026-11-07: SOL → USDC on Base (NEAR Intents 1Click) → Venice x402 top-up → chat
 
 Command: `node --env-file=../../.env scripts/e2e.ts quote` then `... run swap_c6289e3027d848f0` (from `packages/rail`).
 Wallets are throwaway burners generated for this test.
@@ -25,7 +25,7 @@ State machine history (persisted in `data/swaps.json`):
 ```
 
 Observations (honest notes):
-- Real latency was ~94 s vs the quoted 22 s estimate — ~68 s of it was 1Click registering the Solana deposit. UI copy should say "~1–2 min".
+- Real latency was ~94 s vs the quoted 22 s estimate; ~68 s of it was 1Click registering the Solana deposit. UI copy should say "~1–2 min".
 - The 1% slippage buffer (0.000556 SOL ≈ $0.05) had **not** been refunded at time of writing (`refundedAmount: 0`). Likely below an economic refund threshold; consider lower slippage for EXACT_OUTPUT.
 - First chat attempt returned `""`: the reasoning model spent all 20 `max_tokens` thinking. Fixed with `venice_parameters.disable_thinking`.
 - `X-Balance-Remaining` was not present on chat responses; read balance from `GET /x402/balance/{address}` (response is wrapped in `{success, data}`).

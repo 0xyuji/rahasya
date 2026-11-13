@@ -7,7 +7,7 @@ import { MODELS, costUsd, findModel, resolveModel } from "./inference/models.ts"
 import { checkMaxInput } from "./oneclick/validate.ts";
 import { canonicalEvmSignature, deriveInferenceKey } from "./wallet/derive.ts";
 
-/** Regression tests for the 2026-11-08 audit (audit-kit/03-known-issues.md, "Fixed"). */
+/** Regression tests for the 2026-11-08 audit (docs/known-issues.md, "Fixed"). */
 
 test("F-01: Object.prototype names are not models", () => {
   for (const k of ["constructor", "toString", "__proto__", "hasOwnProperty", "valueOf"]) {

@@ -5,7 +5,7 @@ Rahasya provides private chat and an OpenAI-compatible API for uncensored and ab
 ## Summary
 
 - **Product.** A chat interface and an OpenAI-compatible API for uncensored and abliterated models, served by Venice. Available at https://<your-deployment>.
-- **Payment.** NEAR Intents (1Click) converts more than 200 tokens on 39 chains into USDC on the user's own Base wallet. The USDC buys Venice credit over x402, and each request spends that credit with a freshly signed header. No on-chain transaction is made per message.
+- **Payment.** NEAR Intents (1Click) converts more than 200 tokens on 39 chains into USDC on the user's own Base wallet. A payment can come straight from a shielded pool, such as shielded Zcash, which keeps the payer private; the deposit amount and the USDC delivery on Base stay public. The USDC buys Venice credit over x402, and each request spends that credit with a freshly signed header. No on-chain transaction is made per message.
 - **Truly private mode.** Requests go only to models running in hardware enclaves (TEEs), including one on a NEAR AI enclave, as reported by Venice. The browser verifies the enclave's attestation, including Intel's signature chain, and then encrypts every message to the enclave.
 - **Custody.** Website chat is non-custodial. The wallet that pays for chat is derived in the browser from a single signature and never leaves it.
 - **Developer access.** API keys support daily and total spend limits, a model allowlist and an expiry. A local proxy offers the same API from the user's machine, with encryption performed locally.

@@ -16,7 +16,6 @@
     "dev": "npm run dev -w @pay/web",
     "build": "npm run build -w @pay/web",
     "audit:probe": "node scripts/audit/probe.ts",
-    "audit:pack": "node scripts/audit/pack.ts",
     "audit:csp": "node scripts/audit/check-worker-csp.mjs apps/web/.open-next/assets"
   },
   "engines": {

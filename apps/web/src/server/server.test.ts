@@ -142,7 +142,7 @@ test("Solana sign-in: valid signature passes once; replay and wrong wallet fail"
   await assert.rejects(verifyLogin({ challengeId: chal2.id, chain: "sol", address: other, signature }), /doesn't match/);
 });
 
-// ---------- 2026-11-08 audit regressions (audit-kit/03-known-issues.md) ----------
+// ---------- 2026-11-08 audit regressions (docs/known-issues.md) ----------
 
 test("F-01: Object.prototype model names can't skip the allowlist", async () => {
   const { token } = await createKey("evm:0xabc", { name: "restricted", models: ["venice-roleplay"] });

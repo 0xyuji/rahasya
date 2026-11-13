@@ -25,7 +25,7 @@ test("mode defaults resolve", () => {
   }
 });
 
-test("policy: no standard models — every model is uncensored/abliterated/heretic or a known uncensored family", () => {
+test("policy: no standard models: every model is uncensored/abliterated/heretic or a known uncensored family", () => {
   const allowedHint = /uncensored|abliterat|heretic|aion|role-play|qwen-3-6-plus|qwen-3-8-27b/;
   for (const m of Object.values(MODELS)) assert.match(m.id, allowedHint, `${m.id} looks like a standard model`);
 });

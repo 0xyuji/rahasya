@@ -1,6 +1,6 @@
-# Rahasya — Private AI, kept in confidence
+# Rahasya: Private AI, kept in confidence
 
-Chat with uncensored and abliterated models without an account, a card, or a subscription. You pay with whatever token you hold, from almost any chain, through **NEAR Intents**. A **Truly private** mode runs only on hardware enclaves (TEEs), encrypts every message in your browser, and shows the attestation checks it did before sending.
+Chat with uncensored and abliterated models without an account, a card, or a subscription. You pay with whatever token you hold, from almost any chain, through **NEAR Intents**, including straight from a shielded Zcash pool, so who paid stays private. A **Truly private** mode runs only on hardware enclaves (TEEs), encrypts every message in your browser, and shows the attestation checks it did before sending.
 
 **Live: https://rahasya.chat** (Cloudflare Workers). Built for NEAR HACKATHON (Nov 2026).
 
@@ -31,7 +31,7 @@ Uncensored models are useful exactly where people least want an account trail: h
 
 | Piece | Role |
 |---|---|
-| **NEAR Intents 1Click** | Every deposit: any token, any chain → USDC on the user's own Base address. Exact-output (connected wallet) and flex-input (send from anywhere) quotes, status tracking, refunds to the user's address. Quotes go through a small proxy that adds our partner key, our app fee and a referral tag; clients can't change or add any of them. The live site sets a 1% fee in server config (`ONECLICK_APP_FEE_BPS=100`; 1Click keeps half). A fresh clone defaults to no fee. |
+| **NEAR Intents 1Click** | Every deposit: any token, any chain → USDC on the user's own Base address. This is also the private-funding path: a payment can come straight from a shielded pool (the demo pays shielded ZEC from the Ironwood pool), so the payer isn't linked on-chain; the amount and the Base delivery stay public. Exact-output (connected wallet) and flex-input (send from anywhere) quotes, status tracking, refunds to the user's address. Quotes go through a small proxy that adds our partner key, our app fee and a referral tag; clients can't change or add any of them. The live site sets a 1% fee in server config (`ONECLICK_APP_FEE_BPS=100`; 1Click keeps half). A fresh clone defaults to no fee. |
 | **NEAR AI** | The default Truly private model (`e2ee-deepseek-v4-1-flash-1017-abliterated`) is reported by Venice's attestation as `tee_provider: near-ai` (Intel TDX + an NVIDIA Hopper GPU). That field isn't bound to the hardware quote, so the UI shows it as Venice's claim. |
 | **NEAR wallets** | Login + derivation via `@hot-labs/near-connect` (NEP-413 `signMessage`). |
 
@@ -42,6 +42,7 @@ Submitted to `privacy` (main track) and `security`.
 | Track | What fits | See |
 |---|---|---|
 | `privacy` (Privacy & Private AI) | Truly private mode: fresh-nonce TEE attestation checked in the browser, Intel signature chain verified in the browser, then end-to-end encryption to the enclave | `npm run verify:tee` (nonce, key binding, debug bit; it reports Venice's Intel check); the in-browser Intel check: `apps/web/src/tee/intel-verify.test.ts` (part of `npm test`) and the Verified enclave panel on the site; "Who can see what" below |
+| `privacy` (private finance) | Private funding through NEAR Intents: pay with any of 200+ tokens via 1Click, with no card, account or KYC, including straight from a shielded Zcash pool (the demo pays from the Ironwood pool). Credit lands on a separate inference wallet derived from one signature, so the payment need not touch your main wallet. Limits: the deposit amount and the USDC delivery on Base are public, and 1Click and our server see the deposit and refund addresses together | The "Any token" flow (`apps/web/src/funding/anywhere.ts`), `npm run quote:dry`, [`docs/demo-runs/`](docs/demo-runs/2026-11-07-sol-to-venice.md), the ZEC payment in the demo video; "Who can see what" below |
 | `security` (AI Security & Defense) | Hosted API keys with server-enforced daily and total limits, a model allowlist, an expiry and a rate limit. They spend from a server-held API wallet whose USDC is converted to Venice credit that can't be withdrawn. Limits are checked before each request, so in-flight requests can finish slightly over. The local proxy has no limits. There is no policy engine, scam detection or NEAR function-call key | [docs/api.md](apps/web/content/docs/api.md) "Limits", `apps/web/src/server/keys.ts` |
 
 ## Try it
@@ -133,8 +134,8 @@ Conversations live in browser memory only. Switching from Truly private back to 
 
 - **Website chat is non-custodial.** The inference key exists only in the browser's memory, or in `~/.rahasya` (mode 0600) for the local proxy; the server never sees it.
 - **API keys are server-assisted.** The server holds each user's API wallet key, AES-256-GCM sealed in Redis (`API_WALLET_ENC_KEY`, AAD bound to the user). USDC sent to the API wallet becomes Venice credit when the Add credit dialog sees it arrive, or on the next request that finds the credit empty (at least $5, up to $200 at a time). Until then it's USDC on a key our server holds. Venice credit itself can't be withdrawn. API keys are stored as SHA-256 hashes only.
-- **Audits:** several rounds of AI-assisted security review, not a human third-party audit (findings F-01..F-13, V2-01..V2-08, R-01/R-02, T-01/T-02, R3, the v3 report and a final report on 11-10). Fixed findings have regression tests where a test is possible. Findings left open or only partly closed are listed in the known issues. The record is in [`audit-kit/03-known-issues.md`](audit-kit/03-known-issues.md).
-- **Audit kit:** [`audit-kit/`](audit-kit/00-START-HERE.md) has the invariants, threat model, known issues, ready-made auditor prompts and a black-box probe (`npm run audit:probe -- https://rahasya.chat` runs 40 checks against a deployment; it creates throwaway test users and moves no funds). `npm run audit:pack` builds a shareable zip.
+- **Audits:** several rounds of AI-assisted security review, not a human third-party audit (findings F-01..F-13, V2-01..V2-08, R-01/R-02, T-01/T-02, R3, the v3 report and a final report on 11-10). Fixed findings have regression tests where a test is possible. Findings left open or only partly closed are listed in the known issues. The record is in [`docs/known-issues.md`](docs/known-issues.md).
+- **Black-box probe:** `npm run audit:probe -- https://rahasya.chat` runs 40 checks against a deployment (key auth, allowlist, rate limit, sessions, origin checks, fee tampering); it creates throwaway test users and moves no funds.
 - **Headers:** anti-framing (`frame-ancestors 'none'` + `X-Frame-Options: DENY`), so wallet prompts can't be clickjacked; `Referrer-Policy: no-referrer`; `nosniff`; HSTS; a locked-down `Permissions-Policy`. The pages have no strict `default-src` CSP because the WalletConnect modal loads from many origins, but the Intel-verifier worker gets its own (`script-src`/`connect-src 'self'`, `apps/web/public/_headers`), and cookie-authenticated routes only answer the site's own `fetch()`.
 - **Local proxy:** binds to 127.0.0.1, requires a local bearer token (constant-time compare), refuses any request with a browser `Origin`, and never logs prompts.
 - **`npm audit`** reports upstream advisories, all inside third-party libraries (none in our code):
@@ -152,10 +153,10 @@ packages/rail     1Click client, asset resolver, swap state machine, Base/Solana
                   Venice SIWX + x402 client, TEE attestation + E2EE, model catalog, wallet derivation
 packages/proxy    local OpenAI-compatible proxy (one-file bundle: rahasya.chat/rahasya.mjs)
 apps/web          Next.js site + API (wallet connect, add credit, chat, API keys, docs), on Cloudflare Workers
-scripts/audit     black-box probe and audit-kit packer
+scripts/audit     black-box probe of a live deployment, CSP check for the built worker
+docs/known-issues.md  open and partly fixed issues, with every audit finding and its fix
 docs/demo-runs    recorded mainnet runs
 docs/state-machines.md  every stateful flow: where its table lives, what to leave alone, DOM state attributes
-audit-kit         security audit brief, auditor prompts, findings template
 ```
 
 ## Known limitations

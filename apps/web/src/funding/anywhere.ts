@@ -21,7 +21,7 @@ export { ANYWHERE_FINAL, type AnywhereState };
 /**
  * "Send from anywhere": deposit any 1Click-supported token from any source
  * (another wallet, an exchange, a shielded Zcash wallet…). FLEX_INPUT so
- * whatever arrives above the minimum is converted — exchange withdrawals
+ * whatever arrives above the minimum is converted; exchange withdrawals
  * that arrive slightly short are not refunded hours later.
  */
 const BASE_USDC_ASSET = "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near";

@@ -130,11 +130,11 @@ Code: `apps/web/src/server/` (`keys.ts`, `api-wallet.ts`, `gateway.ts`, `login.t
 | **Our server** | No prompts (chat goes from the browser to Venice). 1Click quote requests, in which it sees your IP address, inference wallet and refund address together, and adds our partner key, fee and referral | Same | Prompts in transit (not stored), key hashes, spend, 1Click quote requests | Nothing |
 | **Venice** | Your IP address (the browser calls Venice directly), inference wallet address and prompts | IP address, wallet address and **ciphertext**\* | API wallet address and prompts (TEE models: ciphertext\*) | Inference wallet address and prompts (TEE models: ciphertext\*) |
 | **Model host** | Prompts (anonymized tier: a third party; private tier: Venice) | Only the attested enclave | Same as Anonymous (TEE models: the enclave) | Same as the website |
-| **1Click solver** | Deposit and delivery addresses and amounts | Same | Same | — |
-| **Public blockchain** | Your deposit to 1Click, the USDC delivered to your wallet, and the x402 settlement | Same | Same | — |
-| **Base RPC provider** | Your IP address and inference wallet address (balance reads about every 30 seconds while unlocked) | Same | — | — |
-| **Reown (wallet modal)** | Your IP address when the page loads its remote configuration; connection metadata when using WalletConnect QR or mobile wallets | Same | Same (sign-in) | — |
-| **Cloudflare, Upstash** | Cloudflare hosts the site and terminates TLS, so it can see what our server sees, and keeps request logs (metadata, not bodies). Upstash hosts the database | Same | Same | — |
+| **1Click solver** | Deposit and delivery addresses and amounts | Same | Same | Nothing |
+| **Public blockchain** | Your deposit to 1Click, the USDC delivered to your wallet, and the x402 settlement | Same | Same | Nothing |
+| **Base RPC provider** | Your IP address and inference wallet address (balance reads about every 30 seconds while unlocked) | Same | Nothing | Nothing |
+| **Reown (wallet modal)** | Your IP address when the page loads its remote configuration; connection metadata when using WalletConnect QR or mobile wallets | Same | Same (sign-in) | Nothing |
+| **Cloudflare, Upstash** | Cloudflare hosts the site and terminates TLS, so it can see what our server sees, and keeps request logs (metadata, not bodies). Upstash hosts the database | Same | Same | Nothing |
 
 \* The enclave is verified as genuine Intel hardware (in your browser, on the website). Which software runs inside it is not yet pinned, so against Venice itself this relies on Venice running the software it publishes. See "What this proves, and what it does not" in section 5.
 
