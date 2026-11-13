@@ -92,7 +92,7 @@ For the two TEE models, the browser performs the following steps.
 2. **Verify Intel's signature in the browser.** The quote's ECDSA signature, the quoting enclave's report, Intel's certificate chain up to Intel's root (built into the verifier), the revocation lists and the platform's TCB level are all checked with [`@phala/dcap-qvl`](https://github.com/Phala-Network/dcap-qvl) at a pinned version. The verified report must be the same quote checked in step 1 (same REPORTDATA). The verifier is isolated as follows:
    - It runs in a disposable Web Worker that first removes storage (IndexedDB, caches, file system) and network access (XHR, WebSocket and others), and replaces `fetch` with a version that can only GET our collateral relay, without cookies. The worker cannot access the page's memory, where your inference key resides.
    - Intel's public collateral (CRLs, TCB info, QE identity) is fetched through our relay at `/api/tee/pccs/…` and cached for one hour, so your browser does not contact a third party. All collateral is signed by Intel; the relay can withhold it but cannot forge it.
-   - A failed signature check blocks sending. If the collateral cannot be fetched, the check is reported as "couldn't check", and the other checks still apply.
+   - A failed signature check blocks sending. If the collateral cannot be fetched, the browser retries once, then asks you before sending; the other checks still apply.
 
    The GPU evidence is verified by Venice's verifier and labelled as such.
 

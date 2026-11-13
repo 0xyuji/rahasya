@@ -10,7 +10,7 @@
   // Run near our Upstash database instead of near each visitor (most requests make several Redis calls).
   "placement": { "mode": "smart" },
   "observability": { "enabled": true },
-  "workers_dev": true,
+  "workers_dev": false, // only rahasya.chat; no second hostname (K18)
   "routes": [
     { "pattern": "rahasya.chat", "custom_domain": true },
     { "pattern": "www.rahasya.chat", "custom_domain": true }

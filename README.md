@@ -59,7 +59,7 @@ npm install
 | `npm test` | **186 tests pass** offline: swap state machine (crash-resume never double-sends, dropped deposits re-signed once, refunds, kill switch, spend cap, tampered quotes refused), E2EE round trip, attestation checks against a real captured quote (replayed nonce, swapped key and debug enclave all rejected), wallet derivation golden vector, x402 top-up idempotency, API-key limits and login, privacy-mode context rules, proxy auth/origin/Host guards, the in-browser Intel quote verifier against a real captured quote (tampering and forged collateral rejected) and its worker lockdown, plus regression tests for the fixed audit findings. |
 | `npm run verify:tee` | A live attestation, with a fresh nonce, of the model Venice reports as running on a NEAR AI enclave: 7 checks done locally (4 of them from the raw Intel TDX quote bytes), 3 reported by Venice, including Intel's signature chain. The website checks that chain itself, in the browser. Uses a throwaway in-memory wallet. |
 | `npm run quote:dry` | Live dry quotes from NEAR Intents for $5 of USDC on Base from SOL, ETH and NEAR, after a line like `229 tokens on 39 chains available through 1Click`. No funds move. |
-| `npm run audit:probe -- https://rahasya.chat` | `40/40 passed`: black-box checks against the live site (key auth, allowlist, rate limit, sessions, origin checks, a client can't set the 1Click fee). Creates throwaway users, moves no funds. Run it once: a repeat from the same IP within a minute can hit the quote rate limit. |
+| `npm run audit:probe -- https://rahasya.chat` | `40/40 passed`: black-box checks against the live site (key auth, allowlist, rate limit, sessions, origin checks, a client can't set the 1Click fee). Optional. Creates throwaway users on the production site, moves no funds. Run it once: a repeat from the same IP within a minute can hit the quote rate limit. |
 
 ### 2. The website (your own wallet, real money, minimum $5)
 
@@ -96,7 +96,7 @@ To reproduce it with your own throwaway wallets: `cp .env.example .env`, set `BA
 
 ## Docs
 
-On the site at **`/docs`** (rendered from `apps/web/content/docs/`):
+On the site at **`/docs`** (rendered from `apps/web/content/docs/`; in the Markdown sources, `https://<your-deployment>` stands for `https://rahasya.chat`):
 
 - [docs/agents.md](apps/web/content/docs/agents.md): one file to give a coding agent (also served at `/agents.md`)
 - [docs/api.md](apps/web/content/docs/api.md): API reference (keys, endpoints, models, limits, errors)

@@ -73,7 +73,7 @@ If no key is available, ask the person to complete these steps. They require a w
 
 ## Request rules (hosted API)
 
-The local proxy forwards requests unchanged, without these limits or filters. All of its errors use the code `proxy_error`.
+The proxy applies none of the key limits, parameter filtering, rate limit or timeouts listed here. It only maps the model id, turns off Venice's system prompt, enforces the model list and an 8 MB body cap, and, for TEE models, folds the history into the encrypted request and drops tool definitions. Its errors use the code `proxy_error`, except `insufficient_credit` (402) when the wallet is out of credit.
 
 - A request ends after 3 minutes without data from Venice, or after 30 minutes in total, whether or not it streams. Streaming reports progress sooner. After a timeout or a late failure, the key keeps its reservation, so retry with care.
 - `max_tokens` or `max_completion_tokens` must be between 1 and 32768. **Always set one.** Without it, the key is charged a reservation for the model's maximum output until actual usage is known, which can exhaust a small limit.
