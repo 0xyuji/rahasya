@@ -28,3 +28,8 @@ apps/web/public/llms-full.txt
 # npm package contents (copied by the publish workflow)
 packages/proxy/npm/rahasya.mjs
 packages/proxy/npm/LICENSE
+rahasya_content/
+
+# Private working notes (kept locally, never published)
+PROGRESS.md
+HACKATHON.md
