@@ -149,7 +149,7 @@ export function CipherField() {
             if (!mask.lit(c, r)) continue;
             const hx = c * FINE_W + FINE_W / 2;
             const hy = r * FINE_H + FINE_H / 2;
-            // His body drops to a trace behind the chips; the hood is level with no text but the prompt, which has its own background.
+            // His body drops to a trace below the prompt; the hood is level with no text but the prompt, which has its own background.
             const fade = hy < mask.shoulders ? 1 : 0.22 + 0.78 * Math.min(1, Math.max(0, (hx - edge) / 40));
             next.push(cell(hx, hy, rand(HEAVY), true, fade));
           }

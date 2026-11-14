@@ -3,7 +3,7 @@ import s from "./page.module.css";
 import { brand } from "../brand";
 import { ConnectButton } from "./connect-button";
 import { NavTools } from "./tool-links";
-import { Mark } from "./mark";
+import { HeaderMark } from "./header-mark";
 
 export default function Home() {
   return (
@@ -11,7 +11,7 @@ export default function Home() {
       <div className="backdrop" aria-hidden />
       <header className={s.top}>
         <a href="/" className={s.lockup} aria-label={`${brand.name}: ${brand.tagline}`}>
-          <Mark className={s.mark} />
+          <HeaderMark className={s.mark} />
           <span className={s.wordmark}>{brand.name}</span>
         </a>
         <nav className={s.navRight}>
@@ -24,8 +24,6 @@ export default function Home() {
       </header>
 
       <ChatApp />
-
-      <footer className={s.foot}>Website chat is non-custodial: your wallet, your keys, your credit.</footer>
     </>
   );
 }

@@ -13,12 +13,18 @@
   gap: 12px;
   text-decoration: none;
 }
+/* The hood stands on the name's baseline and rises a little above its capitals. The drawing has
+   empty space around the hood (16% above and below, 8% each side). The box's bottom edge is what
+   lines up with the baseline, so the box is moved down by that empty 16% to put the hood's own
+   base there; the negative margins stop the empty space from taking room. */
 .mark {
   flex: none;
-  align-self: center;
-  width: 26px;
-  height: 26px;
-  margin-right: -4px;
+  align-self: baseline;
+  position: relative;
+  top: 5px;
+  width: 32px;
+  height: 32px;
+  margin: -5px -7px -5px -2.6px;
   color: var(--paper);
 }
 .wordmark {
@@ -127,6 +133,10 @@
 .input::placeholder {
   color: var(--paper-faint);
 }
+/* An example question typing itself reads as text being written, not as a hint. */
+.inputTyping::placeholder {
+  color: var(--paper-dim);
+}
 
 .pillRow {
   display: flex;
@@ -185,27 +195,6 @@
   font-size: 12.5px;
   color: var(--paper-faint);
   min-height: 19px;
-}
-
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 8px;
-  margin-top: 22px;
-}
-.chip {
-  border: 1px solid var(--line);
-  border-radius: var(--radius-pill);
-  background: transparent;
-  padding: 7px 14px;
-  font-size: 13.5px;
-  color: var(--paper-dim);
-  cursor: pointer;
-}
-.chip:hover {
-  color: var(--paper);
-  border-color: var(--line-strong);
 }
 
 .foot {
@@ -279,4 +268,12 @@
 }
 .waysNote {
   color: var(--paper-faint);
+}
+
+/* ---- landing: the header stays pinned while the page scrolls (not during a chat) ---- */
+:global(body:not([data-chat="on"])) .top {
+  position: sticky;
+  top: 0;
+  background: linear-gradient(to bottom, rgba(12, 13, 15, 0.92), rgba(12, 13, 15, 0.7));
+  backdrop-filter: blur(10px);
 }

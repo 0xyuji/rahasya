@@ -1,0 +1,147 @@
+/* The mascot: the mark with eyes that light up inside the keyhole. All lengths in the animations
+   are in the drawing's own 512-unit space, so they scale with the mark. */
+
+.mascot {
+  overflow: visible;
+}
+.lit {
+  opacity: 0;
+  transition: opacity 260ms ease;
+}
+.glow {
+  fill: rgba(200, 164, 106, 0.3);
+}
+.eyes {
+  fill: #ecd09a;
+  transform-box: view-box;
+  transform-origin: 256px 244px;
+}
+.halo {
+  fill: rgba(200, 164, 106, 0.4);
+}
+
+/* awake: eyes on, blinking now and then */
+.awake .lit,
+.wakeOnHover:hover .lit,
+a:hover .wakeOnHover .lit,
+a:focus-visible .wakeOnHover .lit {
+  opacity: 1;
+}
+.awake .eyes {
+  animation: blink 5.5s ease-in-out infinite;
+}
+@keyframes blink {
+  0%,
+  93%,
+  100% {
+    transform: scaleY(1);
+  }
+  96% {
+    transform: scaleY(0.08);
+  }
+}
+
+/* thinking: the lit face breathes */
+.thinking .lit {
+  animation: think 1.3s ease-in-out infinite;
+}
+@keyframes think {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+/* unlocking: the key slides into the keyhole, turns, the eyes flare, the key leaves */
+.key {
+  fill: var(--brass);
+  stroke: var(--brass);
+  transform-box: view-box;
+  transform-origin: 256px 288px;
+  animation: keyTurn 2.5s cubic-bezier(0.3, 0.7, 0.2, 1) both;
+}
+.key rect {
+  stroke: none;
+}
+@keyframes keyTurn {
+  0% {
+    transform: translateX(240px);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  36%,
+  44% {
+    transform: translateX(0) scaleY(1);
+  }
+  52% {
+    transform: translateX(0) scaleY(0.12);
+  }
+  60% {
+    transform: translateX(0) scaleY(1);
+  }
+  80% {
+    transform: translateX(0) scaleY(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(170px) scaleY(1);
+    opacity: 0;
+  }
+}
+.unlocking .lit {
+  transform-box: view-box;
+  transform-origin: 256px 250px;
+  animation: wake 2.5s ease-out both;
+}
+@keyframes wake {
+  0%,
+  57% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  66% {
+    opacity: 1;
+    transform: scale(1.18);
+  }
+  76%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.unlocking .hood {
+  transform-box: view-box;
+  transform-origin: 256px 430px;
+  animation: nod 2.5s ease-out both;
+}
+@keyframes nod {
+  0%,
+  58%,
+  74%,
+  100% {
+    transform: scale(1);
+  }
+  64% {
+    transform: scale(1.035);
+  }
+}
+
+/* ---- the solid mascot in glyphs (MascotGlyph) ---- */
+.glyphMascot {
+  display: block;
+  width: min(680px, 100%);
+  aspect-ratio: 4 / 3;
+}
+@media (max-width: 600px) {
+  .glyphMascot {
+    aspect-ratio: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .awake .eyes,
+  .thinking .lit {
+    animation: none;
+  }
+}

@@ -1,0 +1,319 @@
+/* The landing page under the hero: one heading, five tiles with glyph pictures, a closing line and
+   a footer. The tiles scroll over the fixed cipher field on a sheet of ink; the sheet lifts again
+   before the closing line. */
+
+.page {
+  position: relative;
+  z-index: 1;
+}
+.sheet {
+  position: relative;
+  background: rgba(12, 13, 15, 0.93);
+}
+.sheet::before,
+.sheet::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 72px;
+  pointer-events: none;
+}
+.sheet::before {
+  top: -72px;
+  background: linear-gradient(to bottom, rgba(12, 13, 15, 0), rgba(12, 13, 15, 0.93));
+}
+.sheet::after {
+  bottom: -72px;
+  background: linear-gradient(to top, rgba(12, 13, 15, 0), rgba(12, 13, 15, 0.93));
+}
+.inner {
+  width: min(1160px, 100%);
+  margin: 0 auto;
+  padding: 72px 28px 96px;
+}
+
+.h2 {
+  margin: 0 0 48px;
+  text-align: center;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: clamp(32px, 4.4vw, 52px);
+  line-height: 1.06;
+  letter-spacing: -0.022em;
+}
+.h2 em,
+.closingLine em {
+  font-style: italic;
+  color: var(--paper-dim);
+}
+
+/* ---- tiles: one large, four small ---- */
+.bento {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+.tile {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: rgba(19, 20, 23, 0.92);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  overflow: hidden;
+  transition: border-color 200ms ease, background 200ms ease;
+}
+.tile:hover {
+  border-color: var(--line-strong);
+  background: rgba(23, 24, 28, 0.96);
+}
+.tileBig {
+  grid-column: span 2;
+  grid-row: span 2;
+}
+.art {
+  display: block;
+  width: 100%;
+  height: 190px;
+  flex: none;
+  opacity: 0.86;
+  transition: opacity 200ms ease;
+}
+.tileBig .art {
+  flex: 1 1 280px;
+  min-height: 280px;
+}
+.tile:hover .art {
+  opacity: 1;
+}
+.tileText {
+  flex: 1;
+  padding: 4px 22px 22px;
+}
+.tileBig .tileText {
+  flex: none;
+}
+.tileBig .tileText {
+  padding: 4px 28px 28px;
+}
+.h3 {
+  margin: 0 0 6px;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 23px;
+  line-height: 1.15;
+  letter-spacing: -0.012em;
+}
+.tileBig .h3 {
+  font-size: 34px;
+  margin-bottom: 10px;
+}
+.line {
+  margin: 0;
+  color: var(--paper-dim);
+  font-size: 14.5px;
+  line-height: 1.5;
+}
+.tileBig .line {
+  max-width: 440px;
+  font-size: 16.5px;
+}
+.tileActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin-top: 14px;
+}
+.tag {
+  font-size: 12.5px;
+  color: var(--paper-dim);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  padding: 4px 11px;
+}
+.textLink {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-size: 14px;
+  color: var(--paper);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 4px;
+  transition: text-decoration-color 120ms ease;
+}
+.textLink:hover {
+  text-decoration-color: var(--paper);
+}
+.honest {
+  margin: 32px 0 0;
+  text-align: center;
+  font-size: 14.5px;
+  color: var(--paper-faint);
+}
+
+/* ---- closing line and footer ---- */
+.closing {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 28px;
+  min-height: calc(100vh - 150px);
+  padding: 96px 20px;
+  text-align: center;
+}
+/* Wider than it is tall by two to one: the figure keeps its size and stands in the middle of the
+   page, with the same room on either side, and the key has the left half to come in from. */
+.closing .closingMascot {
+  width: min(1040px, calc(100vw - 40px));
+  aspect-ratio: 1040 / 510;
+  margin: -70px 0 -28px;
+}
+@media (max-width: 700px) {
+  .closing .closingMascot {
+    aspect-ratio: 1;
+  }
+}
+.closingLine {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(34px, 5vw, 58px);
+  line-height: 1.05;
+  letter-spacing: -0.025em;
+}
+/* Two lines, so the text stays inside the quiet middle of the cipher field. */
+.closingLine em {
+  display: block;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 12px 18px;
+}
+.primary {
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--paper);
+  border-radius: 10px;
+  padding: 10px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+.primary:hover {
+  background: #fff;
+}
+.footer {
+  background: rgba(12, 13, 15, 0.93);
+  border-top: 1px solid var(--line);
+}
+.footInner {
+  display: grid;
+  gap: 14px;
+  width: min(1160px, 100%);
+  margin: 0 auto;
+  padding: 24px 28px 28px;
+}
+.footTop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 24px;
+}
+.footLockup {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 21px;
+}
+/* Same as the header: the hood's base sits on the name's baseline. */
+.footMark {
+  position: relative;
+  top: 4.1px;
+  width: 26px;
+  height: 26px;
+  margin: -4.1px -3.5px -4.1px -2.1px;
+  color: var(--paper);
+}
+.footLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+}
+.footLinks a {
+  color: var(--paper-dim);
+  text-decoration: none;
+  font-size: 14px;
+}
+.footLinks a:hover {
+  color: var(--paper);
+}
+.footNote {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--paper-faint);
+}
+
+.primary:focus-visible,
+.textLink:focus-visible,
+.footLinks a:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+
+/* ---- narrower screens ---- */
+@media (max-width: 980px) {
+  .bento {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .tileBig {
+    grid-row: auto;
+  }
+  .tileBig .art {
+    height: 240px;
+    flex-basis: 240px;
+  }
+}
+@media (max-width: 600px) {
+  .inner {
+    padding: 48px 16px 72px;
+  }
+  .h2 {
+    margin-bottom: 32px;
+  }
+  .bento {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .tileBig {
+    grid-column: auto;
+  }
+  .tileBig .art {
+    height: 200px;
+    flex-basis: 200px;
+  }
+  .tileBig .h3 {
+    font-size: 28px;
+  }
+  .tileText,
+  .tileBig .tileText {
+    padding: 2px 20px 22px;
+  }
+  .closing {
+    min-height: 78vh;
+    padding: 72px 16px;
+  }
+  .footInner {
+    padding: 22px 16px 24px;
+  }
+}

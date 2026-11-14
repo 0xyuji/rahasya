@@ -1,5 +1,6 @@
 "use client";
 
+import { MarkGlyph } from "../app/mark-glyph";
 import { INTEL_CHECK, MODELS, type AttestationCheck, type AttestationReport } from "@pay/rail/browser";
 import { useState } from "react";
 import Markdown, { type Components } from "react-markdown";
@@ -55,26 +56,26 @@ export function Message({ m, attestation, onUnlock }: { m: Msg; attestation?: At
   const model = MODELS[m.modelKey];
   return (
     <div className={s.assistant} data-status={m.status}>
+      {/* The key turns for as long as there is no answer yet: while waiting, and while the model thinks. */}
+      {m.status === "streaming" && !m.text && (
+        <div className={s.pending} aria-label={m.reasoning ? "Thinking" : "Waiting for the reply"}>
+          <MarkGlyph className={s.pendingGlyph} waiting="key" fine />
+        </div>
+      )}
       {m.reasoning && (
         <button className={s.thinkingToggle} onClick={() => setShowThinking((v) => !v)} aria-expanded={showThinking}>
-          {m.status === "streaming" && !m.text ? "Thinking…" : showThinking ? "Hide thinking" : "Show thinking"}
+          {showThinking ? "Hide thinking" : "Show thinking"}
         </button>
       )}
       {showThinking && m.reasoning && <div className={s.thinking}>{m.reasoning}</div>}
 
-      {m.text ? (
+      {m.text && (
         <div className={s.md}>
           <Markdown remarkPlugins={[remarkGfm]} components={REPLY_ELEMENTS} remarkRehypeOptions={{ clobberPrefix: `m${m.id}-` }}>
             {m.text}
           </Markdown>
         </div>
-      ) : m.status === "streaming" && !m.reasoning ? (
-        <div className={s.pending} aria-label="Waiting for the reply">
-          <span />
-          <span />
-          <span />
-        </div>
-      ) : null}
+      )}
 
       {m.status === "error" && (
         <div className={s.error}>

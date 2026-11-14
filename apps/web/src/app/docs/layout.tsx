@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { brand } from "../../brand";
-import { Mark } from "../mark";
+import { Mascot } from "../mascot";
 import page from "../page.module.css";
 import { PAGES } from "./content";
 import { DocsNav } from "./nav";
@@ -17,7 +17,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
       <div className="backdrop" aria-hidden />
       <header className={page.top}>
         <a href="/" className={page.lockup} aria-label={`${brand.name}: ${brand.tagline}`}>
-          <Mark className={page.mark} />
+          <Mascot className={page.mark} wakeOnHover />
           <span className={page.wordmark}>{brand.name}</span>
         </a>
         <a href="/" className={s.openApp}>
