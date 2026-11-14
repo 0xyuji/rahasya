@@ -177,6 +177,8 @@ docs/state-machines.md  every stateful flow: where its table lives, what to leav
 
 **Baseline:** everything here was written during the hackathon window. Work started on 2026-11-07, the day the repository was created; there is no pre-hackathon code. The first commit is large (about 10,000 lines) because most of the initial code was generated in a single AI-assisted session that day.
 
+**Second entry by the same author:** the author also entered **Exhibit A** in the `thesis` track: https://0xyuji.github.io/exhibit-a/, https://github.com/0xyuji/exhibit-a. The two projects are independent: no shared code, data or purpose.
+
 ## License
 
 MIT, see `LICENSE`.
