@@ -73,8 +73,6 @@ If no key is available, ask the person to complete these steps. They require a w
 
 ## Request rules (hosted API)
 
-The proxy applies none of the key limits, parameter filtering or rate limit listed here, and its timeouts differ: a stream stops after 3 minutes of silence or 30 minutes in total, and a non-streamed request to a non-TEE model after 120 seconds (TEE requests always stream upstream, so they get the stream limits). It maps the model id, turns off Venice's system prompt, and enforces the model list and an 8 MB body cap. For TEE models it sends only the text of the messages (the history is folded into the encrypted request; tool definitions, images and every other parameter except the output limit and temperature are dropped), sends no usage chunk in streams, and reports `finish_reason: "stop"`. Its errors use the code `proxy_error`, except `insufficient_credit` (402) when the wallet is out of credit.
-
 - A request ends after 3 minutes without data from Venice, or after 30 minutes in total, whether or not it streams. Streaming reports progress sooner. After a timeout or a late failure, the key keeps its reservation, so retry with care.
 - `max_tokens` or `max_completion_tokens` must be between 1 and 32768. **Always set one.** Without it, the key is charged a reservation for the model's maximum output until actual usage is known, which can exhaust a small limit.
 - `n` must be 1. The request body limit is 8 MB, and images are sent base64-encoded.
@@ -108,6 +106,8 @@ npx rahasya@0.1.2 token   # prints the local API key
 ```
 
 The inference key can spend the user's credit and move any USDC held by that wallet. Never ask for it or read it. The proxy answers only on localhost and refuses requests that carry a browser `Origin` header, so call it from a CLI, an SDK or an editor rather than a web page.
+
+The proxy applies none of the key limits, parameter filtering or rate limit listed above, and its timeouts differ: a stream stops after 3 minutes of silence or 30 minutes in total, and a non-streamed request to a non-TEE model after 120 seconds (TEE requests always stream upstream, so they get the stream limits). It maps the model id, turns off Venice's system prompt, and enforces the model list and an 8 MB body cap. For TEE models it sends only the text of the messages (the history is folded into the encrypted request; tool definitions, images and every other parameter except the output limit and temperature are dropped), sends no usage chunk in streams, and reports `finish_reason: "stop"`. Its errors use the code `proxy_error`, except `insufficient_credit` (402) when the wallet is out of credit.
 
 ## Related pages
 

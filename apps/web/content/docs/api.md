@@ -2,14 +2,6 @@
 
 The Rahasya API is compatible with the OpenAI Chat Completions API. Existing OpenAI code works after you change the base URL, the API key and the model id. Usage is paid from prepaid credit, which you can add with any token on almost any chain. No account or card is required.
 
-## Summary
-
-- Base URL `https://<your-deployment>/api/v1`, authenticated with `Authorization: Bearer nsk_…`. Two endpoints: `GET /models` and `POST /chat/completions`.
-- 11 models. Nine support tools; the two TEE models are end-to-end encrypted and do not support tools.
-- Prices are Venice's published prices, read live, with no markup. Credit is prepaid and is added on the website by a person.
-- Each key can have a daily and a total limit in US dollars, a model allowlist and an expiry. The rate limit is fixed at 60 requests per minute per key.
-- Always set `max_tokens` (between 1 and 32768).
-
 ```
 Base URL   https://<your-deployment>/api/v1        (local development: http://localhost:3000/api/v1)
 Auth       Authorization: Bearer nsk_…
@@ -65,8 +57,6 @@ curl $BASE/chat/completions \
 - **Output limit**: `max_tokens` or `max_completion_tokens`, between 1 and 32768. If neither is set, the model's maximum applies, and the key is charged a reservation for that maximum until actual usage is known. `n` must be 1.
 - **Timeouts**: a request ends after 3 minutes without data from Venice, or after 30 minutes in total, whether or not it streams. Use `stream: true` for long replies: if a client disconnects from a silent non-streamed request, the key can remain charged the full reservation. When a request times out or fails late, the key keeps its reservation, because Venice may already have generated and billed the reply. A 500, 502 or 503 that occurs quickly is refunded. When the key has been charged, the response includes `x-should-retry: false`.
 
-**Migrating from OpenAI:** change the base URL, the API key and the model id. The request and response formats are unchanged, within the limits described on this page.
-
 ### Supported features
 
 | Feature | Support |
@@ -95,7 +85,7 @@ curl $BASE/chat/completions \
 | `deepseek-abliterated-tee` | DeepSeek V4.1 Flash 1017 Abliterated | DeepSeek V4.1 Flash 1017, abliterated | TEE + E2EE (NEAR AI enclave) | no | $0.375 / $1.50 |
 | `gemma-4-26b-tee` | Gemma 4 26B A4B Uncensored | Gemma 4 26B A4B | TEE + E2EE (Phala enclave) | no | $0.19 / $0.88 |
 
-Prices are Venice's and are read live, refreshed every 10 minutes. The table shows the fallback values, which apply only if the live catalog cannot be reached.
+Prices are Venice's, with no markup, and are read live, refreshed every 10 minutes. The table shows the fallback values, which apply only if the live catalog cannot be reached.
 
 **Privacy tiers through the API:**
 

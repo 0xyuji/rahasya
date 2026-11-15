@@ -2,13 +2,6 @@
 
 This page explains how to configure editors, coding agents and chat applications to use Rahasya.
 
-## Summary
-
-- Every tool uses the same base URL and an `nsk_…` API key.
-- Coding agents that call tools require a non-TEE model: `large-v2` (most capable), `large-flash` (fastest) or `deepseek-1017-uncensored` (lowest cost).
-- opencode has been tested end to end, and the site generates its configuration when you create a key. The other configurations follow each tool's published documentation.
-- To keep our server out of the request path, point the same configurations (except Cursor) at the local proxy.
-
 ## Endpoint
 
 All of the tools below connect to the same OpenAI-compatible endpoint:
@@ -19,7 +12,7 @@ API key    nsk_…   (account menu → API keys)
 Model      large-v2, large-flash, deepseek-1017-uncensored, …   (full list in the API reference)
 ```
 
-For coding agents that call tools (opencode, Cline, Aider, and Continue in agent mode), choose a **non-TEE** model. End-to-end encryption cannot carry tool definitions, so the two TEE models do not support tools.
+For coding agents that call tools (opencode, Cline, Aider, and Continue in agent mode), choose a **non-TEE** model: `large-v2` (most capable), `large-flash` (fastest) or `deepseek-1017-uncensored` (cheaper). End-to-end encryption cannot carry tool definitions, so the two TEE models do not support tools.
 
 The configurations below reflect each tool's documented format as of November 2026. If a tool's settings have moved, look for options labelled "OpenAI-compatible", "custom base URL" or "OpenAI API base".
 
@@ -190,14 +183,6 @@ const stream = await client.chat.completions.create({
   stream: true,
 });
 for await (const chunk of stream) process.stdout.write(chunk.choices[0]?.delta?.content ?? "");
-```
-
-## curl
-
-```sh
-curl https://<your-deployment>/api/v1/chat/completions \
-  -H "Authorization: Bearer $RAHASYA_API_KEY" -H "Content-Type: application/json" \
-  -d '{"model":"deepseek-1017-uncensored","messages":[{"role":"user","content":"Say hi"}],"max_tokens":50}'
 ```
 
 ## Spending limits for agents

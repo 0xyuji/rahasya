@@ -2,14 +2,6 @@
 
 This page describes how funds move, which wallet pays for what, how each request is authenticated and paid for, and what each party can see. It also identifies which properties you can verify yourself and which depend on a third party. The implementation lives in `packages/rail` (shared logic), `apps/web` (website and API) and `packages/proxy` (local proxy).
 
-## Summary
-
-- **Two wallets.** The inference wallet (website and local proxy) is derived in the browser from a single signature. The website keeps it only in memory and never sends it to our server; the local proxy, if you use it, saves it in `~/.rahasya` after you copy it there. The API wallet (API keys) is held by our server, encrypted, and used for inference credit only.
-- **Funding.** NEAR Intents (1Click) swaps the deposit into USDC on Base, delivers it to one of those wallets, and sends any refund to an address the user controls.
-- **Payment.** x402 adds Venice credit through a gasless USDC authorization. SIWX spends that credit, with a freshly signed header on every request. No on-chain transaction is made per message.
-- **Truly private mode.** A fresh-nonce attestation is verified in the browser, including Intel's signature chain, and each message is then encrypted to the enclave's key with ECDH, HKDF-SHA256 and AES-256-GCM.
-- **Limits of the proof.** The enclave's software measurement is not yet pinned. Against Venice itself, Truly private mode therefore relies on Venice running the enclave software it publishes.
-
 ## Components
 
 | Component | Description |
@@ -136,7 +128,7 @@ Code: `apps/web/src/server/` (`keys.ts`, `api-wallet.ts`, `gateway.ts`, `login.t
 | **Reown (wallet modal)** | Your IP address when the page loads its remote configuration; connection metadata when using WalletConnect QR or mobile wallets | Same | Same (sign-in) | Nothing |
 | **Cloudflare, Upstash** | Cloudflare hosts the site and terminates TLS, so it can see what our server sees, and keeps request logs (metadata, not bodies). Upstash hosts the database | Same | Same | Nothing |
 
-\* The enclave is verified as genuine Intel hardware (in your browser, on the website). Which software runs inside it is not yet pinned, so against Venice itself this relies on Venice running the software it publishes. See "What this proves, and what it does not" in section 5.
+\* The hardware is verified; the software inside it is not yet pinned. See "What this proves, and what it does not" in [section 5](#5-truly-private-mode-attestation-e2ee).
 
 No on-chain link exists between your connected wallet and your inference wallet unless you fund one from the other.
 
